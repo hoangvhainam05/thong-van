@@ -1,0 +1,257 @@
+@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap");
+
+/* Bảng màu lấy cảm hứng từ biển báo đường bộ: xanh biển chỉ dẫn + vàng cảnh báo.
+   Màu vàng chỉ dành cho "vị trí của bạn / điểm đang tới" để mắt luôn tìm thấy nó. */
+:root {
+  --road: #1b4f8c;
+  --road-deep: #0e2f57;
+  --road-soft: #e6eef8;
+  --signal: #f2b100;
+  --signal-soft: #fff4d1;
+  --ink: #142236;
+  --muted: #5a6a7e;
+  --faint: #8d9aab;
+  --ground: #eef1f5;
+  --paper: #ffffff;
+  --line: #d6dde6;
+  --line-soft: #e7ecf1;
+  --go: #16805a;
+  --go-soft: #e2f3eb;
+  --stop: #c0362c;
+  --stop-soft: #fbe9e7;
+  --move: #a35f00;
+  --move-soft: #fff0d6;
+  --plan: #5b3fa8;
+  --plan-soft: #eee9fb;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --shadow: 0 1px 2px rgba(20, 34, 54, 0.06), 0 4px 16px rgba(20, 34, 54, 0.05);
+  --font: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--ground);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+a { color: inherit; text-decoration: none; }
+img, svg { display: block; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; letter-spacing: -0.01em; }
+h1 { font-size: 28px; font-weight: 800; }
+h2 { font-size: 20px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; }
+:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------------------------------------------------------------- điều khiển */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: inherit; font-weight: 600; font-size: 14px; line-height: 1;
+  padding: 10px 16px; border-radius: var(--r-sm); cursor: pointer;
+  border: 1px solid var(--road); background: var(--road); color: #fff;
+  white-space: nowrap; transition: background .15s, border-color .15s;
+}
+.btn:hover { background: var(--road-deep); border-color: var(--road-deep); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.secondary { background: var(--paper); color: var(--road); border-color: var(--line); }
+.btn.secondary:hover { border-color: var(--road); background: var(--road-soft); }
+.btn.ghost { background: transparent; color: var(--road); border-color: transparent; padding-left: 8px; padding-right: 8px; }
+.btn.ghost:hover { background: var(--road-soft); }
+.btn.danger { background: var(--stop); border-color: var(--stop); }
+.btn.danger:hover { background: #9c2a22; }
+.btn.go { background: var(--go); border-color: var(--go); }
+.btn.signal { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+.btn.sm { padding: 7px 11px; font-size: 13px; }
+.btn.lg { padding: 14px 22px; font-size: 16px; }
+.btn.block { width: 100%; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 13px; font-weight: 600; color: var(--muted); }
+.field small { color: var(--faint); font-size: 12px; }
+.input, select.input, textarea.input {
+  font: inherit; font-size: 14px; width: 100%;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--paper); color: var(--ink);
+}
+.input:focus { outline: none; border-color: var(--road); box-shadow: 0 0 0 3px var(--road-soft); }
+.form-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid .full { grid-column: 1 / -1; }
+@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
+
+.check { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; font-size: 14px; }
+.check input { width: 16px; height: 16px; accent-color: var(--road); }
+
+.choice { display: grid; gap: 10px; }
+.choice label {
+  display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--paper);
+}
+.choice label:has(input:checked) { border-color: var(--road); background: var(--road-soft); }
+.choice input { margin-top: 3px; accent-color: var(--road); }
+
+/* ---------------------------------------------------------------- bề mặt */
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-md); }
+.panel-pad { padding: 20px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; }
+.panel-body { padding: 20px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack-sm { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.row.end { justify-content: flex-end; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.small { font-size: 13px; }
+.tiny { font-size: 12px; }
+.strong { font-weight: 700; }
+.nowrap { white-space: nowrap; }
+.right { text-align: right; }
+.divider { height: 1px; background: var(--line-soft); margin: 4px 0; }
+.price { font-weight: 800; color: var(--road); }
+.strike { text-decoration: line-through; color: var(--faint); font-size: 13px; }
+
+/* ---------------------------------------------------------------- huy hiệu */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px;
+  background: var(--ground); color: var(--muted);
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; }
+.badge.info { background: var(--road-soft); color: var(--road); }
+.badge.plan { background: var(--plan-soft); color: var(--plan); }
+.badge.move { background: var(--move-soft); color: var(--move); }
+.badge.ok { background: var(--go-soft); color: var(--go); }
+.badge.bad { background: var(--stop-soft); color: var(--stop); }
+.badge.plain::before { display: none; }
+.role-chip { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: var(--road-soft); color: var(--road); white-space: nowrap; }
+.role-chip.ADMIN { background: #1d2a3a; color: #fff; }
+.role-chip.MANAGER { background: var(--plan-soft); color: var(--plan); }
+.role-chip.SALES { background: var(--go-soft); color: var(--go); }
+.role-chip.DRIVER { background: var(--move-soft); color: var(--move); }
+
+/* ---------------------------------------------------------------- bảng */
+.table-wrap { overflow-x: auto; }
+table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th {
+  text-align: left; font-size: 12px; font-weight: 600; color: var(--muted);
+  padding: 10px 14px; border-bottom: 1px solid var(--line); background: #f7f9fb; white-space: nowrap;
+}
+.table td { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.table tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: #fafbfd; }
+.table tr.selected td { background: var(--road-soft); }
+.table .num { text-align: right; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- tab / bộ lọc */
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.tabs button {
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); background: none; border: 0;
+  padding: 10px 12px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tabs button[aria-selected="true"] { color: var(--road); border-color: var(--road); }
+.tabs .count { font-size: 12px; color: var(--faint); margin-left: 4px; font-weight: 500; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--paper); }
+.seg button { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 12px; border: 0; background: none; cursor: pointer; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--road); color: #fff; }
+
+/* ---------------------------------------------------------------- số liệu */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.kpi { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 18px; }
+.kpi .label { font-size: 13px; color: var(--muted); font-weight: 500; }
+.kpi .value { font-size: 26px; font-weight: 800; margin-top: 4px; letter-spacing: -0.02em; }
+.kpi .delta { font-size: 12px; margin-top: 2px; color: var(--muted); }
+.kpi .delta.up { color: var(--go); }
+.kpi.accent { border-color: var(--road); background: var(--road); color: #fff; }
+.kpi.accent .label, .kpi.accent .delta { color: #c9daf0; }
+
+/* ---------------------------------------------------------------- toast, modal */
+.toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 100; max-width: calc(100vw - 40px); }
+.toast { background: var(--ink); color: #fff; padding: 12px 16px; border-radius: var(--r-sm); font-size: 14px; box-shadow: var(--shadow); border-left: 4px solid var(--go); animation: toast-in .2s ease-out; }
+.toast.bad { border-left-color: var(--stop); }
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
+
+.overlay { position: fixed; inset: 0; background: rgba(14, 26, 44, .45); z-index: 50; display: grid; place-items: center; padding: 16px; }
+.modal { background: var(--paper); border-radius: var(--r-lg); width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.modal.wide { width: min(820px, 100%); }
+.modal-head { padding: 18px 22px; border-bottom: 1px solid var(--line-soft); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.modal-body { padding: 22px; }
+.modal-foot { padding: 14px 22px; border-top: 1px solid var(--line-soft); display: flex; justify-content: flex-end; gap: 10px; }
+.icon-btn { background: none; border: 0; cursor: pointer; padding: 6px; border-radius: 6px; color: var(--muted); font-size: 18px; line-height: 1; }
+.icon-btn:hover { background: var(--ground); color: var(--ink); }
+
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.empty h3 { color: var(--ink); margin-bottom: 6px; }
+.empty .btn { margin-top: 14px; }
+
+.notice { padding: 12px 14px; border-radius: var(--r-sm); font-size: 14px; background: var(--road-soft); color: var(--road-deep); }
+.notice.warn { background: var(--signal-soft); color: #6b4d00; }
+.notice.bad { background: var(--stop-soft); color: var(--stop); }
+.notice.ok { background: var(--go-soft); color: var(--go); }
+
+.loading-screen { min-height: 60vh; display: grid; place-items: center; color: var(--muted); }
+
+/* ---------------------------------------------------------------- dải lộ trình (yếu tố nhận diện) */
+.strip { position: relative; padding: 30px 0 4px; }
+.strip-road {
+  position: relative; height: 44px; border-radius: 22px; background: #2b3a4e;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 10px;
+}
+.strip-road::before {
+  content: ""; position: absolute; left: 22px; right: 22px; top: 50%; height: 2px; transform: translateY(-50%);
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.55) 0 10px, transparent 10px 20px);
+}
+.strip-node {
+  position: relative; z-index: 1; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  background: #44556b; color: #c9d4e1; border: 2px solid #2b3a4e; flex: none;
+}
+.strip-node.depot { background: var(--paper); color: var(--road); border-radius: 6px; }
+.strip-node.done { background: #3c7d63; color: #d9f2e6; }
+.strip-node.here { background: var(--paper); color: var(--ink); box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+.strip-node.me {
+  width: auto; min-width: 44px; height: 34px; padding: 0 10px; border-radius: 6px;
+  background: var(--signal); color: var(--ink); border-color: var(--signal); font-size: 13px;
+  box-shadow: 0 0 0 4px rgba(242,177,0,.3);
+}
+.strip-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.strip-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.strip-truck { position: absolute; top: -30px; z-index: 2; transform: translateX(-50%); font-size: 18px; transition: left .4s; }
+
+/* ---------------------------------------------------------------- dòng thời gian */
+.timeline { list-style: none; padding: 0; margin: 0; }
+.timeline li { position: relative; padding: 0 0 18px 28px; }
+.timeline li::before { content: ""; position: absolute; left: 7px; top: 18px; bottom: 0; width: 2px; background: var(--line); }
+.timeline li:last-child::before { display: none; }
+.timeline .dot { position: absolute; left: 0; top: 3px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); background: var(--paper); }
+.timeline li.done .dot { background: var(--road); border-color: var(--road); }
+.timeline li.done::before { background: var(--road); }
+.timeline li.current .dot { background: var(--signal); border-color: var(--signal); box-shadow: 0 0 0 4px var(--signal-soft); }
+.timeline li.failed .dot { background: var(--stop); border-color: var(--stop); }
+.timeline .t-title { font-weight: 600; }
+.timeline li.todo .t-title { color: var(--faint); font-weight: 500; }
+.timeline .t-meta { font-size: 12px; color: var(--muted); }
+
+/* ---------------------------------------------------------------- avatar */
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--road-soft); color: var(--road); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+
+/* ---------------------------------------------------------------- 403 */
+.forbidden { max-width: 520px; margin: 60px auto; text-align: center; }
+.forbidden .sign {
+  width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 50%; border: 9px solid var(--stop);
+  position: relative; background: #fff;
+}
+.forbidden .sign::after { content: ""; position: absolute; left: 10px; right: 10px; top: 50%; height: 9px; margin-top: -4.5px; background: var(--stop); }
+.forbidden p { color: var(--muted); margin-top: 8px; }
+.grid { display: grid; gap: 16px; }
+.price, .strike { white-space: nowrap; }

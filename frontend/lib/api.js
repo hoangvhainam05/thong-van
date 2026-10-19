@@ -1,0 +1,55 @@
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export async function api(path, { method = "GET", body, token } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["X-Staff-Token"] = token;
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detail = data?.detail;
+    const msg = Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : detail;
+    throw new Error(msg || `Lỗi ${res.status}`);
+  }
+  return data;
+}
+
+export const vnd = (n) => new Intl.NumberFormat("vi-VN").format(n) + " ₫";
+
+export const hhmm = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
+
+export const today = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
+
+// Token nhân viên lưu trong sessionStorage (mất khi đóng tab)
+export const loadToken = () => {
+  try {
+    return sessionStorage.getItem("tv_staff_token") || "";
+  } catch {
+    return "";
+  }
+};
+export const saveToken = (t) => {
+  try {
+    sessionStorage.setItem("tv_staff_token", t);
+  } catch {}
+};
+
+export const STATUS_LABEL = {
+  PENDING: "Chờ xác nhận",
+  CONFIRMED: "Đã xác nhận",
+  READY: "Sẵn sàng giao",
+  SCHEDULED: "Đã xếp lịch",
+  OUT_FOR_DELIVERY: "Đang giao",
+  DELIVERED: "Đã giao",
+  FAILED: "Giao thất bại",
+  CANCELLED: "Đã huỷ",
+};
