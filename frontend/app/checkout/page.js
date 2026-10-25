@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PAYMENT_METHOD, useStore } from "@/lib/store";
+import { api } from "@/lib/api";
 import { addDays, dateLabel, vnd, ymd } from "@/lib/format";
 import { RequirePerm } from "@/components/Guard";
-import { Empty, Field, Modal } from "@/components/ui";
+import { Empty, Field } from "@/components/ui";
 
 const WINDOWS = [
   { id: "am", label: "Buổi sáng", start: "08:00", end: "12:00" },
@@ -26,13 +27,27 @@ function Checkout() {
   const [custom, setCustom] = useState({ start: "09:00", end: "11:00" });
   const [pay, setPay] = useState("COD");
   const [note, setNote] = useState("");
-  const [paying, setPaying] = useState(false);
+  const [isGift, setIsGift] = useState(false);
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const requestIdRef = useRef(null);
+  const [bankInstructions, setBankInstructions] = useState(null);
+
+  useEffect(() => {
+    api("/api/orders/payment-instructions")
+      .then(setBankInstructions)
+      .catch(() => setBankInstructions({ configured: false }));
+  }, []);
 
   const lines = state.cart.map((l) => ({ ...l, p: state.products.find((x) => x.id === l.productId) }));
   if (!lines.length) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
   const ship = subtotal >= state.settings.freeShipFrom ? 0 : state.settings.shippingFee;
+  const codAllowed = !isGift && subtotal + ship < 10_000_000;
+  const bankAvailable = Boolean(bankInstructions?.configured);
+  const paymentChoice = codAllowed ? (pay === "BANK" && !bankAvailable ? "COD" : pay) : (bankAvailable ? "BANK" : null);
   const days = Array.from({ length: 7 }, (_, i) => addDays(ymd(), i));
 
   const locate = () => {
@@ -43,16 +58,37 @@ function Checkout() {
     );
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (submitting) return;
     setError("");
+    if (!paymentChoice) return setError("Đơn này không áp dụng COD và cửa hàng chưa cấu hình tài khoản chuyển khoản.");
     let address;
     if (addrId === "new") {
       if (newAddr.address.trim().length < 8) return setError("Nhập địa chỉ giao hàng đầy đủ (số nhà, đường, phường, quận).");
       address = { address: newAddr.address, district: newAddr.district, lat: newAddr.lat ? Number(newAddr.lat) : null, lng: newAddr.lng ? Number(newAddr.lng) : null };
     } else address = customer.addresses.find((a) => a.id === addrId);
     const w = win === "custom" ? custom : WINDOWS.find((x) => x.id === win);
-    const order = actions.placeOrder({ address, deliveryDate: date, window: { start: w.start, end: w.end }, paymentMethod: pay, note });
-    if (order) router.push(`/account/orders/${order.id}?new=1`);
+    if (isGift && (!recipientName.trim() || !/^0\d{9,10}$/.test(recipientPhone))) {
+      return setError("Nhập tên người nhận và số điện thoại hợp lệ cho đơn đặt hộ.");
+    }
+    setSubmitting(true);
+    requestIdRef.current ||= crypto.randomUUID();
+    const order = await actions.placeOrder({
+      address,
+      deliveryDate: date,
+      window: { start: w.start, end: w.end },
+      paymentMethod: paymentChoice,
+      note,
+      isGift,
+      recipientName,
+      recipientPhone,
+      clientRequestId: requestIdRef.current,
+    });
+    setSubmitting(false);
+    if (order) {
+      requestIdRef.current = null;
+      router.push(`/account/orders/${order.id}?new=1`);
+    }
   };
 
   return (
@@ -61,6 +97,21 @@ function Checkout() {
       <h1 style={{ marginBottom: 18 }}>Đặt hàng</h1>
       <div className="two-col">
         <div className="stack">
+          <section className="panel">
+            <div className="panel-head"><h3>Thông tin người đặt</h3></div>
+            <div className="panel-body stack-sm">
+              <div><b>{customer.name}</b><div className="small muted">{customer.phone}</div></div>
+              <label className="row small" style={{ cursor: "pointer" }}>
+                <input type="checkbox" checked={isGift} onChange={(e) => setIsGift(e.target.checked)} />
+                <span>Đặt hộ / giao quà cho người khác</span>
+              </label>
+              {isGift && <div className="form-grid">
+                <Field label="Tên người nhận"><input className="input" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} /></Field>
+                <Field label="Số điện thoại người nhận"><input className="input" inputMode="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} /></Field>
+              </div>}
+            </div>
+          </section>
+
           <section className="panel">
             <div className="panel-head"><h3>Địa chỉ nhận hàng</h3></div>
             <div className="panel-body stack">
@@ -117,13 +168,16 @@ function Checkout() {
             <div className="panel-head"><h3>Thanh toán</h3></div>
             <div className="panel-body">
               <div className="choice">
-                {Object.entries(PAYMENT_METHOD).map(([k, label]) => (
+                {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && (k !== "BANK" || bankAvailable)).map(([k, label]) => (
                   <label key={k}>
-                    <input type="radio" name="pay" checked={pay === k} onChange={() => setPay(k)} />
-                    <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? "Trả cho tài xế khi nhận và kiểm tra hàng" : k === "BANK" ? "Quét mã QR ngân hàng, xác nhận tự động" : "Thanh toán qua ví điện tử"}</span></span>
+                    <input type="radio" name="pay" disabled={k === "COD" && !codAllowed} checked={paymentChoice === k} onChange={() => setPay(k)} />
+                    <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? (!codAllowed ? "Không áp dụng cho đơn đặt hộ hoặc đơn từ 10 triệu đồng" : "Trả cho tài xế khi nhận và kiểm tra hàng") : "Tạo đơn chờ chuyển khoản; nhân viên xác nhận sau khi đối soát"}</span></span>
                   </label>
                 ))}
               </div>
+              {paymentChoice === "BANK" && bankInstructions?.configured && <div className="notice" style={{ marginTop: 12 }}>Chuyển khoản tới <b>{bankInstructions.bank_name}</b> · {bankInstructions.account_name} · {bankInstructions.account_number}. Mã đơn và nội dung chuyển khoản sẽ hiện sau khi tạo đơn. Nhân viên sẽ đối soát thủ công.</div>}
+              {!codAllowed && !bankAvailable && <div className="notice bad" style={{ marginTop: 12 }}>Đơn đặt hộ hoặc từ 10 triệu đồng cần chuyển khoản, nhưng cửa hàng chưa cấu hình tài khoản nhận tiền.</div>}
+              {bankAvailable && <p className="tiny muted" style={{ marginTop: 10 }}>Website chưa tích hợp QR hoặc tự động đối soát. Vui lòng chuyển khoản đúng nội dung mã đơn.</p>}
             </div>
           </section>
         </div>
@@ -144,38 +198,15 @@ function Checkout() {
           </div>
           <div className="row between"><b>Tổng cộng</b><span className="price" style={{ fontSize: 22 }}>{vnd(subtotal + ship)}</span></div>
           {error && <div className="notice bad">{error}</div>}
-          <button className="btn lg block" onClick={() => (pay === "COD" ? submit() : setPaying(true))}>
-            {pay === "COD" ? "Đặt hàng" : "Thanh toán và đặt hàng"}
+          <button className="btn lg block" disabled={submitting || !paymentChoice} onClick={submit}>
+            {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Tạo đơn chờ chuyển khoản"}
           </button>
           <p className="tiny muted">Giao {date <= addDays(ymd(), 1) ? dateLabel(date).toLowerCase() : `ngày ${dateLabel(date)}`}. Bạn sẽ thấy khung giờ dự kiến và vị trí trong tuyến sau khi cửa hàng xếp lịch.</p>
         </aside>
       </div>
 
-      {paying && (
-        <Modal title={pay === "BANK" ? "Quét mã để chuyển khoản" : "Thanh toán bằng ví"} onClose={() => setPaying(false)}
-          footer={<><button className="btn secondary" onClick={() => setPaying(false)}>Huỷ</button><button className="btn go" onClick={() => { setPaying(false); submit(); }}>Tôi đã thanh toán</button></>}>
-          <div className="stack" style={{ alignItems: "center", textAlign: "center" }}>
-            <FakeQr />
-            <div><div className="muted small">Số tiền</div><div className="price" style={{ fontSize: 26 }}>{vnd(subtotal + ship)}</div></div>
-            <p className="small muted">Đây là cổng thanh toán mô phỏng của bản demo, không có giao dịch thật.</p>
-          </div>
-        </Modal>
-      )}
     </>
   );
-}
-
-function FakeQr() {
-  const cells = [];
-  let seed = 7;
-  for (let y = 0; y < 21; y++)
-    for (let x = 0; x < 21; x++) {
-      seed = (seed * 9301 + 49297) % 233280;
-      const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13);
-      const on = finder ? (x % 6 === 0 || y % 6 === 0 || (x % 14 > 1 && x % 14 < 5 && y % 14 > 1 && y % 14 < 5)) : seed / 233280 > 0.5;
-      if (on) cells.push(<rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" />);
-    }
-  return <svg viewBox="-1 -1 23 23" width="180" height="180" style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 8 }}><g fill="#142236">{cells}</g></svg>;
 }
 
 export default function CheckoutPage() {

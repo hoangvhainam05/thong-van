@@ -1,8 +1,0 @@
-fastapi>=0.115
-uvicorn[standard]>=0.30
-SQLAlchemy>=2.0
-PyMySQL>=1.1
-cryptography>=42      # PyMySQL cần cho xác thực mặc định của MySQL 8
-python-dotenv>=1.0
-ortools>=9.10
-pytest>=8

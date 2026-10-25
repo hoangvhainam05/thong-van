@@ -26,13 +26,19 @@ CREATE TABLE customer (
 -- Hàng điện máy: cần thể tích (sức chứa xe) và thời gian lắp đặt (ETA)
 CREATE TABLE product (
   id              INT AUTO_INCREMENT PRIMARY KEY,
+  sku             VARCHAR(40)    NULL UNIQUE,
   name            VARCHAR(160)  NOT NULL,
+  brand           VARCHAR(100)  NULL,
   category        VARCHAR(60)   NOT NULL,
   price           DECIMAL(12,0) NOT NULL,
+  old_price       DECIMAL(12,0) NULL,
   volume_m3       DECIMAL(6,3)  NOT NULL DEFAULT 0.1,
   weight_kg       DECIMAL(7,2)  NOT NULL DEFAULT 1,
   install_minutes INT           NOT NULL DEFAULT 10,
-  image_url       VARCHAR(255)  NULL,
+  image_url       VARCHAR(1000) NULL,
+  warranty_months INT           NOT NULL DEFAULT 12,
+  stock           INT           NOT NULL DEFAULT 10,
+  description     TEXT          NULL,
   active          TINYINT(1)    NOT NULL DEFAULT 1
 );
 
@@ -56,6 +62,9 @@ CREATE TABLE orders (
   id                 INT AUTO_INCREMENT PRIMARY KEY,
   code               VARCHAR(20)   NULL UNIQUE,          -- TV000123, sinh sau khi insert
   customer_id        INT           NOT NULL,
+  recipient_name     VARCHAR(120)  NULL,
+  recipient_phone    VARCHAR(20)   NULL,
+  is_gift            TINYINT(1)    NOT NULL DEFAULT 0,
   address            VARCHAR(255)  NOT NULL,
   lat                DECIMAL(10,7) NULL,                 -- NULL = chưa định vị được (rủi ro R1)
   lng                DECIMAL(10,7) NULL,
@@ -63,7 +72,12 @@ CREATE TABLE orders (
   time_window_start  TIME          NOT NULL DEFAULT '08:00:00',
   time_window_end    TIME          NOT NULL DEFAULT '17:00:00',
   total              DECIMAL(14,0) NOT NULL DEFAULT 0,
-  payment_method     ENUM('COD','BANK_TRANSFER') NOT NULL DEFAULT 'COD',
+  subtotal           DECIMAL(14,0) NOT NULL DEFAULT 0,
+  shipping_fee       DECIMAL(12,0) NOT NULL DEFAULT 0,
+  client_request_id  VARCHAR(64)   NULL UNIQUE,
+  payment_method     ENUM('COD','BANK_TRANSFER','COUNTER_CASH') NOT NULL DEFAULT 'COD',
+  payment_status     ENUM('UNPAID','PENDING','PAID') NOT NULL DEFAULT 'UNPAID',
+  source             ENUM('WEB','COUNTER') NOT NULL DEFAULT 'WEB',
   status             ENUM('PENDING','CONFIRMED','READY','SCHEDULED',
                           'OUT_FOR_DELIVERY','DELIVERED','FAILED','CANCELLED')
                      NOT NULL DEFAULT 'PENDING',
@@ -82,6 +96,19 @@ CREATE TABLE order_item (
   unit_price  DECIMAL(12,0) NOT NULL,
   CONSTRAINT fk_item_order   FOREIGN KEY (order_id)   REFERENCES orders(id) ON DELETE CASCADE,
   CONSTRAINT fk_item_product FOREIGN KEY (product_id) REFERENCES product(id)
+);
+
+CREATE TABLE order_history (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  order_id    INT NOT NULL,
+  event_type  ENUM('STATUS','PAYMENT','INFO_REQUEST','LOCATION') NOT NULL,
+  from_value  VARCHAR(30) NULL,
+  to_value    VARCHAR(30) NULL,
+  note        VARCHAR(255) NULL,
+  actor       VARCHAR(40) NOT NULL DEFAULT 'SYSTEM',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_order_history_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  INDEX idx_order_history_order_date (order_id, created_at)
 );
 
 -- Tuyến giao hàng. DRAFT = còn được tối ưu lại; LOCKED = đã chốt, thứ tự không đổi nữa

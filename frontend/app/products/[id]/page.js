@@ -28,7 +28,7 @@ export default function ProductDetail() {
       </nav>
       <div className="two-col" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="panel" style={{ aspectRatio: "1 / 1", display: "grid", placeItems: "center", color: "var(--road)", background: "linear-gradient(180deg,#f3f6fa,#e6ecf3)" }}>
-          <Art category={p.category} className="detail-art" label={p.name} />
+          {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Art category={p.category} className="detail-art" label={p.name} />}
         </div>
         <div className="stack">
           <div>

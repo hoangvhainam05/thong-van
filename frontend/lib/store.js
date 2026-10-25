@@ -9,6 +9,7 @@ import { buildSeed } from "./mock/seed";
 import { can, LOCKED, ROLES } from "./rbac";
 import { addDays, hm, toMin, ymd } from "./format";
 import { etaWindow, optimize } from "./optimizer";
+import { api, loadToken } from "./api";
 
 const KEY = "thongvan_demo_v3";
 const StoreCtx = createContext(null);
@@ -34,6 +35,58 @@ function save(s) {
   } catch {}
 }
 
+function mapServerOrder(row, localId, customerId = 0) {
+  const createdAt = row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString();
+  return {
+    id: localId,
+    serverId: row.id,
+    source: row.source || "WEB",
+    inventoryReserved: Boolean(row.inventory_reserved),
+    code: row.code,
+    customerId,
+    customerName: row.customer_name,
+    phone: row.phone,
+    recipientName: row.recipient_name || row.customer_name,
+    recipientPhone: row.recipient_phone || row.phone,
+    isGift: Boolean(row.is_gift),
+    address: row.address,
+    district: "",
+    lat: row.lat == null ? null : Number(row.lat),
+    lng: row.lng == null ? null : Number(row.lng),
+    items: (row.items || []).map((item) => ({
+      productId: item.product_id,
+      name: item.product_name,
+      price: Number(item.unit_price),
+      qty: item.quantity,
+    })),
+    subtotal: Number(row.subtotal),
+    shippingFee: Number(row.shipping_fee),
+    total: Number(row.total),
+    deliveryDate: row.delivery_date,
+    window: {
+      start: String(row.time_window_start || "08:00").slice(0, 5),
+      end: String(row.time_window_end || "17:00").slice(0, 5),
+    },
+    payment: {
+      method: row.payment_method === "BANK_TRANSFER" ? "BANK" : row.payment_method === "COUNTER_CASH" ? "COUNTER_CASH" : "COD",
+      status: row.payment_status || "UNPAID",
+    },
+    paymentInstructions: row.payment_instructions || null,
+    requestedInfo: (row.history || [])
+      .filter((event) => event.event_type === "INFO_REQUEST")
+      .map((event) => ({ message: event.note, at: event.at })),
+    note: row.note || "",
+    status: row.status,
+    createdAt,
+    history: (row.history || []).map((event) => ({
+      status: event.status || row.status,
+      at: event.at ? new Date(event.at).toISOString() : createdAt,
+      by: event.by || "Hệ thống",
+      note: event.note || "",
+    })),
+  };
+}
+
 export const ORDER_STATUS = {
   PENDING: { label: "Chờ xác nhận", tone: "neutral" },
   CONFIRMED: { label: "Đã xác nhận", tone: "info" },
@@ -52,7 +105,7 @@ export const ROUTE_STATUS = {
   DONE: { label: "Hoàn tất", tone: "ok", hint: "Đã giao hết các điểm" },
 };
 
-export const PAYMENT_METHOD = { COD: "Tiền mặt khi nhận", BANK: "Chuyển khoản", EWALLET: "Ví điện tử" };
+export const PAYMENT_METHOD = { COD: "Tiền mặt khi nhận", COUNTER_CASH: "Tiền mặt tại quầy", BANK: "Chuyển khoản", EWALLET: "Ví điện tử" };
 
 class PermissionError extends Error {}
 
@@ -65,6 +118,20 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     setState(load());
   }, []);
+  // Danh mục công khai lấy từ API khi backend/MySQL sẵn sàng; nếu chưa chạy thì
+  // giữ dữ liệu mẫu để giao diện demo vẫn mở được.
+  useEffect(() => {
+    if (!state?.seedDate) return undefined;
+    let cancelled = false;
+    api("/api/products")
+      .then((products) => {
+        if (!cancelled && Array.isArray(products)) {
+          setState((current) => current ? { ...current, products } : current);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [state?.seedDate]);
   useEffect(() => {
     if (state) save(state);
   }, [state]);
@@ -191,47 +258,69 @@ export function StoreProvider({ children }) {
         }),
       clearCart: () => mutate((d) => { d.cart = []; }),
 
-      placeOrder: act(({ address, deliveryDate, window, paymentMethod, note }) =>
-        mutate((d) => {
+      async placeOrder({ address, deliveryDate, window, paymentMethod, note, isGift = false, recipientName = "", recipientPhone = "", clientRequestId }) {
+        try {
           need("order.place");
-          if (!d.cart.length) throw new Error("Giỏ hàng đang trống.");
+          const current = stateRef.current;
+          if (!current.cart.length) throw new Error("Giỏ hàng đang trống.");
           if (deliveryDate < ymd()) throw new Error("Ngày giao không được ở quá khứ.");
           if (toMin(window.end) - toMin(window.start) < 60) throw new Error("Khung giờ nhận hàng cần dài ít nhất 1 tiếng.");
-          const c = d.customers.find((x) => x.id === user.customerId);
-          const items = d.cart.map((l) => {
-            const p = d.products.find((x) => x.id === l.productId);
-            return { productId: p.id, name: p.name, price: p.price, qty: l.qty };
-          });
-          const subtotal = items.reduce((s, it) => s + it.price * it.qty, 0);
-          const shippingFee = subtotal >= d.settings.freeShipFrom ? 0 : d.settings.shippingFee;
-          const id = Math.max(...d.orders.map((o) => o.id)) + 1;
-          const now = new Date().toISOString();
-          const o = {
-            id,
-            code: `TV${String(100000 + id * 7).slice(-6)}`,
-            customerId: c.id, customerName: c.name, phone: c.phone,
-            address: address.address, district: address.district || "", lat: address.lat ?? null, lng: address.lng ?? null,
-            items, subtotal, shippingFee, total: subtotal + shippingFee,
-            deliveryDate, window,
-            payment: { method: paymentMethod, status: paymentMethod === "COD" ? "UNPAID" : "PAID" },
-            note: note || "", status: "PENDING", createdAt: now,
-            history: [{ status: "PENDING", at: now, by: "Khách hàng" }],
+          if (isGift && (!recipientName.trim() || !recipientPhone.trim())) throw new Error("Nhập tên và số điện thoại người nhận quà.");
+          const customer = current.customers.find((x) => x.id === user.customerId);
+          const requestId = clientRequestId || crypto.randomUUID();
+          const payload = {
+            customer_name: customer.name,
+            phone: customer.phone,
+            recipient_name: isGift ? recipientName.trim() : customer.name,
+            recipient_phone: isGift ? recipientPhone.trim() : customer.phone,
+            is_gift: isGift,
+            client_request_id: requestId,
+            address: address.address,
+            lat: address.lat == null || address.lat === "" ? undefined : Number(address.lat),
+            lng: address.lng == null || address.lng === "" ? undefined : Number(address.lng),
+            delivery_date: deliveryDate,
+            time_window_start: window.start,
+            time_window_end: window.end,
+            payment_method: paymentMethod === "BANK" ? "BANK_TRANSFER" : paymentMethod,
+            note: note || undefined,
+            items: current.cart.map((line) => ({ product_id: line.productId, quantity: line.qty })),
           };
-          d.orders.push(o);
-          items.forEach((it) => {
-            const p = d.products.find((x) => x.id === it.productId);
-            p.stock = Math.max(0, p.stock - it.qty);
+          const saved = await api("/api/orders", { method: "POST", body: payload });
+          let created;
+          mutate((d) => {
+            const existing = d.orders.find((o) => o.serverId === saved.id);
+            if (existing) {
+              created = existing;
+              d.cart = [];
+              return;
+            }
+            const c = d.customers.find((x) => x.id === user.customerId);
+            const id = Math.max(0, ...d.orders.map((o) => o.id)) + 1;
+            created = mapServerOrder(saved, id, c.id);
+            created.district = address.district || "";
+            created.note = note || "";
+            d.orders.push(created);
+            for (const item of created.items) {
+              const p = d.products.find((product) => product.id === item.productId);
+              if (p) p.stock = Math.max(0, p.stock - item.qty);
+            }
+            d.cart = [];
+            notify(d, created, "Đã nhận đơn", `Thông Vân đã nhận đơn ${created.code}. Nhân viên sẽ gọi xác nhận trong ít phút.`);
           });
-          d.cart = [];
-          notify(d, o, "Đã nhận đơn", `Thông Vân đã nhận đơn ${o.code}. Nhân viên sẽ gọi xác nhận trong ít phút.`);
-          return o;
-        })),
+          toast("Đã tạo đơn hàng");
+          return created;
+        } catch (error) {
+          toast(error.message || "Không tạo được đơn hàng.", "bad");
+          return null;
+        }
+      },
 
       cancelOwnOrder: act((orderId) =>
         mutate((d) => {
           need("order.track_own");
           const o = findOrder(d, orderId);
           if (o.customerId !== user.customerId) throw new Error("Không tìm thấy đơn hàng.");
+          if (o.serverId) throw new Error("Đơn đã lưu trên máy chủ. Vui lòng gọi cửa hàng để yêu cầu huỷ đơn.");
           if (o.status !== "PENDING") throw new Error("Đơn đã được xác nhận, vui lòng gọi hotline để huỷ.");
           pushHistory(o, "CANCELLED", "Khách tự huỷ");
         }), "Đã huỷ đơn"),
@@ -244,73 +333,305 @@ export function StoreProvider({ children }) {
         }),
 
       // ------------------------------------------------------------ xử lý đơn (nhân viên)
-      confirmOrders: act((ids) =>
-        mutate((d) => {
+      async confirmOrders(ids) {
+        try {
           need("order.confirm");
-          let n = 0;
-          ids.forEach((id) => {
-            const o = findOrder(d, id);
-            if (o.status !== "PENDING") return;
-            pushHistory(o, "CONFIRMED");
-            notify(d, o, "Đơn đã được xác nhận", `Đơn ${o.code} đã được xác nhận và đang chuẩn bị hàng.`);
+          let n = 0, skippedPayment = 0;
+          for (const id of ids) {
+            const order = stateRef.current.orders.find((x) => x.id === id);
+            if (!order || order.status !== "PENDING") continue;
+            if (order.payment.method === "BANK" && order.payment.status !== "PAID") { skippedPayment++; continue; }
+            let serverOrder;
+            if (order.serverId) {
+              const token = loadToken();
+              if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+              serverOrder = await api(`/api/orders/${order.serverId}/status`, { method: "PATCH", body: { status: "CONFIRMED" }, token });
+            }
+            mutate((d) => {
+              const current = findOrder(d, id);
+              pushHistory(current, serverOrder?.status || "CONFIRMED");
+              notify(d, current, "Đơn đã được xác nhận", `Đơn ${current.code} đã được xác nhận và đang chuẩn bị hàng.`);
+              log(d, "Xác nhận đơn", current.code);
+            });
             n++;
-          });
-          log(d, "Xác nhận đơn", `${n} đơn`);
+          }
+          toast(skippedPayment ? `Đã xác nhận ${n} đơn; ${skippedPayment} đơn cần đối soát chuyển khoản trước` : `Đã xác nhận ${n} đơn`, skippedPayment && !n ? "bad" : "ok");
           return n;
-        }), (n) => `Đã xác nhận ${n} đơn`),
-      markReady: act((ids) =>
-        mutate((d) => {
+        } catch (error) {
+          toast(error.message || "Không xác nhận được đơn.", "bad");
+          return 0;
+        }
+      },
+      async markReady(ids) {
+        try {
           need("order.confirm");
           let n = 0, skipped = 0;
-          ids.forEach((id) => {
-            const o = findOrder(d, id);
-            if (o.status !== "CONFIRMED") return;
-            if (o.lat == null) { skipped++; return; }
-            pushHistory(o, "READY");
+          for (const id of ids) {
+            const order = stateRef.current.orders.find((x) => x.id === id);
+            if (!order || order.status !== "CONFIRMED") continue;
+            if (order.lat == null) { skipped++; continue; }
+            let serverOrder;
+            if (order.serverId) {
+              const token = loadToken();
+              if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+              serverOrder = await api(`/api/orders/${order.serverId}/status`, { method: "PATCH", body: { status: "READY" }, token });
+            }
+            mutate((d) => {
+              const current = findOrder(d, id);
+              pushHistory(current, serverOrder?.status || "READY");
+              log(d, "Chuẩn bị xong hàng", current.code);
+            });
             n++;
-          });
+          }
           if (!n && skipped) throw new Error("Đơn chưa có vị trí giao. Cập nhật vị trí trước khi chuyển sang sẵn sàng giao.");
-          log(d, "Chuẩn bị xong hàng", `${n} đơn`);
+          toast(`${n} đơn sẵn sàng giao`);
           return n;
-        }), (n) => `${n} đơn sẵn sàng giao`),
-      cancelOrder: act((id, reason) =>
-        mutate((d) => {
+        } catch (error) {
+          toast(error.message || "Không chuyển được trạng thái đơn.", "bad");
+          return 0;
+        }
+      },
+      async markOrderPaid(id) {
+        try {
+          need("order.confirm");
+          const order = stateRef.current.orders.find((x) => x.id === id);
+          if (!order) throw new Error("Không tìm thấy đơn.");
+          if (order.payment.method !== "BANK") throw new Error("Đơn này không thanh toán bằng chuyển khoản.");
+          if (order.serverId) {
+            const token = loadToken();
+            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xác nhận thanh toán.");
+            await api(`/api/orders/${order.serverId}/payment`, { method: "PATCH", body: { status: "PAID" }, token });
+          }
+          mutate((d) => {
+            const current = findOrder(d, id);
+            current.payment.status = "PAID";
+            current.history.push({ status: current.status, at: new Date().toISOString(), by: user?.name || "Nhân viên", note: "Đã xác nhận nhận tiền chuyển khoản" });
+            log(d, "Xác nhận chuyển khoản", current.code);
+          });
+          toast("Đã xác nhận nhận tiền");
+          return true;
+        } catch (error) {
+          toast(error.message || "Không xác nhận được thanh toán.", "bad");
+          return false;
+        }
+      },
+      async cancelOrder(id, reason) {
+        try {
           need("order.cancel");
-          const o = findOrder(d, id);
-          if (!["PENDING", "CONFIRMED", "READY"].includes(o.status)) throw new Error("Chỉ huỷ được đơn chưa xếp tuyến.");
-          pushHistory(o, "CANCELLED", reason);
-          notify(d, o, "Đơn đã bị huỷ", `Đơn ${o.code} đã được huỷ. Lý do: ${reason}.`);
-          log(d, "Huỷ đơn", `${o.code}: ${reason}`);
-        }), "Đã huỷ đơn"),
-      setOrderLocation: act((id, lat, lng, address) =>
-        mutate((d) => {
+          const order = stateRef.current.orders.find((x) => x.id === id);
+          if (!order || !["PENDING", "CONFIRMED", "READY"].includes(order.status)) throw new Error("Chỉ huỷ được đơn chưa xếp tuyến.");
+          let serverOrder;
+          if (order.serverId) {
+            const token = loadToken();
+            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+            serverOrder = await api(`/api/orders/${order.serverId}/status`, { method: "PATCH", body: { status: "CANCELLED", reason }, token });
+          }
+          mutate((d) => {
+            const current = findOrder(d, id);
+            pushHistory(current, serverOrder?.status || "CANCELLED", reason);
+            if (current.serverId && current.inventoryReserved) {
+              for (const item of current.items) {
+                const product = d.products.find((p) => p.id === item.productId);
+                if (product) product.stock += item.qty;
+              }
+            }
+            notify(d, current, "Đơn đã bị huỷ", `Đơn ${current.code} đã được huỷ. Lý do: ${reason}.`);
+            log(d, "Huỷ đơn", `${current.code}: ${reason}`);
+          });
+          toast("Đã huỷ đơn");
+          return true;
+        } catch (error) {
+          toast(error.message || "Không huỷ được đơn.", "bad");
+          return false;
+        }
+      },
+      async requestOrderInfo(id, message) {
+        try {
+          need("order.confirm");
+          const order = stateRef.current.orders.find((x) => x.id === id);
+          if (!order || !["PENDING", "CONFIRMED"].includes(order.status)) throw new Error("Chỉ yêu cầu bổ sung thông tin cho đơn đang xử lý.");
+          if (order.serverId) {
+            const token = loadToken();
+            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+            await api(`/api/orders/${order.serverId}/request-info`, { method: "POST", body: { message }, token });
+          }
+          mutate((d) => {
+            const current = findOrder(d, id);
+            current.history.push({ status: current.status, at: new Date().toISOString(), by: user?.name || "Nhân viên", note: `Yêu cầu bổ sung: ${message}` });
+            current.requestedInfo ||= [];
+            current.requestedInfo.push({ message, at: new Date().toISOString() });
+            notify(d, current, "Cần bổ sung thông tin", message);
+            log(d, "Yêu cầu bổ sung thông tin", current.code);
+          });
+          toast("Đã gửi yêu cầu bổ sung thông tin");
+          return true;
+        } catch (error) {
+          toast(error.message || "Không gửi được yêu cầu.", "bad");
+          return false;
+        }
+      },
+      async setOrderLocation(id, lat, lng, address) {
+        try {
           need("order.edit_location");
-          const o = findOrder(d, id);
-          if (["SCHEDULED", "OUT_FOR_DELIVERY", "DELIVERED"].includes(o.status)) throw new Error("Đơn đã xếp tuyến, không sửa được vị trí.");
-          Object.assign(o, { lat, lng });
-          if (address) o.address = address;
-          log(d, "Sửa vị trí giao", `${o.code}: ${lat}, ${lng}`);
-        }), "Đã cập nhật vị trí"),
+          const order = stateRef.current.orders.find((x) => x.id === id);
+          if (!order || ["SCHEDULED", "OUT_FOR_DELIVERY", "DELIVERED"].includes(order.status)) throw new Error("Đơn đã xếp tuyến, không sửa được vị trí.");
+          if (order.serverId) {
+            const token = loadToken();
+            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để sửa vị trí trên máy chủ.");
+            await api(`/api/orders/${order.serverId}/location`, { method: "PATCH", body: { lat, lng, address }, token });
+          }
+          mutate((d) => {
+            const current = findOrder(d, id);
+            Object.assign(current, { lat, lng });
+            if (address) current.address = address;
+            log(d, "Sửa vị trí giao", `${current.code}: ${lat}, ${lng}`);
+          });
+          toast("Đã cập nhật vị trí");
+          return true;
+        } catch (error) {
+          toast(error.message || "Không cập nhật được vị trí.", "bad");
+          return false;
+        }
+      },
 
       // ------------------------------------------------------------ sản phẩm
-      saveProduct: act((p) =>
-        mutate((d) => {
+      async loadProducts(token = loadToken()) {
+        try {
+          const products = await api(token ? "/api/products/admin" : "/api/products", { token });
+          if (!Array.isArray(products)) throw new Error("Dữ liệu sản phẩm từ máy chủ không hợp lệ.");
+          mutate((d) => { d.products = products; });
+          return true;
+        } catch (error) {
+          toast(error.message || "Không tải được sản phẩm từ máy chủ.", "bad");
+          return false;
+        }
+      },
+      async loadOrders(token = loadToken()) {
+        if (!token) return false;
+        try {
+          const rows = await api("/api/orders", { token });
+          if (!Array.isArray(rows)) throw new Error("Dữ liệu đơn hàng từ máy chủ không hợp lệ.");
+          mutate((d) => {
+            const prior = new Map(d.orders.filter((o) => o.serverId).map((o) => [o.serverId, o]));
+            const codes = new Set(rows.map((o) => o.code));
+            d.orders = d.orders.filter((o) => o.serverId || !codes.has(o.code));
+            let nextId = Math.max(0, ...d.orders.map((o) => o.id));
+            for (const row of rows) {
+              const previous = prior.get(row.id);
+              const matching = d.orders.find((o) => o.code === row.code);
+              const localId = previous?.id || matching?.id || ++nextId;
+              const customerId = d.customers.find((c) => c.phone === row.phone)?.id || 0;
+              const mapped = mapServerOrder(row, localId, customerId);
+              if (previous) {
+                const i = d.orders.findIndex((o) => o.serverId === row.id);
+                if (i >= 0) d.orders[i] = mapped;
+                else d.orders.push(mapped);
+              } else if (matching) {
+                const i = d.orders.findIndex((o) => o.id === matching.id);
+                d.orders[i] = mapped;
+              } else d.orders.push(mapped);
+            }
+          });
+          return true;
+        } catch (error) {
+          toast(error.message || "Không tải được đơn hàng từ máy chủ.", "bad");
+          return false;
+        }
+      },
+      async createCounterOrder({ customerName, phone, address, lat, lng, deliveryDate, window, paymentMethod, note, items, clientRequestId }) {
+        try {
+          need("order.confirm");
+          const token = loadToken();
+          if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để tạo đơn tại quầy.");
+          const saved = await api("/api/orders/counter", {
+            method: "POST",
+            token,
+            body: {
+              customer_name: customerName,
+              phone,
+              recipient_name: customerName,
+              recipient_phone: phone,
+              is_gift: false,
+              client_request_id: clientRequestId || crypto.randomUUID(),
+              address,
+              lat: lat == null || lat === "" ? undefined : Number(lat),
+              lng: lng == null || lng === "" ? undefined : Number(lng),
+              delivery_date: deliveryDate,
+              time_window_start: window.start,
+              time_window_end: window.end,
+              payment_method: paymentMethod === "BANK" ? "BANK_TRANSFER" : paymentMethod,
+              note: note || undefined,
+              items,
+            },
+          });
+          let created;
+          mutate((d) => {
+            const existing = d.orders.find((o) => o.serverId === saved.id);
+            if (existing) {
+              created = existing;
+              return;
+            }
+            const localId = Math.max(0, ...d.orders.map((o) => o.id)) + 1;
+            const customerId = d.customers.find((c) => c.phone === phone)?.id || 0;
+            created = mapServerOrder(saved, localId, customerId);
+            d.orders.push(created);
+            for (const item of created.items) {
+              const product = d.products.find((p) => p.id === item.productId);
+              if (product) product.stock = Math.max(0, product.stock - item.qty);
+            }
+            notify(d, created, "Đã nhận đơn tại quầy", `Đơn ${created.code} đã được tạo.`);
+            log(d, "Nhập đơn tại quầy", created.code);
+          });
+          toast("Đã tạo đơn tại quầy");
+          return created;
+        } catch (error) {
+          toast(error.message || "Không tạo được đơn tại quầy.", "bad");
+          return null;
+        }
+      },
+      async saveProduct(p) {
+        try {
           need("product.manage");
-          if (p.id) Object.assign(d.products.find((x) => x.id === p.id), p);
-          else {
-            const id = Math.max(...d.products.map((x) => x.id)) + 1;
-            d.products.push({ ...p, id, sku: p.sku || `TV-NEW-${id}`, rating: 0, sold: 0 });
-          }
-          log(d, p.id ? "Sửa sản phẩm" : "Thêm sản phẩm", p.name);
-        }), "Đã lưu sản phẩm"),
-      toggleProduct: act((id) =>
-        mutate((d) => {
+          const token = loadToken();
+          if (!token) throw new Error("Nhập staff token để lưu sản phẩm vào máy chủ.");
+          const saved = await api(p.id ? `/api/products/admin/${p.id}` : "/api/products/admin", {
+            method: p.id ? "PATCH" : "POST", body: p, token,
+          });
+          mutate((d) => {
+            const index = d.products.findIndex((x) => x.id === saved.id);
+            if (index >= 0) d.products[index] = saved;
+            else d.products.push(saved);
+            log(d, p.id ? "Sửa sản phẩm" : "Thêm sản phẩm", saved.name);
+          });
+          toast("Đã lưu sản phẩm");
+          return saved;
+        } catch (error) {
+          toast(error.message || "Không lưu được sản phẩm.", "bad");
+          return null;
+        }
+      },
+      async toggleProduct(id) {
+        try {
           need("product.manage");
-          const p = d.products.find((x) => x.id === id);
-          p.active = !p.active;
-          log(d, p.active ? "Mở bán sản phẩm" : "Ẩn sản phẩm", p.name);
-          return p.active;
-        }), (on) => (on ? "Đã mở bán" : "Đã ẩn sản phẩm")),
+          const token = loadToken();
+          if (!token) throw new Error("Nhập staff token để cập nhật sản phẩm.");
+          const product = stateRef.current.products.find((x) => x.id === id);
+          if (!product) throw new Error("Không tìm thấy sản phẩm.");
+          const saved = await api(`/api/products/admin/${id}/visibility`, {
+            method: "PATCH", body: { active: !product.active }, token,
+          });
+          mutate((d) => {
+            const index = d.products.findIndex((x) => x.id === saved.id);
+            if (index >= 0) d.products[index] = saved;
+            log(d, saved.active ? "Mở bán sản phẩm" : "Ẩn sản phẩm", saved.name);
+          });
+          toast(saved.active ? "Đã mở bán" : "Đã ẩn sản phẩm");
+          return saved.active;
+        } catch (error) {
+          toast(error.message || "Không cập nhật được sản phẩm.", "bad");
+          return false;
+        }
+      },
 
       // ------------------------------------------------------------ tối ưu & tuyến
       optimizeDay: act((date, vehicleIds) =>

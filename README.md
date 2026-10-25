@@ -9,8 +9,8 @@ Order  →  Logistics  →  Optimization  →  Customer Tracking
 | Tầng | Công nghệ | Thư mục |
 |---|---|---|
 | Frontend (khách, quản lý, tài xế) | Next.js 15 (App Router) | `frontend/` |
-| Backend API | Python · FastAPI · SQLAlchemy | `backend/app/` |
-| Optimization Engine | Google OR-Tools (VRPTW) + heuristic dự phòng | `backend/app/optimization/` |
+| Backend API | NestJS · TypeORM · MySQL | `backend/src/` |
+| Optimization Engine | Heuristic VRPTW (TypeScript) | `backend/src/optimization/` |
 | Database | MySQL 8 | `database/` |
 | Agent hỗ trợ phát triển | [agency-agents](https://github.com/msitarzewski/agency-agents) | `.claude/agents/` |
 
@@ -42,7 +42,7 @@ Mọi thao tác trong `store.js` kiểm tra quyền lần nữa (giống backend
 
 ## 1. Chạy toàn bộ hệ thống (macOS)
 
-Cần cài: **Python 3.10+**, **Node.js 20+**, và **Docker Desktop** (hoặc MySQL cài bằng Homebrew).
+Cần cài: **Node.js 20+**, và **Docker Desktop** (hoặc MySQL cài bằng Homebrew).
 
 ### Bước 1 — Database
 ```bash
@@ -61,12 +61,22 @@ mysql -u root -e "CREATE USER IF NOT EXISTS 'thongvan'@'localhost' IDENTIFIED BY
 ### Bước 2 — Backend
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+npm install
 cp .env.example .env          # đổi STAFF_TOKEN
-uvicorn app.main:app --reload --port 8000
+npm run start:dev -- --port 8000
 ```
-Tài liệu API tự sinh: http://localhost:8000/docs
+Tài liệu API: http://localhost:8000/docs
+
+Nếu đang dùng database cũ, dừng backend và chạy các migration chưa áp dụng theo thứ tự. Bỏ qua migration đã chạy; không chạy chúng trên database vừa tạo từ `schema.sql`:
+```bash
+mysql -u thongvan -p thongvan < database/migrations/001_product_catalog.sql
+mysql -u thongvan -p thongvan < database/migrations/002_checkout_orders.sql
+mysql -u thongvan -p thongvan < database/migrations/003_order_history_and_counter.sql
+mysql -u thongvan -p thongvan < database/migrations/004_counter_cash_payment.sql
+```
+Để tải ảnh sản phẩm, điền `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` và `CLOUDINARY_API_SECRET` trong `backend/.env`. API chỉ gửi chữ ký tạm thời về trình duyệt; không đặt API secret vào biến `NEXT_PUBLIC_*`.
+
+Để bật lựa chọn chuyển khoản thủ công ở checkout, điền `BANK_NAME`, `BANK_ACCOUNT_NAME` và `BANK_ACCOUNT_NUMBER`; nội dung chuyển khoản dùng `BANK_TRANSFER_CONTENT_PREFIX` cộng mã đơn. Nếu thiếu thông tin tài khoản, checkout sẽ ẩn phương thức chuyển khoản. Hệ thống chưa tạo QR hoặc tự đối soát giao dịch.
 
 ### Bước 3 — Frontend
 ```bash
@@ -77,11 +87,15 @@ npm run dev
 ```
 Mở http://localhost:3000
 
-### Kiểm thử thuật toán
+Danh mục và chi tiết sản phẩm lấy từ API/MySQL; checkout tạo đơn trong MySQL; trang đơn quản trị tải đơn và gửi thao tác xác nhận, thanh toán, huỷ, cập nhật vị trí, yêu cầu bổ sung và nhập đơn tại quầy qua API. `/track` tra cứu qua API bằng mã đơn và số điện thoại. Ở trang quản lý sản phẩm, nhập `STAFF_TOKEN` đã cấu hình trong `backend/.env`; token này hiện dùng chung cho API nhân viên, chưa thay thế đăng nhập/RBAC thật ở backend. Điều phối tuyến, giao hàng và một số màn tài khoản vẫn còn phần demo/localStorage theo các sprint tiếp theo.
+
+### Kiểm tra backend
 ```bash
-cd backend && python -m tests.test_solver   # in tuyến mẫu + % tiết kiệm
-pytest                                       # chạy toàn bộ test
+cd backend && npm run build
+npm test -- --runInBand
 ```
+
+Khi MySQL và backend đang chạy, có thể chạy `npm run test:integration` để kiểm tra checkout, trạng thái, tồn kho, quyền staff, tra cứu đơn và nhập đơn quầy. Script tạo đơn thử rồi dọn dữ liệu của chính nó; chỉ chạy trên database phát triển.
 
 ## 2. Kịch bản demo (10 phút)
 
@@ -112,9 +126,9 @@ Bài toán **VRPTW** — Vehicle Routing Problem with Time Windows + Capacity.
 - **Mục tiêu**: `min  WEIGHT_KM × tổng km + WEIGHT_TIME × tổng phút`
 - **Ràng buộc cứng**: sức chứa xe (m³), khung giờ khách, giờ làm việc.
 - **Thời gian phục vụ mỗi điểm** = 10 phút dỡ hàng + thời gian lắp đặt từng sản phẩm (đặc thù điện máy).
-- **Khoảng cách**: MVP dùng Haversine × hệ số đường bộ (`distance.py`). Muốn chính xác hơn, thay bằng Map API (Google Maps / Goong / OSRM) mà không phải sửa bộ giải.
-- **Bộ giải**: OR-Tools nếu đã cài; nếu không, tự chuyển sang heuristic Python thuần (chèn tham lam + 2-opt).
-- **ETA** (`eta.py`): giờ đến dự kiến mở rộng thành khung giờ. Hàm `predict_delay_minutes` là chỗ cắm **mô hình AI dự đoán trễ** ở giai đoạn sau, khi đã có dữ liệu `planned_arrival` vs `actual_arrival`.
+- **Khoảng cách**: MVP dùng Haversine × hệ số đường bộ (`backend/src/optimization/distance.ts`). Muốn chính xác hơn, thay bằng Map API (Google Maps / Goong / OSRM) mà không phải sửa bộ giải.
+- **Bộ giải**: heuristic TypeScript (chèn tham lam + 2-opt), luôn chạy được và không cần runtime ngoài Node.js.
+- **ETA** (`backend/src/optimization/eta.ts`): giờ đến dự kiến mở rộng thành khung giờ. Hàm `predictDelayMinutes` là chỗ cắm **mô hình AI dự đoán trễ** ở giai đoạn sau, khi đã có dữ liệu `planned_arrival` vs `actual_arrival`.
 
 > "Thuật toán tối ưu lo tuyến đường, AI lo dự đoán thời gian."
 

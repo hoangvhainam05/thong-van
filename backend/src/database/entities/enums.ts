@@ -1,0 +1,23 @@
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  CONFIRMED = 'CONFIRMED',
+  READY = 'READY',
+  SCHEDULED = 'SCHEDULED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum RouteStatus {
+  DRAFT = 'DRAFT',
+  LOCKED = 'LOCKED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  DONE = 'DONE',
+}
+
+export enum PaymentStatus {
+  UNPAID = 'UNPAID',
+  PENDING = 'PENDING',
+  PAID = 'PAID',
+}

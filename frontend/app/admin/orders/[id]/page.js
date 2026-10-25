@@ -18,6 +18,7 @@ function Detail() {
   const { id } = useParams();
   const { state, actions } = useStore();
   const [cancel, setCancel] = useState(null);
+  const [infoRequest, setInfoRequest] = useState(null);
   const [loc, setLoc] = useState(null);
   const o = state.orders.find((x) => x.id === Number(id));
   if (!o) return <div className="panel"><Empty title="Không tìm thấy đơn" action={<Link className="btn" href="/admin/orders">Về danh sách</Link>} /></div>;
@@ -28,6 +29,7 @@ function Detail() {
   const depot = state.settings.depot;
   const install = o.items.reduce((s, it) => s + (state.products.find((p) => p.id === it.productId)?.install || 0) * it.qty, 0);
   const canEditLoc = !["SCHEDULED", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].includes(o.status);
+  const canCancel = ["PENDING", "CONFIRMED", "READY"].includes(o.status) && o.payment.status !== "PAID";
 
   return (
     <>
@@ -35,11 +37,13 @@ function Detail() {
       <PageHead title={`Đơn ${o.code}`} sub={`Đặt lúc ${dateTime(o.createdAt)}, giao ${dateLabel(o.deliveryDate).toLowerCase()} khung ${o.window.start}–${o.window.end}`}>
         <OrderBadge status={o.status} />
         <Can perm="order.confirm">
-          {o.status === "PENDING" && <button className="btn" onClick={() => actions.confirmOrders([o.id])}>Xác nhận đơn</button>}
+          {o.payment.method === "BANK" && o.payment.status === "PENDING" && <button className="btn go" onClick={() => actions.markOrderPaid(o.id)}>Xác nhận đã nhận tiền</button>}
+          {o.status === "PENDING" && (o.payment.method !== "BANK" || o.payment.status === "PAID") && <button className="btn" onClick={() => actions.confirmOrders([o.id])}>Xác nhận đơn</button>}
           {o.status === "CONFIRMED" && <button className="btn" onClick={() => actions.markReady([o.id])}>Đã chuẩn bị hàng</button>}
+          {["PENDING", "CONFIRMED"].includes(o.status) && <button className="btn secondary" onClick={() => setInfoRequest("")}>Yêu cầu bổ sung</button>}
         </Can>
         <Can perm="order.cancel">
-          {["PENDING", "CONFIRMED", "READY"].includes(o.status) && <button className="btn secondary" onClick={() => setCancel(CANCEL_REASONS[0])}>Huỷ đơn</button>}
+          {canCancel && <button className="btn secondary" onClick={() => setCancel(CANCEL_REASONS[0])}>Huỷ đơn</button>}
         </Can>
       </PageHead>
 
@@ -101,6 +105,9 @@ function Detail() {
             <div><b>{o.customerName}</b></div>
             <div><a href={`tel:${o.phone}`} style={{ color: "var(--road)" }}>{o.phone}</a></div>
             <div className="muted">{PAYMENT_METHOD[o.payment.method]}, {o.payment.status === "PAID" ? "đã thanh toán" : "chưa thanh toán"}</div>
+            {o.isGift && <div className="notice">Đơn đặt hộ · Người nhận: <b>{o.recipientName}</b> · <a href={`tel:${o.recipientPhone}`}>{o.recipientPhone}</a></div>}
+            {o.source === "COUNTER" && <div className="tiny muted">Đơn nhập tại quầy</div>}
+            {o.payment.status === "PAID" && canCancel === false && ["PENDING", "CONFIRMED", "READY"].includes(o.status) && <div className="notice warn">Đơn đã thanh toán. Cần xử lý hoàn tiền trước khi huỷ.</div>}
             {o.note && <div className="notice">Ghi chú: {o.note}</div>}
             {o.failReason && <div className="notice bad">Lý do giao thất bại: {o.failReason}</div>}
           </section>
@@ -120,6 +127,14 @@ function Detail() {
             ))}
           </div>
           <p className="small muted" style={{ marginTop: 12 }}>Khách sẽ nhận thông báo kèm lý do huỷ.</p>
+        </Modal>
+      )}
+
+      {infoRequest != null && (
+        <Modal title={`Yêu cầu bổ sung cho ${o.code}`} onClose={() => setInfoRequest(null)}
+          footer={<><button className="btn secondary" onClick={() => setInfoRequest(null)}>Đóng</button><button className="btn" disabled={infoRequest.trim().length < 5} onClick={async () => { const ok = await actions.requestOrderInfo(o.id, infoRequest.trim()); if (ok) setInfoRequest(null); }}>Gửi yêu cầu</button></>}>
+          <Field label="Thông tin cần khách xác nhận" full><textarea className="input" rows={4} maxLength={255} value={infoRequest} onChange={(e) => setInfoRequest(e.target.value)} placeholder="Ví dụ: vui lòng xác nhận số nhà hoặc thời gian có thể nhận hàng" /></Field>
+          <p className="small muted" style={{ marginTop: 8 }}>Yêu cầu được lưu vào lịch sử đơn. Nhân viên cần liên hệ khách qua kênh hiện có.</p>
         </Modal>
       )}
 

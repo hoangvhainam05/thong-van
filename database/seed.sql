@@ -5,17 +5,17 @@ USE thongvan;
 INSERT INTO warehouse (name, address, lat, lng) VALUES
 ('Kho Thông Vân (mẫu)', 'Địa chỉ kho — cập nhật sau', 21.0285000, 105.8542000);
 
-INSERT INTO product (name, category, price, volume_m3, weight_kg, install_minutes) VALUES
-('Máy giặt cửa trước 9kg',        'Máy giặt',  8990000, 0.45, 70, 20),
-('Máy giặt cửa trên 10kg',        'Máy giặt',  6490000, 0.40, 40, 15),
-('Tủ lạnh 2 cánh 320L',            'Tủ lạnh',   9490000, 0.85, 65, 10),
-('Tủ lạnh side-by-side 600L',     'Tủ lạnh',  21990000, 1.40, 110, 15),
-('Điều hoà 1 chiều 9000BTU',       'Điều hoà',  7990000, 0.30, 35, 75),
-('Điều hoà 2 chiều 12000BTU',      'Điều hoà', 12490000, 0.35, 40, 90),
-('Tivi 55 inch',                   'Tivi',     11990000, 0.25, 18, 20),
-('Nồi cơm điện 1.8L',              'Gia dụng',   990000, 0.03, 3, 0),
-('Quạt đứng',                      'Gia dụng',   690000, 0.08, 6, 5),
-('Bình nóng lạnh 30L',             'Gia dụng',  3290000, 0.12, 15, 45);
+INSERT INTO product (sku, name, brand, category, price, old_price, volume_m3, weight_kg, install_minutes, warranty_months, stock, description) VALUES
+('TV-00001', 'Máy giặt cửa trước 9kg', 'Samsung', 'may-giat', 8990000, 10490000, 0.45, 70, 20, 24, 12, 'Máy giặt cửa trước, giao kèm lắp đặt tại nhà.'),
+('TV-00002', 'Máy giặt cửa trên 10kg', 'Panasonic', 'may-giat', 6490000, NULL, 0.40, 40, 15, 12, 20, 'Máy giặt cửa trên, giao kèm lắp đặt tại nhà.'),
+('TV-00003', 'Tủ lạnh 2 cánh 320L', 'Samsung', 'tu-lanh', 9490000, 10990000, 0.85, 65, 10, 24, 10, 'Tủ lạnh tiết kiệm điện, kiểm tra máy trước bàn giao.'),
+('TV-00004', 'Tủ lạnh side-by-side 600L', 'LG', 'tu-lanh', 21990000, 23990000, 1.40, 110, 15, 24, 8, 'Tủ lạnh dung tích lớn, giao tận nhà.'),
+('TV-00005', 'Điều hoà 1 chiều 9000BTU', 'Daikin', 'dieu-hoa', 7990000, 8990000, 0.30, 35, 75, 12, 15, 'Điều hoà kèm lắp đặt tiêu chuẩn.'),
+('TV-00006', 'Điều hoà 2 chiều 12000BTU', 'Panasonic', 'dieu-hoa', 12490000, NULL, 0.35, 40, 90, 24, 10, 'Điều hoà hai chiều, lắp đặt tại nhà.'),
+('TV-00007', 'Tivi 55 inch', 'Samsung', 'tivi', 11990000, 14490000, 0.25, 18, 20, 24, 18, 'Tivi thông minh, hỗ trợ lắp đặt tại nhà.'),
+('TV-00008', 'Nồi cơm điện 1.8L', 'Panasonic', 'gia-dung', 990000, NULL, 0.03, 3, 0, 12, 30, 'Nồi cơm điện tử dung tích 1.8 lít.'),
+('TV-00009', 'Quạt đứng', 'Sunhouse', 'gia-dung', 690000, NULL, 0.08, 6, 5, 12, 25, 'Quạt đứng giao nhanh.'),
+('TV-00010', 'Bình nóng lạnh 30L', 'Ariston', 'nong-lanh', 3290000, 3590000, 0.12, 15, 45, 84, 10, 'Bình nóng lạnh chống giật, lắp đặt tại nhà.');
 
 INSERT INTO driver (name, phone) VALUES
 ('Nguyễn Văn An', '0900000001'),

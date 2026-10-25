@@ -12,8 +12,13 @@ export async function api(path, { method = "GET", body, token } = {}) {
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const detail = data?.detail;
-    const msg = Array.isArray(detail) ? detail.map((d) => d.msg).join("; ") : detail;
-    throw new Error(msg || `Lỗi ${res.status}`);
+    const apiMessage = data?.message;
+    const msg = Array.isArray(detail)
+      ? detail.map((d) => d.msg || d.message || String(d)).join("; ")
+      : detail || (Array.isArray(apiMessage) ? apiMessage.join("; ") : apiMessage);
+    const error = new Error(msg || `Lỗi ${res.status}`);
+    error.status = res.status;
+    throw error;
   }
   return data;
 }

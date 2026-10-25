@@ -24,13 +24,14 @@ function Detail() {
       )}
       <OrderTracking
         order={order}
-        actions={order.status === "PENDING" && (
+        actions={order.status === "PENDING" && !order.serverId && (
           <div className="row">
             <button className="btn secondary sm" onClick={() => confirm("Huỷ đơn này?") && actions.cancelOwnOrder(order.id)}>Huỷ đơn</button>
             <span className="small muted">Bạn có thể tự huỷ khi đơn chưa được xác nhận.</span>
           </div>
         )}
       />
+      {order.status === "PENDING" && order.serverId && <p className="small muted">Muốn huỷ đơn, vui lòng liên hệ cửa hàng để nhân viên xử lý trên hệ thống.</p>}
     </div>
   );
 }

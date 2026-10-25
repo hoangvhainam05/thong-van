@@ -12,7 +12,7 @@ export default function ProductCard({ p }) {
     <article className="product-card">
       <Link href={`/products/${p.id}`} className="art-box" aria-label={p.name}>
         {off > 0 && <span className="sale">−{off}%</span>}
-        <Art category={p.category} />
+        {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Art category={p.category} />}
       </Link>
       <div className="body">
         <Link href={`/products/${p.id}`} className="name">{p.name}</Link>

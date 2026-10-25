@@ -1,5 +1,5 @@
 // Optimization Engine (bản JavaScript cho giao diện demo).
-// Cùng thuật toán với backend/app/optimization/solver.py (heuristic):
+// Cùng thuật toán với backend/src/optimization/solver.ts (heuristic):
 // chèn tham lam theo chi phí nhỏ nhất + 2-opt, có ràng buộc khung giờ và sức chứa xe.
 
 export function haversineKm(a, b) {

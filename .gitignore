@@ -1,9 +1,6 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.pytest_cache/
+# Backend
 backend/.env
+backend/dist/
 
 # Node
 node_modules/

@@ -11,6 +11,11 @@ export default function OrderTracking({ order, actions: extra }) {
   const { state } = useStore();
   const q = queueInfo(state, order);
   const headline = trackingHeadline(order, q);
+  const paymentLabel = order.payment.method === "BANK"
+    ? (order.payment.status === "PAID" ? "Đã nhận chuyển khoản" : "Chờ chuyển khoản")
+    : order.payment.method === "COUNTER_CASH"
+      ? "Đã thu tiền tại quầy"
+      : (order.payment.status === "PAID" ? "Đã thanh toán" : "Thanh toán khi nhận");
 
   return (
     <div className="two-col">
@@ -48,11 +53,12 @@ export default function OrderTracking({ order, actions: extra }) {
             </>
           )}
           {order.status === "FAILED" && <div className="notice bad">Giao chưa thành công: {order.failReason}. Cửa hàng sẽ gọi để hẹn lại lịch giao.</div>}
+          {!!order.requestedInfo?.length && <div className="notice warn stack-sm"><b>Cửa hàng cần bạn bổ sung thông tin</b>{order.requestedInfo.map((item, i) => <div key={`${item.at}-${i}`}>{item.message}</div>)}</div>}
           {extra}
         </section>
 
         <section className="panel">
-          <div className="panel-head"><h3>Sản phẩm</h3><span className="small muted">{PAYMENT_METHOD[order.payment.method]} · {order.payment.status === "PAID" ? "Đã thanh toán" : "Thanh toán khi nhận"}</span></div>
+          <div className="panel-head"><h3>Sản phẩm</h3><span className="small muted">{PAYMENT_METHOD[order.payment.method]} · {paymentLabel}</span></div>
           <div className="panel-body stack-sm">
             {order.items.map((it) => (
               <div key={it.productId} className="row between small"><span className="grow">{it.name} × {it.qty}</span><span>{vnd(it.price * it.qty)}</span></div>
@@ -62,6 +68,17 @@ export default function OrderTracking({ order, actions: extra }) {
             <div className="row between"><b>Tổng cộng</b><b className="price">{vnd(order.total)}</b></div>
           </div>
         </section>
+        {order.payment.method === "BANK" && order.payment.status === "PENDING" && <section className="panel panel-pad stack-sm small">
+          <h3>Hướng dẫn chuyển khoản</h3>
+          {order.paymentInstructions?.configured ? <>
+            <div><span className="muted">Ngân hàng</span><br /><b>{order.paymentInstructions.bank_name}</b></div>
+            <div><span className="muted">Tên tài khoản</span><br /><b>{order.paymentInstructions.account_name}</b></div>
+            <div><span className="muted">Số tài khoản</span><br /><b>{order.paymentInstructions.account_number}</b></div>
+            <div><span className="muted">Số tiền</span><br /><b className="price">{vnd(order.paymentInstructions.amount)}</b></div>
+            <div><span className="muted">Nội dung chuyển khoản</span><br /><b>{order.paymentInstructions.transfer_content}</b></div>
+            <p className="tiny muted">Nhân viên sẽ xác nhận đơn sau khi kiểm tra tiền về tài khoản.</p>
+          </> : <div className="notice warn">Cửa hàng chưa cấu hình thông tin nhận chuyển khoản. Vui lòng liên hệ cửa hàng trước khi thanh toán.</div>}
+        </section>}
       </div>
 
       <aside className="stack">
@@ -71,7 +88,7 @@ export default function OrderTracking({ order, actions: extra }) {
         </section>
         <section className="panel panel-pad stack-sm small">
           <h3>Giao tới</h3>
-          <div><b>{order.customerName}</b> · {order.phone.replace(/(\d{4})(\d{3})(\d+)/, "$1 $2 $3")}</div>
+          <div><b>{order.recipientName || order.customerName}</b> · {(order.recipientPhone || order.phone).replace(/(\d{4})(\d{3})(\d+)/, "$1 $2 $3")}</div>
           <div className="muted">{order.address}</div>
           {order.note && <div className="muted">Ghi chú: {order.note}</div>}
         </section>
