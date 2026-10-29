@@ -6,6 +6,7 @@ export enum OrderHistoryEventType {
   PAYMENT = 'PAYMENT',
   INFO_REQUEST = 'INFO_REQUEST',
   LOCATION = 'LOCATION',
+  PRIORITY = 'PRIORITY',
 }
 
 @Entity('order_history')
@@ -35,6 +36,6 @@ export class OrderHistoryEvent {
   @Column({ type: 'varchar', length: 40, default: 'SYSTEM' })
   actor!: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 6 })
   createdAt!: Date;
 }

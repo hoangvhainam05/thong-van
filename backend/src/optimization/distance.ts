@@ -1,4 +1,12 @@
 export type LatLng = [number, number];
+export interface Matrices { km: number[][]; minutes: number[][] }
+
+export function subsetMatrices(matrix: Matrices, indices: number[]): Matrices {
+  return {
+    km: indices.map((i) => indices.map((j) => matrix.km[i][j])),
+    minutes: indices.map((i) => indices.map((j) => matrix.minutes[i][j])),
+  };
+}
 
 export function haversineKm(a: LatLng, b: LatLng): number {
   const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -15,7 +23,7 @@ export function buildMatrices(
   points: LatLng[],
   roadFactor = 1.35,
   averageSpeedKmh = 30,
-): { km: number[][]; minutes: number[][] } {
+): Matrices {
   const km = points.map(() => points.map(() => 0));
   const minutes = points.map(() => points.map(() => 0));
   for (let i = 0; i < points.length; i += 1) {

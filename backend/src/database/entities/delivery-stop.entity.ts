@@ -3,7 +3,6 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Order } from './order.entity';
@@ -21,10 +20,10 @@ export class DeliveryStop {
   @JoinColumn({ name: 'route_id' })
   route!: DeliveryRoute;
 
-  @Column({ name: 'order_id', unique: true })
+  @Column({ name: 'order_id' })
   orderId!: number;
 
-  @OneToOne(() => Order, (order) => order.stop, { nullable: false })
+  @ManyToOne(() => Order, (order) => order.stops, { nullable: false })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 
@@ -45,4 +44,28 @@ export class DeliveryStop {
 
   @Column({ name: 'completed_at', type: 'datetime', nullable: true })
   completedAt!: Date | null;
+
+  @Column({ type: 'enum', enum: ['DELIVERED', 'FAILED'], nullable: true })
+  result!: 'DELIVERED' | 'FAILED' | null;
+
+  @Column({ name: 'result_note', type: 'varchar', length: 255, nullable: true })
+  resultNote!: string | null;
+
+  @Column({ name: 'cod_collected', type: 'decimal', precision: 14, scale: 0, default: 0 })
+  codCollected!: string;
+
+  @Column({ name: 'proof_public_id', type: 'varchar', length: 255, nullable: true, select: false })
+  proofPublicId!: string | null;
+
+  @Column({ name: 'proof_format', type: 'varchar', length: 10, nullable: true, select: false })
+  proofFormat!: string | null;
+
+  @Column({ name: 'proof_uploaded_by', type: 'int', nullable: true })
+  proofUploadedBy!: number | null;
+
+  @Column({ name: 'proof_uploaded_at', type: 'datetime', nullable: true })
+  proofUploadedAt!: Date | null;
+
+  @Column({ name: 'active_order_id', type: 'int', nullable: true, asExpression: 'IF(completed_at IS NULL, order_id, NULL)', generatedType: 'STORED', insert: false, update: false, select: false })
+  activeOrderId!: number | null;
 }

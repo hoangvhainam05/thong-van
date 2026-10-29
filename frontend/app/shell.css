@@ -126,7 +126,6 @@
 .seq.here { background: var(--signal); color: var(--ink); }
 
 .map-box { background: #f4f7fa; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; position: relative; }
-.map-box svg { width: 100%; height: auto; }
 .map-legend { position: absolute; left: 10px; bottom: 10px; background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
 
 .matrix th.role { text-align: center; min-width: 110px; }
@@ -173,3 +172,16 @@
   .admin-top .hide-sm { display: none; }
   .admin-top { padding: 0 12px; gap: 8px; }
 }
+
+.location-map { height: 360px; }
+.map-box .leaflet-container { z-index: 0; }
+.map-legend { z-index: 400; max-width: calc(100% - 20px); pointer-events: none; }
+.location-pin { background: transparent; border: 0; }
+.location-pin span { display: block; width: 26px; height: 26px; background: #e5443a; border: 3px solid white; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 2px 5px #0006; }
+.route-map-icon { background: transparent; border: 0; }
+.route-map-icon span { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid white; border-radius: 50%; color: white; font-weight: 700; box-shadow: 0 1px 4px #0006; }
+.route-map-icon .depot { border-radius: 5px; color: #f2b100; }
+.map-results { max-height: 150px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.map-results button { display: block; width: 100%; text-align: left; padding: 9px; border: 0; border-bottom: 1px solid var(--line); background: white; cursor: pointer; }
+@media (max-width: 600px) { .map-search { flex-wrap: wrap; } .map-search input { min-width: 100%; } .location-map { height: 300px; } }
+.overlay:has(.location-map) { z-index: 60; }

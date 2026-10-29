@@ -26,4 +26,10 @@ export class OrderItem {
 
   @Column({ name: 'unit_price', type: 'decimal', precision: 12, scale: 0 })
   unitPrice!: string;
+
+  @Column({ name: 'warranty_months_snapshot', type: 'int', nullable: true })
+  warrantyMonthsSnapshot!: number | null;
+
+  @Column({ name: 'maintenance_interval_months_snapshot', type: 'int', nullable: true })
+  maintenanceIntervalMonthsSnapshot!: number | null;
 }

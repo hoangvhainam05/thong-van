@@ -9,7 +9,14 @@
     "start:prod": "node dist/main.js",
     "test": "jest --runInBand",
     "test:integration": "node scripts/smoke-orders.mjs",
-    "test:watch": "jest --watch"
+    "test:dispatch": "node scripts/smoke-dispatch.mjs",
+    "test:watch": "jest --watch",
+    "test:auth": "node scripts/smoke-auth.mjs",
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
+    "test:delivery": "node scripts/smoke-delivery.mjs",
+    "test:tracking": "node scripts/smoke-tracking.mjs",
+    "test:admin": "node scripts/smoke-admin.mjs",
+    "test:warranty": "node scripts/smoke-warranty.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

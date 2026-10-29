@@ -54,6 +54,9 @@ export class DeliveryRoute {
   @Column({ name: 'baseline_km', type: 'decimal', precision: 8, scale: 2, nullable: true })
   baselineKm!: string | null;
 
+  @Column({ name: 'routing_matrix', type: 'json', nullable: true })
+  routingMatrix!: { source: 'ors' | 'estimate'; orderIds: number[]; points: [number, number][]; km: number[][]; minutes: number[][] } | null;
+
   @Column({ length: 30, default: 'heuristic' })
   solver!: string;
 

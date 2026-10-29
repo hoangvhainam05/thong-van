@@ -1,3 +1,4 @@
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import "./shell.css";
 import AppShell from "@/components/AppShell";

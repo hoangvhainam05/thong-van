@@ -11,10 +11,11 @@ import { Avatar, RoleChip } from "./ui";
 export const NAV = [
   { group: "Vận hành", items: [
     { href: "/admin", label: "Tổng quan", perm: "dashboard.view", exact: true },
-    { href: "/admin/orders", label: "Đơn hàng", perm: "order.view_all", count: (s) => s.orders.filter((o) => o.status === "PENDING").length },
-    { href: "/admin/dispatch", label: "Điều phối giao hàng", perm: "dispatch.view", count: (s) => s.orders.filter((o) => o.status === "READY" && o.deliveryDate === ymd()).length },
+    { href: "/admin/orders", label: "Đơn hàng", perm: "order.view_all" },
+    { href: "/admin/dispatch", label: "Điều phối giao hàng", perm: "dispatch.view" },
     { href: "/admin/products", label: "Sản phẩm", perm: "product.manage" },
     { href: "/admin/customers", label: "Khách hàng", perm: "customer.view" },
+    { href: "/admin/warehouse", label: "Kho xuất hàng", perm: "fleet.manage" },
     { href: "/admin/fleet", label: "Tài xế và xe", perm: "fleet.manage" },
     { href: "/admin/reports", label: "Báo cáo", perm: "report.view" },
   ] },

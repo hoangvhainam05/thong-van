@@ -8,9 +8,10 @@ import Art from "@/components/Art";
 import { Empty, Loading } from "@/components/ui";
 
 export default function CartPage() {
-  const { ready, state, actions, user, can } = useStore();
+  const { ready, state, actions, user, can, catalogStatus, shippingStatus } = useStore();
   const router = useRouter();
-  if (!ready) return <Loading />;
+  if (!ready || catalogStatus === 'loading' || shippingStatus === 'loading') return <Loading />;
+  if (catalogStatus !== 'ready' || shippingStatus !== 'ready') return <div className="notice bad">Không tải được sản phẩm hoặc phí giao hàng. Vui lòng tải lại trang.</div>;
   const lines = state.cart.map((l) => ({ ...l, p: state.products.find((x) => x.id === l.productId) })).filter((l) => l.p);
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
   const ship = subtotal >= state.settings.freeShipFrom || !subtotal ? 0 : state.settings.shippingFee;

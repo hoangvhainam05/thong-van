@@ -7,7 +7,8 @@ import { PAYMENT_METHOD, useStore } from "@/lib/store";
 import { api } from "@/lib/api";
 import { addDays, dateLabel, vnd, ymd } from "@/lib/format";
 import { RequirePerm } from "@/components/Guard";
-import { Empty, Field } from "@/components/ui";
+import LocationPicker from "@/components/LocationPicker";
+import { Empty, Field, Loading } from "@/components/ui";
 
 const WINDOWS = [
   { id: "am", label: "Buổi sáng", start: "08:00", end: "12:00" },
@@ -17,16 +18,18 @@ const WINDOWS = [
 ];
 
 function Checkout() {
-  const { state, user, actions } = useStore();
+  const { state, user, actions, catalogStatus, shippingStatus } = useStore();
   const router = useRouter();
   const customer = state.customers.find((c) => c.id === user.customerId);
-  const [addrId, setAddrId] = useState(customer?.addresses[0]?.id ?? "new");
+  const [addrId, setAddrId] = useState(customer?.addresses?.[0]?.id ?? "new");
   const [newAddr, setNewAddr] = useState({ address: "", district: "", lat: "", lng: "" });
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [date, setDate] = useState(addDays(ymd(), 1));
   const [win, setWin] = useState("day");
   const [custom, setCustom] = useState({ start: "09:00", end: "11:00" });
   const [pay, setPay] = useState("COD");
   const [note, setNote] = useState("");
+  const [addressNote, setAddressNote] = useState("");
   const [isGift, setIsGift] = useState(false);
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
@@ -41,27 +44,20 @@ function Checkout() {
       .catch(() => setBankInstructions({ configured: false }));
   }, []);
 
-  const lines = state.cart.map((l) => ({ ...l, p: state.products.find((x) => x.id === l.productId) }));
+  if (catalogStatus === 'loading' || shippingStatus === 'loading') return <Loading />;
+  if (catalogStatus !== 'ready' || shippingStatus !== 'ready') return <div className="notice bad">Không tải được sản phẩm hoặc phí giao hàng. Vui lòng tải lại trang.</div>;
+
+  const lines = state.cart.map((l) => ({ ...l, p: state.products.find((x) => x.id === l.productId) })).filter((line) => line.p);
   if (!lines.length) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
   const ship = subtotal >= state.settings.freeShipFrom ? 0 : state.settings.shippingFee;
-  const codAllowed = !isGift && subtotal + ship < 10_000_000;
   const bankAvailable = Boolean(bankInstructions?.configured);
-  const paymentChoice = codAllowed ? (pay === "BANK" && !bankAvailable ? "COD" : pay) : (bankAvailable ? "BANK" : null);
+  const paymentChoice = pay === "BANK" && !bankAvailable ? "COD" : pay;
   const days = Array.from({ length: 7 }, (_, i) => addDays(ymd(), i));
-
-  const locate = () => {
-    if (!navigator.geolocation) return setError("Trình duyệt không hỗ trợ lấy vị trí.");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setNewAddr((a) => ({ ...a, lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6) })),
-      () => setError("Không lấy được vị trí. Cửa hàng sẽ xác định vị trí khi gọi xác nhận đơn.")
-    );
-  };
 
   const submit = async () => {
     if (submitting) return;
     setError("");
-    if (!paymentChoice) return setError("Đơn này không áp dụng COD và cửa hàng chưa cấu hình tài khoản chuyển khoản.");
     let address;
     if (addrId === "new") {
       if (newAddr.address.trim().length < 8) return setError("Nhập địa chỉ giao hàng đầy đủ (số nhà, đường, phường, quận).");
@@ -71,6 +67,8 @@ function Checkout() {
     if (isGift && (!recipientName.trim() || !/^0\d{9,10}$/.test(recipientPhone))) {
       return setError("Nhập tên người nhận và số điện thoại hợp lệ cho đơn đặt hộ.");
     }
+    const deliveryNote = [addrId === "new" && addressNote.trim() ? `Chú thích địa chỉ: ${addressNote.trim()}` : "", note.trim()].filter(Boolean).join(" · ");
+    if (deliveryNote.length > 255) return setError("Chú thích địa chỉ và ghi chú cho tài xế không được vượt quá 255 ký tự.");
     setSubmitting(true);
     requestIdRef.current ||= crypto.randomUUID();
     const order = await actions.placeOrder({
@@ -78,7 +76,7 @@ function Checkout() {
       deliveryDate: date,
       window: { start: w.start, end: w.end },
       paymentMethod: paymentChoice,
-      note,
+      note: deliveryNote,
       isGift,
       recipientName,
       recipientPhone,
@@ -87,12 +85,13 @@ function Checkout() {
     setSubmitting(false);
     if (order) {
       requestIdRef.current = null;
-      router.push(`/account/orders/${order.id}?new=1`);
+      router.push(`/account/orders/${order.serverId}?new=1`);
     }
   };
 
   return (
     <>
+      {pickerOpen && <LocationPicker initial={newAddr} onClose={() => setPickerOpen(false)} onSelect={(location) => { setNewAddr((a) => ({ ...a, ...location, address: location.address || a.address, district: location.district || a.district })); setPickerOpen(false); }} />}
       <div className="steps-bar"><span>Giỏ hàng</span><span>›</span><span className="on">Giao hàng và thanh toán</span><span>›</span><span>Theo dõi đơn</span></div>
       <h1 style={{ marginBottom: 18 }}>Đặt hàng</h1>
       <div className="two-col">
@@ -130,8 +129,8 @@ function Checkout() {
               {addrId === "new" && (
                 <div className="form-grid">
                   <Field label="Địa chỉ" full><input className="input" value={newAddr.address} onChange={(e) => setNewAddr({ ...newAddr, address: e.target.value })} placeholder="Số nhà, ngõ, đường, phường" /></Field>
-                  <Field label="Quận / huyện"><input className="input" value={newAddr.district} onChange={(e) => setNewAddr({ ...newAddr, district: e.target.value })} /></Field>
-                  <div className="field"><span>Vị trí trên bản đồ</span><button type="button" className="btn secondary" onClick={locate}>{newAddr.lat ? `Đã lấy: ${newAddr.lat}, ${newAddr.lng}` : "Dùng vị trí hiện tại"}</button></div>
+                  <Field label="Chú thích địa chỉ" hint="Ví dụ: hẻm nhỏ, tầng 2, gần cửa hàng"><input className="input" maxLength={220} value={addressNote} onChange={(e) => setAddressNote(e.target.value)} placeholder="Thông tin giúp tìm địa chỉ" /></Field>
+                  <div className="field"><span>Vị trí trên bản đồ</span><button type="button" className="btn secondary" onClick={() => setPickerOpen(true)}>{newAddr.lat ? "Đã ghim · Chọn lại" : "Chọn vị trí trên bản đồ"}</button></div>
                   <p className="small muted full">Có vị trí chính xác giúp xếp tuyến nhanh hơn. Nếu bỏ qua, nhân viên sẽ xác định khi gọi xác nhận.</p>
                 </div>
               )}
@@ -170,13 +169,12 @@ function Checkout() {
               <div className="choice">
                 {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && (k !== "BANK" || bankAvailable)).map(([k, label]) => (
                   <label key={k}>
-                    <input type="radio" name="pay" disabled={k === "COD" && !codAllowed} checked={paymentChoice === k} onChange={() => setPay(k)} />
-                    <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? (!codAllowed ? "Không áp dụng cho đơn đặt hộ hoặc đơn từ 10 triệu đồng" : "Trả cho tài xế khi nhận và kiểm tra hàng") : "Tạo đơn chờ chuyển khoản; nhân viên xác nhận sau khi đối soát"}</span></span>
+                    <input type="radio" name="pay" checked={paymentChoice === k} onChange={() => setPay(k)} />
+                    <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? "Trả cho tài xế khi nhận và kiểm tra hàng" : "Tạo đơn chờ chuyển khoản; nhân viên xác nhận sau khi đối soát"}</span></span>
                   </label>
                 ))}
               </div>
               {paymentChoice === "BANK" && bankInstructions?.configured && <div className="notice" style={{ marginTop: 12 }}>Chuyển khoản tới <b>{bankInstructions.bank_name}</b> · {bankInstructions.account_name} · {bankInstructions.account_number}. Mã đơn và nội dung chuyển khoản sẽ hiện sau khi tạo đơn. Nhân viên sẽ đối soát thủ công.</div>}
-              {!codAllowed && !bankAvailable && <div className="notice bad" style={{ marginTop: 12 }}>Đơn đặt hộ hoặc từ 10 triệu đồng cần chuyển khoản, nhưng cửa hàng chưa cấu hình tài khoản nhận tiền.</div>}
               {bankAvailable && <p className="tiny muted" style={{ marginTop: 10 }}>Website chưa tích hợp QR hoặc tự động đối soát. Vui lòng chuyển khoản đúng nội dung mã đơn.</p>}
             </div>
           </section>

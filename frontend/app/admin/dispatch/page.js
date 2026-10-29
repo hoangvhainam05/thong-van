@@ -1,182 +1,180 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { ROUTE_STATUS, useStore } from "@/lib/store";
-import { addDays, dateLabel, hm, num, ymd } from "@/lib/format";
-import { Can, RequirePerm } from "@/components/Guard";
+import { useEffect, useState } from "react";
+import { useStore } from "@/lib/store";
+import { api, loadToken } from "@/lib/api";
+import { dateLabel, num, ymd } from "@/lib/format";
+import { RequirePerm } from "@/components/Guard";
 import { PageHead } from "@/components/AdminShell";
-import RouteMap, { ROUTE_COLORS } from "@/components/RouteMap";
-import { Empty, RouteBadge, Seg } from "@/components/ui";
+import RouteMap from "@/components/RouteMap";
+import { Empty, Loading, OrderBadge, RouteBadge } from "@/components/ui";
+
+const REASON = {
+  NO_VEHICLE: "Không còn xe trống",
+  CAPACITY: "Vượt thể tích hoặc tải trọng xe",
+  TIME_WINDOW_OR_SHIFT: "Không phù hợp khung giờ hoặc ca 8 giờ",
+};
 
 function Dispatch() {
-  const { state, can, actions } = useStore();
-  const today = ymd();
-  const [date, setDate] = useState(today);
-  const [picked, setPicked] = useState(null);
+  const { can } = useStore();
+  const [date, setDate] = useState(ymd());
+  const [token, setToken] = useState("");
+  const [orders, setOrders] = useState([]);
+  const [failedOrders, setFailedOrders] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [warehouse, setWarehouse] = useState(null);
+  const [selected, setSelected] = useState([]);
   const [result, setResult] = useState(null);
-  const [focus, setFocus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  const routes = state.routes.filter((r) => r.date === date).sort((a, b) => a.id - b.id);
-  const ready = state.orders.filter((o) => o.deliveryDate === date && o.status === "READY");
-  const waiting = state.orders.filter((o) => o.deliveryDate === date && ["PENDING", "CONFIRMED"].includes(o.status));
-  const busyVehicles = new Set(routes.filter((r) => r.status !== "DRAFT").map((r) => r.vehicleId));
-  const freeVehicles = state.vehicles.filter((v) => v.active && !busyVehicles.has(v.id));
-  const vehicleIds = picked ?? freeVehicles.map((v) => v.id);
-  const order = (id) => state.orders.find((o) => o.id === id);
-  const product = (id) => state.products.find((p) => p.id === id);
-  const volumeOf = (o) => o.items.reduce((s, it) => s + product(it.productId).volume * it.qty, 0);
+  useEffect(() => { setToken(loadToken()); }, []);
 
-  const mapRoutes = useMemo(() => routes.map((r, i) => ({
-    id: r.id, name: r.code, status: r.status, color: ROUTE_COLORS[i % ROUTE_COLORS.length],
-    stops: r.stops.map((s) => {
-      const o = order(s.orderId);
-      return { lat: o.lat, lng: o.lng, seq: s.seq, label: `${s.seq}. ${o.code} — ${o.address}`, state: s.completedAt != null ? "done" : s.arrivedAt != null ? "here" : "" };
-    }),
-  })), [routes, state.orders]);
-  const loose = ready.filter((o) => o.lat != null).map((o) => ({ lat: o.lat, lng: o.lng, label: `${o.code} — chưa xếp tuyến` }));
+  async function refresh(credential = token) {
+    if (!credential) return;
+    setLoading(true);
+    setError("");
+    try {
+      const [nextOrders, nextRoutes, nextDrivers, nextVehicles, nextWarehouse, nextFailed] = await Promise.all([
+        api("/api/orders?delivery_date=" + encodeURIComponent(date), { token: credential }),
+        api("/api/routes?route_date=" + encodeURIComponent(date), { token: credential }),
+        api("/api/drivers", { token: credential }),
+        api("/api/vehicles", { token: credential }),
+        api("/api/warehouse", { token: credential }),
+        api("/api/orders?status=FAILED", { token: credential }),
+      ]);
+      setOrders(nextOrders);
+      setFailedOrders(nextFailed);
+      setRoutes(nextRoutes);
+      setDrivers(nextDrivers);
+      setVehicles(nextVehicles);
+      setWarehouse(nextWarehouse);
+      const used = new Set(nextRoutes.filter((route) => route.status !== "DRAFT").map((route) => route.vehicle_id));
+      const freeIds = nextVehicles.filter((vehicle) => vehicle.active && !used.has(vehicle.id)).map((vehicle) => vehicle.id);
+      setSelected((current) => current.length ? current.filter((id) => freeIds.includes(id)) : freeIds);
+    } catch (err) {
+      setError(err.message || "Không tải được dữ liệu điều phối.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const run = () => {
-    const res = actions.optimizeDay(date, vehicleIds);
-    if (res) setResult(res);
-  };
+  useEffect(() => { if (token) refresh(token); }, [date, token]);
 
-  const usedDrivers = (r) => new Set(routes.filter((x) => x.id !== r.id).map((x) => x.driverId));
+  async function perform(callback) {
+    setBusy(true);
+    setError("");
+    try {
+      await callback();
+      await refresh();
+    } catch (err) {
+      setError(err.message || "Thao tác chưa hoàn tất.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const ready = orders.filter((order) => order.status === "READY");
+  const missing = ready.filter((order) => order.lat == null || order.lng == null);
+  const located = ready.filter((order) => order.lat != null && order.lng != null);
+  const waiting = orders.filter((order) => ["PENDING", "CONFIRMED"].includes(order.status));
+  const usedVehicles = new Set(routes.filter((route) => route.status !== "DRAFT").map((route) => route.vehicle_id));
+  const mapRoutes = routes.map((route) => ({
+    id: route.id, name: route.code, status: route.status, depot: route.depot,
+    stops: route.stops.map((stop) => ({ lat: stop.lat, lng: stop.lng, seq: stop.sequence, label: stop.address })),
+  }));
+  const loose = located.map((order) => ({ lat: order.lat, lng: order.lng, label: order.code }));
+
+  function changeOrder(route, index, direction) {
+    const ids = route.stops.map((stop) => stop.order_id);
+    const other = index + direction;
+    if (other < 0 || other >= ids.length) return;
+    [ids[index], ids[other]] = [ids[other], ids[index]];
+    perform(() => api("/api/routes/" + route.id + "/draft", {
+      method: "PATCH", token, body: { order_ids: ids },
+    }));
+  }
 
   return (
     <>
-      <PageHead title="Điều phối giao hàng" sub="Gom đơn sẵn sàng, chạy tối ưu tuyến, duyệt và xuất kho.">
-        <Seg value={date === today ? "t" : date === addDays(today, 1) ? "m" : "x"} onChange={(v) => { setDate(v === "t" ? today : addDays(today, 1)); setResult(null); setFocus(null); }}
-          items={[{ value: "t", label: "Hôm nay" }, { value: "m", label: "Ngày mai" }]} />
-        <input type="date" className="input" style={{ width: 160 }} value={date} onChange={(e) => { setDate(e.target.value); setResult(null); setFocus(null); }} aria-label="Chọn ngày" />
+      <PageHead title="Điều phối giao hàng" sub="Xếp các đơn đã chuẩn bị hàng vào tuyến giao, kiểm tra sức chứa và chốt lịch.">
+        <label className="small">Ngày giao <input className="input" type="date" value={date} onChange={(event) => { setDate(event.target.value); setResult(null); }} /></label>
       </PageHead>
 
-      <div className="dispatch">
-        <div className="stack">
-          <section className="panel">
-            <div className="panel-head"><h3>Chờ xếp tuyến</h3><span className="badge info plain">{ready.length} đơn</span></div>
-            <div className="panel-body stack-sm" style={{ maxHeight: 300, overflowY: "auto" }}>
-              {ready.length === 0 && <p className="small muted">Không có đơn sẵn sàng giao cho {dateLabel(date).toLowerCase()}.</p>}
-              {ready.map((o) => (
-                <div key={o.id} className="row between small" style={{ borderBottom: "1px solid var(--line-soft)", paddingBottom: 6 }}>
-                  <div className="grow">
-                    <Link href={`/admin/orders/${o.id}`} className="strong">{o.code}</Link> <span className="muted">{o.district}</span>
-                    <div className="tiny muted">{o.window.start}–{o.window.end} · {num(volumeOf(o), 2)} m³</div>
-                  </div>
-                  {o.lat == null && <span className="badge move plain">Thiếu vị trí</span>}
-                </div>
-              ))}
-              {waiting.length > 0 && <p className="tiny muted">Còn {waiting.length} đơn chưa xác nhận hoặc chưa chuẩn bị xong hàng cho ngày này.</p>}
-            </div>
+      {error && <div className="notice bad" style={{ marginBottom: 14 }}>{error}</div>}
+      {loading && <Loading />}
+
+      {token && !loading && failedOrders.length > 0 && <section className="panel panel-pad stack-sm" style={{marginBottom:16}}>
+        <h3>Đơn giao thất bại cần hẹn lại</h3>
+        <p className="small muted">Chọn ngày giao mới ở đầu trang, sau đó đưa đơn vào hàng đợi ngày đó.</p>
+        {failedOrders.map(order => <div key={order.id} className="row between small"><span><b>{order.code}</b> · ngày giao cũ {dateLabel(order.delivery_date)} · {order.address}</span><button className="btn secondary sm" disabled={busy || !can('route.optimize') || date <= order.delivery_date || date < ymd()} onClick={() => perform(() => api(`/api/orders/${order.id}/reschedule`, {method:'POST',token,body:{delivery_date:date}}))}>Hẹn lại {dateLabel(date)}</button></div>)}
+      </section>}
+
+      {token && !loading && <>
+        <div className="grid-2" style={{ marginBottom: 16 }}>
+          <section className="panel panel-pad stack-sm">
+            <h3>Hàng đợi {dateLabel(date)}</h3>
+            <div className="small">{ready.length} đơn sẵn sàng · {missing.length} thiếu vị trí · {waiting.length} đang xác nhận</div>
+            {ready.length === 0 && <Empty title="Chưa có đơn sẵn sàng" />}
+            {ready.map((order) => <div key={order.id} className="row between small" style={{ borderBottom: "1px solid var(--line-soft)", padding: "6px 0" }}>
+              <div><Link href={"/admin/orders/" + order.id} className="strong">{order.code}</Link> {order.is_urgent && <span className="badge move">Gấp</span>}<div className="tiny muted">{order.address} · {String(order.time_window_start).slice(0, 5)}–{String(order.time_window_end).slice(0, 5)}</div></div>
+              <div className="row">
+                {order.lat == null && <span className="badge move">Thiếu vị trí</span>}
+                {can("route.dispatch") && <button className="btn ghost sm" disabled={busy} onClick={() => perform(() => api("/api/orders/" + order.id + "/priority", { method: "PATCH", token, body: { is_urgent: !order.is_urgent } }))}>{order.is_urgent ? "Bỏ gấp" : "Đánh dấu gấp"}</button>}
+              </div>
+            </div>)}
+            {waiting.length > 0 && <p className="tiny muted">Đơn đang xác nhận cần được chuyển sang “Sẵn sàng” tại <Link href="/admin/orders">Quản lý đơn</Link>.</p>}
+            {missing.length > 0 && <p className="tiny muted">Đơn thiếu vị trí cần được cập nhật toạ độ trong chi tiết đơn trước khi xếp tuyến.</p>}
           </section>
 
-          <Can perm="route.optimize" fallback={<div className="notice">Bạn có thể xem lịch giao. Việc chạy tối ưu và chốt tuyến do quản lý điều phối thực hiện.</div>}>
-            <section className="panel">
-              <div className="panel-head"><h3>Tối ưu tuyến</h3></div>
-              <div className="panel-body stack">
-                <div className="stack-sm">
-                  <span className="small strong muted">Xe tham gia</span>
-                  {state.vehicles.filter((v) => v.active).map((v) => {
-                    const busy = busyVehicles.has(v.id);
-                    return (
-                      <label key={v.id} className="check" style={{ opacity: busy ? 0.5 : 1 }}>
-                        <input type="checkbox" disabled={busy} checked={!busy && vehicleIds.includes(v.id)}
-                          onChange={(e) => setPicked(e.target.checked ? [...vehicleIds, v.id] : vehicleIds.filter((x) => x !== v.id))} />
-                        <span>{v.plate} <span className="muted small">{v.type}, {v.capacity} m³{busy ? ", đã có tuyến chốt" : ""}</span></span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <div className="small muted">
-                  Ràng buộc: khung giờ khách, sức chứa xe, giờ làm việc {state.settings.dayStart}–{state.settings.dayEnd}, thời gian lắp đặt từng sản phẩm.
-                  Tuyến đã chốt được giữ nguyên.
-                </div>
-                <button className="btn lg block" disabled={!ready.length || !vehicleIds.length} onClick={run}>
-                  {routes.some((r) => r.status === "DRAFT") ? "Tối ưu lại tuyến nháp" : "Chạy tối ưu tuyến"}
-                </button>
-                {result && (
-                  <div className="notice ok stack-sm">
-                    <b>Đã xếp {result.orders} đơn vào {result.routes.length} tuyến trong {result.ms} ms.</b>
-                    <span>Tổng {result.totalKm} km so với {result.baselineKm} km nếu giao theo thứ tự đặt hàng, tiết kiệm {result.savingPercent}%.</span>
-                    {result.unassigned.length > 0 && <span style={{ color: "var(--stop)" }}>Không xếp được (vượt khung giờ hoặc sức chứa): {result.unassigned.join(", ")}</span>}
-                    {result.missing.length > 0 && <span style={{ color: "var(--move)" }}>Thiếu vị trí, chưa đưa vào tối ưu: {result.missing.join(", ")}</span>}
-                  </div>
-                )}
-              </div>
-            </section>
-          </Can>
+          <section className="panel panel-pad stack">
+            <h3>Chạy tối ưu</h3>
+            <p className="small muted">Chọn xe tham gia. Tuyến đã chốt và xe/tài xế của tuyến đó được giữ nguyên. Đơn gấp được ưu tiên khi xếp.</p>
+            {vehicles.filter((vehicle) => vehicle.active).map((vehicle) => <label className="check" key={vehicle.id}>
+              <input type="checkbox" checked={selected.includes(vehicle.id)} disabled={usedVehicles.has(vehicle.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, vehicle.id] : selected.filter((id) => id !== vehicle.id))} />
+              {vehicle.plate} <span className="muted small">· {vehicle.capacity_m3} m³ · {vehicle.capacity_kg} kg {usedVehicles.has(vehicle.id) ? "· đã có tuyến chốt" : ""}</span>
+            </label>)}
+            <p className="tiny muted">Ràng buộc: khung giờ khách, thể tích, tải trọng kg, thời gian dỡ/lắp và ca tối đa 8 giờ. Bộ giải hiện dùng heuristic nội bộ.</p>
+            {can("route.optimize") && <button className="btn lg" disabled={busy || !selected.length || !located.length} onClick={() => perform(async () => {
+              const next = await api("/api/routes/optimize", { method: "POST", token, body: { date, vehicle_ids: selected } });
+              setResult(next);
+            })}>{busy ? "Đang xử lý…" : "Tối ưu tuyến nháp"}</button>}
+            {result && <div className="notice ok stack-sm small">
+              <b>{result.routes.length} tuyến · {result.total_km} km · tiết kiệm {result.saving_percent ?? "—"}%</b>
+              <span>{result.distance_source === "ors" ? "Số liệu định tuyến OpenRouteService" : "Số liệu khoảng cách và thời gian là ước tính"}</span>
+              {result.unassigned?.map((item) => <div key={item.order_id}>{item.code}: {REASON[item.reason] || item.reason}</div>)}
+              {result.missing_location_codes?.map((code) => <div key={code}>{code}: Thiếu vị trí</div>)}
+            </div>}
+          </section>
         </div>
 
-        <div className="stack">
-          {routes.length === 0 && loose.length === 0 ? (
-            <div className="panel"><Empty title={`Chưa có tuyến cho ${dateLabel(date).toLowerCase()}`}>Khi có đơn sẵn sàng giao, chạy tối ưu để hệ thống đề xuất tuyến.</Empty></div>
-          ) : (
-            <RouteMap depot={state.settings.depot} routes={mapRoutes} loose={loose} focusId={focus} />
-          )}
-          {routes.map((r, i) => {
-            const driver = state.drivers.find((d) => d.id === r.driverId);
-            const vehicle = state.vehicles.find((v) => v.id === r.vehicleId);
-            const load = r.stops.reduce((s, st) => s + volumeOf(order(st.orderId)), 0);
-            const done = r.stops.filter((s) => s.completedAt != null).length;
-            const editable = ["DRAFT", "LOCKED"].includes(r.status);
-            return (
-              <section key={r.id} className="route-card" onMouseEnter={() => setFocus(r.id)} onMouseLeave={() => setFocus(null)}>
-                <div className="rc-head">
-                  <span className="swatch" style={{ background: ROUTE_COLORS[i % ROUTE_COLORS.length] }} />
-                  <b>{r.code}</b>
-                  <RouteBadge status={r.status} />
-                  <span className="small muted grow">{vehicle?.plate}, tải {num(load, 1)}/{vehicle?.capacity} m³ · {r.totalKm} km · {Math.floor(r.totalMin / 60)}h{String(r.totalMin % 60).padStart(2, "0")} · thủ công {r.baselineKm} km</span>
-                  <Link href={`/admin/routes/${r.id}`} className="btn ghost sm">Chi tiết</Link>
-                </div>
-                <div className="row" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line-soft)" }}>
-                  <span className="small muted">Tài xế</span>
-                  {can("route.dispatch") && editable ? (
-                    <select className="input" style={{ width: 220 }} value={r.driverId || ""} onChange={(e) => actions.assignDriver(r.id, Number(e.target.value))} aria-label="Tài xế">
-                      <option value="" disabled>Chọn tài xế</option>
-                      {state.drivers.filter((d) => d.active).map((d) => (
-                        <option key={d.id} value={d.id} disabled={usedDrivers(r).has(d.id)}>{d.name}{usedDrivers(r).has(d.id) ? " (đã có tuyến)" : ""}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <b className="small">{driver?.name || "Chưa phân công"}</b>
-                  )}
-                  <span className="grow" />
-                  {r.status === "IN_PROGRESS" && <span className="small muted">Đã giao {done}/{r.stops.length} điểm</span>}
-                  <Can perm="route.approve">
-                    {r.status === "DRAFT" && <button className="btn sm" onClick={() => actions.lockRoute(r.id)}>Duyệt và chốt tuyến</button>}
-                    {r.status === "LOCKED" && <button className="btn ghost sm" onClick={() => actions.unlockRoute(r.id)}>Mở lại</button>}
-                  </Can>
-                  <Can perm="route.dispatch">
-                    {r.status === "LOCKED" && <button className="btn go sm" onClick={() => actions.startRoute(r.id)}>Xuất kho</button>}
-                  </Can>
-                </div>
-                <ol className="stop-list">
-                  {r.stops.map((s) => {
-                    const o = order(s.orderId);
-                    const late = s.arrivedAt != null && s.arrivedAt > Number(o.window.end.split(":")[0]) * 60 + Number(o.window.end.split(":")[1]);
-                    return (
-                      <li key={s.seq}>
-                        <span className={`seq ${s.completedAt != null ? "done" : s.arrivedAt != null ? "here" : ""}`} style={s.completedAt == null && s.arrivedAt == null ? { background: ROUTE_COLORS[i % ROUTE_COLORS.length] } : undefined}>{s.seq}</span>
-                        <div>
-                          <Link href={`/admin/orders/${o.id}`} className="strong">{o.code}</Link> {o.customerName}
-                          <div className="tiny muted">{o.address}</div>
-                        </div>
-                        <div className="right nowrap">
-                          <div className="strong">{hm(s.completedAt != null ? s.arrivedAt : s.planned)}</div>
-                          <div className="tiny" style={{ color: late ? "var(--stop)" : "var(--muted)" }}>
-                            {s.result === "FAILED" ? "Thất bại" : s.completedAt != null ? (late ? "Trễ hẹn" : "Đã giao") : `hẹn ${o.window.start}–${o.window.end}`}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </section>
-            );
-          })}
-          <p className="tiny muted">{Object.entries(ROUTE_STATUS).map(([k, v]) => `${v.label}: ${v.hint}`).join(". ")}.</p>
+        {warehouse && <RouteMap depot={warehouse} routes={mapRoutes} loose={loose} height={360} />}
+        <div className="stack" style={{ marginTop: 16 }}>
+          {routes.length === 0 && <div className="panel"><Empty title="Chưa có tuyến cho ngày này">Chọn xe và chạy tối ưu khi có đơn sẵn sàng.</Empty></div>}
+          {routes.map((route) => <section className="panel" key={route.id}>
+            <div className="panel-head row between"><div className="row"><b>{route.code}</b><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ / 8 giờ</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
+            <div className="panel-body stack-sm">
+              <div className="row">
+                <label className="small">Xe <select className="input" value={route.vehicle_id} disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onChange={(event) => perform(() => api("/api/routes/" + route.id + "/draft", { method: "PATCH", token, body: { vehicle_id: Number(event.target.value) } }))}>{vehicles.filter((vehicle) => vehicle.active || vehicle.id === route.vehicle_id).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate} · {vehicle.capacity_m3} m³ / {vehicle.capacity_kg} kg</option>)}</select></label>
+                <label className="small">Tài xế <select className="input" value={route.driver_id || ""} disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onChange={(event) => perform(() => api("/api/routes/" + route.id + "/draft", { method: "PATCH", token, body: { driver_id: event.target.value ? Number(event.target.value) : null } }))}><option value="">Chọn tài xế</option>{drivers.filter((driver) => driver.active || driver.id === route.driver_id).map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></label>
+              </div>
+              <ol className="stop-list">
+                {route.stops.map((stop, index) => <li key={stop.stop_id}>
+                  <span className="seq">{stop.sequence}</span>
+                  <div className="grow"><Link href={"/admin/orders/" + stop.order_id} className="strong">{stop.order_code}</Link> {stop.is_urgent && <span className="badge move">Gấp</span>} · {stop.customer_name}<div className="tiny muted">{stop.address} · hẹn {stop.time_window}</div></div>
+                  <div className="right small">{new Date(stop.planned_arrival).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</div>
+                  {route.status === "DRAFT" && can("route.dispatch") && <div className="row"><button className="btn ghost sm" disabled={busy || index === 0} onClick={() => changeOrder(route, index, -1)} aria-label="Đưa điểm lên">↑</button><button className="btn ghost sm" disabled={busy || index === route.stops.length - 1} onClick={() => changeOrder(route, index, 1)} aria-label="Đưa điểm xuống">↓</button></div>}
+                </li>)}
+              </ol>
+              {route.status === "DRAFT" && !route.driver_id && <p className="small muted">Chọn tài xế trước khi chốt tuyến.</p>}
+            </div>
+          </section>)}
         </div>
-      </div>
+      </>}
     </>
   );
 }

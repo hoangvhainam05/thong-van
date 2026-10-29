@@ -123,6 +123,11 @@ export class RequestInfoDto {
   message!: string;
 }
 
+export class PriorityUpdateDto {
+  @IsBoolean()
+  is_urgent!: boolean;
+}
+
 export class LocationUpdateDto {
   @IsLatitude()
   lat!: number;

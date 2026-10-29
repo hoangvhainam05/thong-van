@@ -29,7 +29,13 @@
 | MySQL/API smoke test trước đó | Đạt 10/10 nhóm; kiểm tra concurrency bổ sung đạt 4/4 |
 | Dữ liệu thử | Đã xóa các order/customer thử; hoàn tồn kho về giá trị trước test |
 
-Smoke test dùng API và MySQL local, không phải kiểm thử trình duyệt tự động. Các test Jest hiện có chủ yếu kiểm tra module sản phẩm/Cloudinary; chưa có bộ integration test orders được lưu trong repo.
+Smoke test dùng API và MySQL local. Bộ integration test orders được lưu trong repo tại `backend/scripts/smoke-orders.mjs`; đợt rà soát Sprint 3 bổ sung kiểm thử UI riêng cho màn điều phối và xe/tài xế.
+
+## Rà soát trước Sprint 3
+
+- Sửa điều kiện chuyển `CONFIRMED → READY`: cho phép đơn chưa có tọa độ vào hàng đợi chuẩn bị; màn điều phối nêu rõ đơn nào thiếu vị trí và chưa xếp tuyến được. Quy tắc cũ chặn `READY` khi thiếu tọa độ đã làm sai luồng nghiệp vụ trong kế hoạch.
+- Chạy lại `npm run test:integration` với MySQL local: đạt 8/8 nhóm, script dọn dữ liệu thử thành công.
+- Chạy lại backend/frontend build và 7 unit tests sau khi tích hợp Sprint 3: đều đạt.
 
 ## Việc ngoài Sprint 2 / chuẩn bị giai đoạn sau
 

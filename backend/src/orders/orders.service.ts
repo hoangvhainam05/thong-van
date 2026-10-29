@@ -2,14 +2,14 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { DataSource, FindOptionsRelations, Repository } from 'typeorm';
-import { Customer, DeliveryStop, Order, OrderHistoryEvent, OrderHistoryEventType, OrderItem, OrderStatus, PaymentStatus, Product } from '../database/entities';
-import { CreateOrderDto, LocationUpdateDto, PaymentMethod, PaymentUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
+import { DataSource, FindOptionsRelations, IsNull, Repository } from 'typeorm';
+import { Customer, DeliveryRoute, DeliveryStop, Order, OrderHistoryEvent, OrderHistoryEventType, OrderItem, OrderStatus, PaymentStatus, Product, RouteStatus, Warehouse } from '../database/entities';
+import { CreateOrderDto, LocationUpdateDto, PaymentMethod, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
 
 const ORDER_RELATIONS: FindOptionsRelations<Order> = {
   customer: true,
   items: { product: true },
-  stop: { route: true },
+  stops: { route: true },
   history: true,
 };
 
@@ -17,10 +17,10 @@ const ALLOWED: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
   [OrderStatus.CONFIRMED]: [OrderStatus.READY, OrderStatus.CANCELLED],
   [OrderStatus.READY]: [OrderStatus.CANCELLED],
-  [OrderStatus.SCHEDULED]: [],
+  [OrderStatus.SCHEDULED]: [OrderStatus.CANCELLED],
   [OrderStatus.OUT_FOR_DELIVERY]: [],
   [OrderStatus.DELIVERED]: [],
-  [OrderStatus.FAILED]: [],
+  [OrderStatus.FAILED]: [OrderStatus.CANCELLED],
   [OrderStatus.CANCELLED]: [],
 };
 
@@ -83,9 +83,6 @@ export class OrdersService {
         ? 0
         : this.config.get<number>('shipping.fee', 150_000);
       const total = subtotal + shippingFee;
-      if (body.payment_method === PaymentMethod.COD && (body.is_gift || total >= 10_000_000)) {
-        throw new BadRequestException('Thanh toán khi nhận chỉ áp dụng cho đơn không đặt hộ dưới 10 triệu đồng.');
-      }
       if (body.payment_method === PaymentMethod.COUNTER_CASH && source !== 'COUNTER') {
         throw new BadRequestException('Thanh toán tiền mặt tại quầy chỉ dùng khi nhân viên nhập đơn quầy.');
       }
@@ -101,6 +98,7 @@ export class OrdersService {
         recipientName: body.recipient_name?.trim() || body.customer_name.trim(),
         recipientPhone: body.recipient_phone?.trim() || body.phone,
         isGift: body.is_gift,
+        isUrgent: false,
         address: body.address,
         lat: body.lat === undefined ? null : String(body.lat),
         lng: body.lng === undefined ? null : String(body.lng),
@@ -130,6 +128,8 @@ export class OrdersService {
           product,
           quantity,
           unitPrice: product.price,
+          warrantyMonthsSnapshot: product.warrantyMonths,
+          maintenanceIntervalMonthsSnapshot: product.maintenanceIntervalMonths,
         }),
       ));
       await manager.getRepository(OrderHistoryEvent).save({
@@ -164,20 +164,35 @@ export class OrdersService {
 
   async updateStatus(id: number, body: StatusUpdateDto) {
     await this.dataSource.transaction(async (manager) => {
+      const cancelling = body.status === OrderStatus.CANCELLED;
+      if (cancelling && !body.reason?.trim()) throw new BadRequestException('Vui lòng nhập lý do huỷ đơn.');
+      let activeRoute: DeliveryRoute | null = null;
+      if (cancelling) {
+        // Cùng thứ tự khóa với điều phối: kho, tuyến, rồi đơn.
+        await manager.getRepository(Warehouse).createQueryBuilder('warehouse').orderBy('warehouse.id', 'ASC').setLock('pessimistic_write').getOne();
+        const stop = await manager.getRepository(DeliveryStop).findOne({ where: { orderId: id, completedAt: IsNull() } });
+        if (stop) activeRoute = await manager.getRepository(DeliveryRoute).findOne({ where: { id: stop.routeId }, lock: { mode: 'pessimistic_write' } });
+      }
       const orderRepo = manager.getRepository(Order);
       const order = await orderRepo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn');
       if (!ALLOWED[order.status].includes(body.status)) {
         throw new ConflictException(`Không thể chuyển ${order.status} → ${body.status}`);
       }
-      if (body.status === OrderStatus.CANCELLED && order.paymentStatus === PaymentStatus.PAID) {
-        throw new ConflictException('Đơn đã thanh toán, cần xử lý hoàn tiền trước khi huỷ.');
-      }
       if (body.status === OrderStatus.CONFIRMED && order.paymentMethod === PaymentMethod.BANK_TRANSFER && order.paymentStatus !== PaymentStatus.PAID) {
         throw new ConflictException('Chưa xác nhận đã nhận tiền chuyển khoản.');
       }
-      if (body.status === OrderStatus.READY && (order.lat === null || order.lng === null)) {
-        throw new ConflictException('Đơn chưa có toạ độ — cập nhật vị trí trước khi chuyển READY');
+      if (cancelling && order.status === OrderStatus.SCHEDULED) {
+        if (!activeRoute || ![RouteStatus.DRAFT, RouteStatus.LOCKED].includes(activeRoute.status)) throw new ConflictException('Tuyến đã thay đổi hoặc đang giao; vui lòng tải lại đơn.');
+        const stops = await manager.getRepository(DeliveryStop).find({ where: { routeId: activeRoute.id }, order: { orderId: 'ASC' } });
+        for (const stop of stops) {
+          if (stop.orderId === id) continue;
+          const other = await orderRepo.findOne({ where: { id: stop.orderId }, lock: { mode: 'pessimistic_write' } });
+          if (!other || other.status !== OrderStatus.SCHEDULED) throw new ConflictException('Trạng thái tuyến đã thay đổi; vui lòng tải lại đơn.');
+          await orderRepo.update(other.id, { status: OrderStatus.READY });
+          await manager.getRepository(OrderHistoryEvent).save({ orderId: other.id, eventType: OrderHistoryEventType.STATUS, fromValue: OrderStatus.SCHEDULED, toValue: OrderStatus.READY, note: 'Tuyến được mở lại do có đơn bị huỷ; cần xếp tuyến lại', actor: 'STAFF' });
+        }
+        await manager.getRepository(DeliveryRoute).delete(activeRoute.id);
       }
       if (body.status === OrderStatus.CANCELLED && order.clientRequestId) {
         const items = await manager.getRepository(OrderItem).find({ where: { orderId: id } });
@@ -198,7 +213,7 @@ export class OrdersService {
         eventType: OrderHistoryEventType.STATUS,
         fromValue: previousStatus,
         toValue: body.status,
-        note: body.reason || null,
+        note: body.reason?.trim() || null,
         actor: 'STAFF',
       });
     });
@@ -236,7 +251,8 @@ export class OrdersService {
       const orderRepo = manager.getRepository(Order);
       const order = await orderRepo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn');
-      const stop = await manager.getRepository(DeliveryStop).findOne({ where: { orderId: id } });
+      if (![OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY, OrderStatus.FAILED].includes(order.status)) throw new ConflictException('Không thể sửa vị trí ở trạng thái hiện tại');
+      const stop = await manager.getRepository(DeliveryStop).findOne({ where: { orderId: id, completedAt: IsNull() } });
       if (stop) throw new ConflictException('Đơn đã được xếp tuyến');
       const oldCoordinates = `${order.lat ?? ''},${order.lng ?? ''}`;
       order.lat = String(body.lat);
@@ -275,6 +291,28 @@ export class OrdersService {
     return this.toOut(await this.findOne(id));
   }
 
+  async updatePriority(id: number, body: PriorityUpdateDto) {
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(Order);
+      const order = await repo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!order) throw new NotFoundException('Không tìm thấy đơn');
+      if (![OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY].includes(order.status)) {
+        throw new ConflictException('Chỉ đổi mức ưu tiên trước khi xếp tuyến.');
+      }
+      if (order.isUrgent === body.is_urgent) return;
+      const previous = order.isUrgent;
+      order.isUrgent = body.is_urgent;
+      await repo.save(order);
+      await manager.getRepository(OrderHistoryEvent).save({
+        orderId: id, eventType: OrderHistoryEventType.PRIORITY,
+        fromValue: previous ? 'URGENT' : 'NORMAL',
+        toValue: body.is_urgent ? 'URGENT' : 'NORMAL',
+        note: body.is_urgent ? 'Đánh dấu đơn gấp' : 'Bỏ đánh dấu đơn gấp', actor: 'STAFF',
+      });
+    });
+    return this.toOut(await this.findOne(id));
+  }
+
   async findOne(id: number): Promise<Order> {
     const order = await this.orders.findOne({ where: { id }, relations: ORDER_RELATIONS });
     if (!order) throw new NotFoundException('Không tìm thấy đơn');
@@ -302,18 +340,22 @@ export class OrdersService {
       account_name: accountName,
       account_number: accountNumber,
       transfer_prefix: prefix,
+      shipping_fee: this.config.get<number>('shipping.fee', 150_000),
+      free_ship_from: this.config.get<number>('shipping.freeFrom', 5_000_000),
     };
   }
 
   toOut(order: Order) {
     return {
       id: order.id,
+      customer_id: order.customerId,
       code: order.code || '',
       customer_name: order.customer.name,
       phone: order.customer.phone,
       recipient_name: order.recipientName || order.customer.name,
       recipient_phone: order.recipientPhone || order.customer.phone,
       is_gift: order.isGift,
+      is_urgent: order.isUrgent,
       address: order.address,
       lat: order.lat === null ? null : Number(order.lat),
       lng: order.lng === null ? null : Number(order.lng),
@@ -334,11 +376,12 @@ export class OrdersService {
       items: (order.items || []).map((item) => ({
         product_id: item.productId,
         product_name: item.product.name,
+        install_minutes: item.product.installMinutes,
         quantity: item.quantity,
         unit_price: Number(item.unitPrice),
       })),
-      route_id: order.stop?.routeId ?? null,
-      sequence: order.stop?.sequence ?? null,
+      route_id: (order.stops || []).find((stop) => !stop.completedAt)?.routeId ?? null,
+      sequence: (order.stops || []).find((stop) => !stop.completedAt)?.sequence ?? null,
       history: (order.history || []).map((event) => ({
         id: event.id,
         event_type: event.eventType,

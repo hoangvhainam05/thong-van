@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { CATEGORIES } from "@/lib/mock/catalog";
+import { useCategories } from "@/lib/categories";
 import { homeFor, ROLES } from "@/lib/rbac";
+import { api, loadToken } from "@/lib/api";
 import { Avatar } from "./ui";
 
 function CategoryBar() {
+  const { categories } = useCategories();
   const params = useSearchParams();
   const pathname = usePathname();
   const current = pathname === "/products" ? params.get("cat") : null;
@@ -16,7 +18,7 @@ function CategoryBar() {
     <nav className="shop-cats" aria-label="Danh mục">
       <div className="shop-cats-inner">
         <Link href="/products" className={pathname === "/products" && !current ? "on" : ""}>Tất cả</Link>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <Link key={c.id} href={`/products?cat=${c.id}`} className={current === c.id ? "on" : ""}>{c.name}</Link>
         ))}
       </div>
@@ -25,15 +27,26 @@ function CategoryBar() {
 }
 
 function UserMenu() {
-  const { user, state, actions } = useStore();
+  const { user, state, actions, can } = useStore();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const notificationAllowed = !!user && can('notification.own');
   const ref = useRef(null);
   useEffect(() => {
     const close = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false);
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
+  useEffect(() => {
+    if (!notificationAllowed) { setUnread(0); return; }
+    let active = true;
+    const refresh = () => api('/api/account/notifications', { token: loadToken() }).then(data => { if (active) setUnread(data.unread); }).catch(() => { if (active) setUnread(0); });
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener('thongvan-notifications', refresh);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('thongvan-notifications', refresh); };
+  }, [user?.id, notificationAllowed]);
 
   if (!user) {
     return (
@@ -43,8 +56,7 @@ function UserMenu() {
       </>
     );
   }
-  const unread = state.notifications.filter((n) => n.customerId === user.customerId && !n.read).length;
-  const isCustomer = user.role === "CUSTOMER";
+  const canTrack = can("order.track_own");
   return (
     <div className="user-menu" ref={ref}>
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open}>
@@ -56,17 +68,19 @@ function UserMenu() {
         <div className="menu" onClick={() => setOpen(false)}>
           <div className="menu-head">
             <div className="strong">{user.name}</div>
-            <div className="small muted">{ROLES[user.role].label}</div>
+            <div className="small muted">{ROLES[user.role]?.label || user.role}</div>
           </div>
-          {isCustomer ? (
+          {canTrack ? (
             <>
               <Link href="/account/orders">Đơn hàng của tôi</Link>
-              <Link href="/account/notifications">Thông báo {unread > 0 && <span className="badge move plain">{unread} mới</span>}</Link>
-              <Link href="/account/profile">Tài khoản và địa chỉ</Link>
+              {notificationAllowed && <Link href="/account/notifications">Thông báo {unread > 0 && <span className="badge move plain">{unread} mới</span>}</Link>}
+              <Link href="/account/warranties">Bảo hành và bảo dưỡng</Link>
+              <Link href="/account/profile">Tài khoản</Link>
             </>
           ) : (
             <Link href={homeFor(state.roleMatrix, user.role)}>Vào trang làm việc</Link>
           )}
+          {canTrack && (can("backoffice.access") || can("delivery.app")) && <Link href={homeFor(state.roleMatrix, user.role)}>Vào trang làm việc</Link>}
           <button onClick={() => { actions.logout(); router.push("/"); }}>Đăng xuất</button>
         </div>
       )}

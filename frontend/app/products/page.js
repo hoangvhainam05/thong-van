@@ -3,7 +3,7 @@
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { CATEGORIES } from "@/lib/mock/catalog";
+import { useCategories } from "@/lib/categories";
 import ProductCard from "@/components/ProductCard";
 import { Empty, Loading } from "@/components/ui";
 
@@ -16,7 +16,8 @@ const PRICE = [
 ];
 
 function Catalog() {
-  const { ready, state } = useStore();
+  const { categories } = useCategories();
+  const { ready, catalogStatus, state } = useStore();
   const params = useSearchParams();
   const router = useRouter();
   const cat = params.get("cat") || "";
@@ -44,9 +45,10 @@ function Catalog() {
     return [...l].sort(sorters[sort]);
   }, [ready, state, cat, q, brands, price, sort]);
 
-  if (!ready) return <Loading />;
+  if (!ready || catalogStatus === "loading") return <Loading />;
+  if (catalogStatus === "error") return <div className="panel"><Empty title="Không tải được sản phẩm">Kiểm tra kết nối máy chủ và tải lại trang.</Empty></div>;
   const allBrands = [...new Set(state.products.filter((p) => !cat || p.category === cat).map((p) => p.brand))].sort();
-  const title = q ? `Kết quả cho “${q}”` : CATEGORIES.find((c) => c.id === cat)?.name || "Tất cả sản phẩm";
+  const title = q ? `Kết quả cho “${q}”` : categories.find((c) => c.id === cat)?.name || "Tất cả sản phẩm";
 
   return (
     <div className="shop-layout">

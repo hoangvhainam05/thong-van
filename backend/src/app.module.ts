@@ -4,6 +4,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
 import {
   Customer,
+  Category,
+  AuditEvent,
+  MaintenanceRecord,
+  MaintenanceReminderRead,
   DeliveryRoute,
   DeliveryStop,
   Driver,
@@ -11,9 +15,15 @@ import {
   OrderHistoryEvent,
   OrderItem,
   Product,
+  Permission,
+  Role,
+  User,
+  UserNotificationRead,
   Vehicle,
   Warehouse,
 } from './database/entities';
+import { AdminModule } from './admin/admin.module';
+import { AuthModule } from './auth/auth.module';
 import { OrdersModule } from './orders/orders.module';
 import { ProductsModule } from './products/products.module';
 import { RoutesModule } from './routes/routes.module';
@@ -27,6 +37,8 @@ import { TrackingModule } from './tracking/tracking.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => databaseOptions(config),
     }),
+    AuthModule,
+    AdminModule,
     ProductsModule,
     OrdersModule,
     RoutesModule,
@@ -48,7 +60,7 @@ function databaseOptions(config: ConfigService) {
       password: decodeURIComponent(url.password),
       database: url.pathname.replace(/^\//, ''),
       charset: 'utf8mb4',
-      entities: [Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Vehicle, Warehouse],
+      entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse],
       synchronize: false,
     };
   }
@@ -60,7 +72,7 @@ function databaseOptions(config: ConfigService) {
     password: config.get<string>('database.password'),
     database: config.get<string>('database.name'),
     charset: 'utf8mb4',
-    entities: [Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Vehicle, Warehouse],
+    entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse],
     synchronize: false,
   };
 }

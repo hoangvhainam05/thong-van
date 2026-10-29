@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsRelations, Repository } from 'typeorm';
+import { DeliveryProofService } from '../routes/delivery-proof.service';
+import { addCalendarMonths } from '../maintenance/maintenance.service';
 import { DeliveryStop, Order, OrderHistoryEventType, OrderStatus, PaymentStatus, RouteStatus } from '../database/entities';
 
 const STEPS: Array<[OrderStatus, string]> = [
@@ -20,7 +22,8 @@ const LABEL: Record<string, string> = {
 const DONE = new Set([OrderStatus.DELIVERED, OrderStatus.FAILED]);
 const RELATIONS: FindOptionsRelations<Order> = {
   customer: true,
-  stop: { route: { stops: { order: { customer: true } } } },
+  items: { product: true },
+  stops: { route: { stops: { order: { items: { product: true } } } } },
   history: true,
 };
 
@@ -29,23 +32,50 @@ export class TrackingService {
   constructor(
     @InjectRepository(Order) private readonly orders: Repository<Order>,
     private readonly config: ConfigService,
+    private readonly proof: DeliveryProofService,
   ) {}
 
-  async track(code: string, phone: string) {
-    const order = await this.orders.findOne({
-      where: { code: code.trim().toUpperCase() },
-      relations: RELATIONS,
-    });
-    if (!order || order.customer.phone !== phone?.trim()) {
-      throw new NotFoundException('Không tìm thấy đơn hàng');
-    }
+  private async publicOrder(code: string, phone: string) {
+    const order = await this.orders.findOne({ where: { code: code.trim().toUpperCase() }, relations: RELATIONS });
+    if (!order || !phone || order.customer.phone !== phone.trim()) throw new NotFoundException('Không tìm thấy đơn hàng');
+    return order;
+  }
 
-    const orderIndex = STEPS.findIndex(([status]) => status === order.status);
+  private async accountOrder(id: number, customerId: number | null) {
+    if (!customerId) throw new NotFoundException('Không tìm thấy đơn hàng');
+    const order = await this.orders.findOne({ where: { id, customerId }, relations: RELATIONS });
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    return order;
+  }
+
+  async track(code: string, phone: string) { return this.project(await this.publicOrder(code, phone)); }
+  async accountTrack(id: number, customerId: number | null) { return this.project(await this.accountOrder(id, customerId)); }
+  async accountOrders(customerId: number | null) {
+    if (!customerId) throw new ForbiddenException('Tài khoản chưa liên kết với khách hàng');
+    const orders = await this.orders.find({ where: { customerId }, relations: { items: { product: true } }, order: { id: 'DESC' } });
+    return orders.map(order => ({ id: order.id, code: order.code, status: order.status, total: Number(order.total), delivery_date: order.deliveryDate, time_window: `${shortTime(order.timeWindowStart)}–${shortTime(order.timeWindowEnd)}`, items: (order.items || []).map(item => ({ name: item.product.name, quantity: item.quantity })) }));
+  }
+  async publicProof(code: string, phone: string) { return this.proofFor(await this.publicOrder(code, phone)); }
+  async accountProof(id: number, customerId: number | null) { return this.proofFor(await this.accountOrder(id, customerId)); }
+  private async proofFor(order: Order) {
+    const latest = [...(order.stops || [])].sort((a,b) => b.id-a.id)[0];
+    if (order.status !== OrderStatus.DELIVERED || latest?.result !== 'DELIVERED' || !latest.proofUploadedAt) throw new NotFoundException('Chưa có ảnh bàn giao');
+    return this.proof.customerDownloadUrl(latest.id);
+  }
+  private project(order: Order) {
+    const stop = [...(order.stops || [])].sort((a, b) => b.id - a.id)[0];
+    const delivered = order.status === OrderStatus.DELIVERED && stop?.result === 'DELIVERED' && stop.completedAt
+      ? `${stop.completedAt.getFullYear()}-${String(stop.completedAt.getMonth()+1).padStart(2,'0')}-${String(stop.completedAt.getDate()).padStart(2,'0')}` : null;
+    const terminal = order.status === OrderStatus.FAILED || order.status === OrderStatus.CANCELLED;
+    const orderIndex = terminal
+      ? Math.max(-1, ...(order.history || []).filter(event => event.eventType === OrderHistoryEventType.STATUS).map(event => STEPS.findIndex(([status]) => status === event.toValue)))
+      : STEPS.findIndex(([status]) => status === order.status);
     const timeline = STEPS.map(([status, label], index) => ({
       status,
       label,
-      state: orderIndex < 0 ? 'todo' : index < orderIndex ? 'done' : index === orderIndex ? 'current' : 'todo',
+      state: orderIndex < 0 ? 'todo' : index < orderIndex || (terminal && index === orderIndex) ? 'done' : index === orderIndex ? 'current' : 'todo',
     }));
+    if (order.status === OrderStatus.FAILED || order.status === OrderStatus.CANCELLED) timeline.push({ status: order.status, label: LABEL[order.status], state: 'current' });
     const output: Record<string, unknown> = {
       code: order.code,
       status: order.status,
@@ -56,6 +86,15 @@ export class TrackingService {
       payment_method: order.paymentMethod,
       payment_status: order.paymentStatus || PaymentStatus.UNPAID,
       payment_instructions: this.paymentInstructions(order),
+      items: (order.items || []).map(item => ({ name: item.product.name, quantity: item.quantity, unit_price: Number(item.unitPrice), warranty_months: item.warrantyMonthsSnapshot ?? null, warranty_start: delivered, warranty_end_exclusive: delivered && item.warrantyMonthsSnapshot ? addCalendarMonths(delivered,item.warrantyMonthsSnapshot) : null })),
+      warranty_contact: this.config.get<string>('warranty.contact', '').trim() || null,
+      total: Number(order.total),
+      shipping_fee: Number(order.shippingFee),
+      address: order.address,
+      recipient_name: order.recipientName || order.customer.name,
+      history: (order.history || []).filter(event => [OrderHistoryEventType.STATUS, OrderHistoryEventType.INFO_REQUEST].includes(event.eventType))
+        .sort((a,b) => a.id-b.id).map(event => ({ id: event.id, type: event.eventType, status: event.toValue, label: event.eventType === OrderHistoryEventType.INFO_REQUEST ? 'Cần bổ sung thông tin' : LABEL[event.toValue || ''] || 'Cập nhật đơn hàng', note: event.eventType === OrderHistoryEventType.INFO_REQUEST || ['FAILED','CANCELLED'].includes(event.toValue || '') ? event.note : null, at: event.createdAt })),
+      proof_available: false,
       requested_info: (order.history || [])
         .filter((event) => event.eventType === OrderHistoryEventType.INFO_REQUEST)
         .map((event) => ({ message: event.note, at: event.createdAt })),
@@ -68,28 +107,31 @@ export class TrackingService {
       eta_end: null,
     };
 
-    const stop = order.stop;
-    if (!stop || DONE.has(order.status) || order.status === OrderStatus.CANCELLED) {
+    output.proof_available = order.status === OrderStatus.DELIVERED && stop?.result === 'DELIVERED' && !!stop.proofUploadedAt;
+    if (!stop || DONE.has(order.status) || [OrderStatus.CANCELLED, OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY].includes(order.status)) {
       if (order.status === OrderStatus.DELIVERED) output.message = 'Đơn hàng đã được giao. Cảm ơn bạn!';
-      else if ([OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY].includes(order.status)) {
-        output.message = 'Đơn hàng sẽ được xếp lịch giao trước ngày giao.';
-      }
+      else if (order.status === OrderStatus.FAILED && stop?.resultNote) output.message = `Giao không thành công: ${stop.resultNote}`;
+      else if (order.status === OrderStatus.PENDING) output.message = 'Cửa hàng đã nhận đơn và sẽ liên hệ xác nhận.';
+      else if (order.status === OrderStatus.CONFIRMED) output.message = 'Đơn đã được xác nhận và đang chuẩn bị hàng.';
+      else if (order.status === OrderStatus.READY) output.message = 'Hàng đã sẵn sàng và chờ xếp lịch giao.';
       return output;
     }
 
     const route = stop.route;
-    const remaining = route.stops.filter((item) => !DONE.has(item.order.status));
+    const remaining = route.stops.filter((item) => !item.completedAt);
     const before = remaining.filter((item) => item.sequence < stop.sequence);
     let etaStart = stop.etaStart;
     let etaEnd = stop.etaEnd;
-    const arrived = route.stops.filter((item) => item.actualArrival !== null);
-    if (route.status === RouteStatus.IN_PROGRESS && arrived.length) {
-      const last = arrived.reduce((current, item) => item.sequence > current.sequence ? item : current);
-      const lag = last.actualArrival!.getTime() - last.plannedArrival.getTime();
-      if (lag > 0) {
-        etaStart = new Date(etaStart.getTime() + lag);
-        etaEnd = new Date(etaEnd.getTime() + lag);
-      }
+    // Chỉ dùng tiến độ các điểm trước đơn này; không trả thông tin của các đơn đó.
+    const observed = route.stops.filter(item => item.sequence < stop.sequence && item.actualArrival !== null);
+    if (route.status === RouteStatus.IN_PROGRESS && observed.length) {
+      const last = observed.reduce((current, item) => item.sequence > current.sequence ? item : current);
+      const arrivalLag = last.actualArrival!.getTime() - last.plannedArrival.getTime();
+      const serviceMinutes = 10 + (last.order.items || []).reduce((sum, item) => sum + item.product.installMinutes * item.quantity, 0);
+      const completionLag = (last.completedAt?.getTime() ?? Date.now()) - (last.plannedArrival.getTime() + serviceMinutes * 60_000);
+      const lag = Math.max(0, arrivalLag, completionLag);
+      etaStart = new Date(etaStart.getTime() + lag);
+      etaEnd = new Date(etaEnd.getTime() + lag);
     }
 
     output.position = before.length + 1;
@@ -103,6 +145,8 @@ export class TrackingService {
       output.message = `Dự kiến giao trong khoảng ${window} (lịch có thể còn điều chỉnh).`;
     } else if (route.status === RouteStatus.LOCKED) {
       output.message = `Bạn là điểm giao thứ ${output.position} trong tuyến. Dự kiến ${window}.`;
+    } else if (stop.actualArrival) {
+      output.message = 'Tài xế đã đến điểm giao của bạn.';
     } else if (!before.length) {
       output.message = `Tài xế đang trên đường tới chỗ bạn. Dự kiến ${window}.`;
     } else {

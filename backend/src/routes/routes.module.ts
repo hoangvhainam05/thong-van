@@ -10,6 +10,8 @@ import {
   Vehicle,
   Warehouse,
 } from '../database/entities';
+import { RoadMatrixService } from '../optimization/road-matrix.service';
+import { DeliveryProofService } from './delivery-proof.service';
 import { RoutesController } from './routes.controller';
 import { RoutesService } from './routes.service';
 
@@ -25,6 +27,7 @@ import { RoutesService } from './routes.service';
     Warehouse,
   ])],
   controllers: [RoutesController],
-  providers: [RoutesService],
+  providers: [RoutesService, RoadMatrixService, DeliveryProofService],
+  exports: [DeliveryProofService],
 })
 export class RoutesModule {}

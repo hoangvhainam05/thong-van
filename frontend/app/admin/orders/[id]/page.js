@@ -2,34 +2,33 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-import { PAYMENT_METHOD, routeOfOrder, useStore } from "@/lib/store";
-import { dateLabel, dateTime, hm, vnd } from "@/lib/format";
-import { haversineKm } from "@/lib/optimizer";
+import { useEffect, useState } from "react";
+import { PAYMENT_METHOD, useStore } from "@/lib/store";
+import { dateLabel, dateTime, vnd } from "@/lib/format";
 import { Can, RequirePerm } from "@/components/Guard";
 import { PageHead } from "@/components/AdminShell";
+import LocationPicker from "@/components/LocationPicker";
+import CancelOrderModal from "@/components/CancelOrderModal";
 import OrderTimeline from "@/components/OrderTimeline";
-import RouteMap from "@/components/RouteMap";
-import { Empty, Field, Modal, OrderBadge, RouteBadge } from "@/components/ui";
+import { Empty, Field, Loading, Modal, OrderBadge } from "@/components/ui";
 
-const CANCEL_REASONS = ["Khách đổi ý", "Hết hàng", "Không liên lạc được khách", "Khách đặt trùng đơn"];
 
 function Detail() {
   const { id } = useParams();
   const { state, actions } = useStore();
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { actions.loadOrder(Number(id)).then(ok => { setFailed(!ok); setLoading(false); }); }, [id]);
   const [cancel, setCancel] = useState(null);
   const [infoRequest, setInfoRequest] = useState(null);
   const [loc, setLoc] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const o = state.orders.find((x) => x.id === Number(id));
-  if (!o) return <div className="panel"><Empty title="Không tìm thấy đơn" action={<Link className="btn" href="/admin/orders">Về danh sách</Link>} /></div>;
-  const r = routeOfOrder(state, o.id);
-  const stop = r?.stops.find((s) => s.orderId === o.id);
-  const driver = r && state.drivers.find((d) => d.id === r.driverId);
-  const vehicle = r && state.vehicles.find((v) => v.id === r.vehicleId);
-  const depot = state.settings.depot;
-  const install = o.items.reduce((s, it) => s + (state.products.find((p) => p.id === it.productId)?.install || 0) * it.qty, 0);
+  if (loading) return <Loading />;
+  if (failed || !o || !o.serverId) return <div className="panel"><Empty title="Không tìm thấy đơn" action={<Link className="btn" href="/admin/orders">Về danh sách</Link>} /></div>;
+  const install = o.items.reduce((s, it) => s + (it.install || 0) * it.qty, 0);
   const canEditLoc = !["SCHEDULED", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].includes(o.status);
-  const canCancel = ["PENDING", "CONFIRMED", "READY"].includes(o.status) && o.payment.status !== "PAID";
+  const canCancel = ["PENDING", "CONFIRMED", "READY", "SCHEDULED", "FAILED"].includes(o.status);
 
   return (
     <>
@@ -43,7 +42,7 @@ function Detail() {
           {["PENDING", "CONFIRMED"].includes(o.status) && <button className="btn secondary" onClick={() => setInfoRequest("")}>Yêu cầu bổ sung</button>}
         </Can>
         <Can perm="order.cancel">
-          {canCancel && <button className="btn secondary" onClick={() => setCancel(CANCEL_REASONS[0])}>Huỷ đơn</button>}
+          {canCancel && <button className="btn secondary" onClick={() => setCancel(true)}>Huỷ đơn</button>}
         </Can>
       </PageHead>
 
@@ -73,30 +72,17 @@ function Detail() {
             <div className="panel-body stack">
               <div className="small"><b>{o.address}</b>{o.district && <span className="muted">, {o.district}</span>}</div>
               {o.lat == null ? (
-                <div className="notice warn">Chưa xác định được toạ độ từ địa chỉ khách nhập. Đơn này chưa thể chuyển sang sẵn sàng giao hoặc đưa vào tối ưu tuyến.</div>
+                <div className="notice warn">Chưa xác định được toạ độ từ địa chỉ khách nhập. Có thể chuẩn bị hàng, nhưng cần cập nhật vị trí trước khi xếp tuyến.</div>
               ) : (
                 <>
-                  <div className="small muted">Toạ độ {o.lat}, {o.lng}. Cách kho khoảng {(haversineKm(depot, o) * state.settings.roadFactor).toFixed(1)} km đường bộ.</div>
-                  <RouteMap depot={depot} routes={[{ id: 1, name: o.code, stops: [{ lat: o.lat, lng: o.lng, seq: stop?.seq || "•" }] }]} height={260} />
+                  <div className="small muted">Toạ độ {o.lat}, {o.lng}.</div>
+                  <a className="btn secondary" target="_blank" rel="noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}`}>Xem trên Google Maps</a>
                 </>
               )}
             </div>
           </section>
 
-          {r && (
-            <section className="panel">
-              <div className="panel-head"><h3>Tuyến giao</h3><RouteBadge status={r.status} /></div>
-              <div className="panel-body small stack-sm">
-                <div className="row between"><span className="muted">Tuyến</span><b>{r.code}</b></div>
-                <div className="row between"><span className="muted">Thứ tự trong tuyến</span><b>Điểm {stop.seq}/{r.stops.length}</b></div>
-                <div className="row between"><span className="muted">Giờ đến theo kế hoạch</span><b>{hm(stop.planned)}</b></div>
-                <div className="row between"><span className="muted">Khung giờ báo khách</span><b>{hm(stop.etaStart)} – {hm(stop.etaEnd)}</b></div>
-                {stop.arrivedAt != null && <div className="row between"><span className="muted">Thực tế đến</span><b>{hm(stop.arrivedAt)}</b></div>}
-                <div className="row between"><span className="muted">Tài xế</span><b>{driver?.name || "Chưa phân công"}</b></div>
-                <div className="row between"><span className="muted">Xe</span><b>{vehicle?.plate} ({vehicle?.type})</b></div>
-              </div>
-            </section>
-          )}
+          {o.routeId && <section className="panel panel-pad small"><b>Tuyến {o.routeId} · điểm {o.sequence}</b><Can perm="dispatch.view"><div><Link href={`/admin/routes/${o.routeId}`}>Xem tuyến giao</Link></div></Can></section>}
         </div>
 
         <div className="stack">
@@ -107,7 +93,6 @@ function Detail() {
             <div className="muted">{PAYMENT_METHOD[o.payment.method]}, {o.payment.status === "PAID" ? "đã thanh toán" : "chưa thanh toán"}</div>
             {o.isGift && <div className="notice">Đơn đặt hộ · Người nhận: <b>{o.recipientName}</b> · <a href={`tel:${o.recipientPhone}`}>{o.recipientPhone}</a></div>}
             {o.source === "COUNTER" && <div className="tiny muted">Đơn nhập tại quầy</div>}
-            {o.payment.status === "PAID" && canCancel === false && ["PENDING", "CONFIRMED", "READY"].includes(o.status) && <div className="notice warn">Đơn đã thanh toán. Cần xử lý hoàn tiền trước khi huỷ.</div>}
             {o.note && <div className="notice">Ghi chú: {o.note}</div>}
             {o.failReason && <div className="notice bad">Lý do giao thất bại: {o.failReason}</div>}
           </section>
@@ -118,17 +103,7 @@ function Detail() {
         </div>
       </div>
 
-      {cancel != null && (
-        <Modal title={`Huỷ đơn ${o.code}`} onClose={() => setCancel(null)}
-          footer={<><button className="btn secondary" onClick={() => setCancel(null)}>Giữ đơn</button><button className="btn danger" onClick={() => { actions.cancelOrder(o.id, cancel); setCancel(null); }}>Huỷ đơn</button></>}>
-          <div className="choice">
-            {CANCEL_REASONS.map((x) => (
-              <label key={x}><input type="radio" name="reason" checked={cancel === x} onChange={() => setCancel(x)} />{x}</label>
-            ))}
-          </div>
-          <p className="small muted" style={{ marginTop: 12 }}>Khách sẽ nhận thông báo kèm lý do huỷ.</p>
-        </Modal>
-      )}
+      {cancel && <CancelOrderModal order={o} onClose={() => setCancel(null)} />}
 
       {infoRequest != null && (
         <Modal title={`Yêu cầu bổ sung cho ${o.code}`} onClose={() => setInfoRequest(null)}
@@ -138,6 +113,7 @@ function Detail() {
         </Modal>
       )}
 
+      {pickerOpen && loc && <LocationPicker initial={loc} onClose={() => setPickerOpen(false)} onSelect={(location) => { setLoc((current) => ({ ...current, ...location, address: location.address || current.address })); setPickerOpen(false); }} />}
       {loc && (
         <Modal title="Sửa vị trí giao hàng" onClose={() => setLoc(null)}
           footer={<><button className="btn secondary" onClick={() => setLoc(null)}>Huỷ</button><button className="btn" onClick={() => {
@@ -150,8 +126,8 @@ function Detail() {
             <Field label="Địa chỉ" full><input className="input" value={loc.address} onChange={(e) => setLoc({ ...loc, address: e.target.value })} /></Field>
             <Field label="Vĩ độ"><input className="input" value={loc.lat} onChange={(e) => setLoc({ ...loc, lat: e.target.value })} placeholder="21.0xxx" /></Field>
             <Field label="Kinh độ"><input className="input" value={loc.lng} onChange={(e) => setLoc({ ...loc, lng: e.target.value })} placeholder="105.8xxx" /></Field>
-            <p className="small muted full">Gọi khách xác nhận lại địa chỉ rồi lấy toạ độ từ Google Maps (nhấn giữ vào vị trí trên bản đồ để sao chép).</p>
-            <button type="button" className="btn ghost sm full" onClick={() => setLoc({ ...loc, lat: (depot.lat + 0.03).toFixed(5), lng: (depot.lng - 0.06).toFixed(5) })}>Điền toạ độ mẫu để thử</button>
+            <button type="button" className="btn secondary full" onClick={() => setPickerOpen(true)}>Chọn vị trí trên bản đồ</button>
+            <p className="small muted full">Gọi khách xác nhận và kiểm tra lại địa chỉ trước khi lưu.</p>
           </div>
         </Modal>
       )}

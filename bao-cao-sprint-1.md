@@ -7,9 +7,9 @@
 - Backend đọc danh mục sản phẩm đang bán từ MySQL với đủ các trường giao diện cần: mã SKU, hãng, danh mục, giá/giá cũ, tồn kho, thể tích, cân nặng, thời gian lắp, bảo hành, mô tả và URL ảnh.
 - Thêm API quản trị để đọc cả sản phẩm ẩn, tạo, sửa và ẩn/hiện sản phẩm. Thay đổi ghi xuống MySQL; SKU được tạo tự động nếu chưa nhập và kiểm tra trùng.
 - API quản trị được bảo vệ bằng `X-Staff-Token`. Giao diện sản phẩm quản trị cho phép nhập token từ cấu hình backend; đây vẫn là token dùng chung của bản MVP, chưa phải đăng nhập/phân quyền cá nhân.
-- Trang danh mục và chi tiết sản phẩm tải dữ liệu từ API khi backend hoạt động; khi backend chưa hoạt động thì giao diện còn dùng bộ dữ liệu mẫu để demo. Ảnh Cloudinary được hiển thị ở danh sách và chi tiết.
+- Trang danh mục và chi tiết sản phẩm tải dữ liệu từ API/MySQL. Sau đợt rà soát trước Sprint 3, hai trang hiển thị riêng trạng thái đang tải, lỗi kết nối và không có sản phẩm; không còn dùng sản phẩm mẫu khi API lỗi. Ảnh Cloudinary được hiển thị ở danh sách và chi tiết.
 - Thêm API ký upload Cloudinary ở backend. API secret chỉ nằm trong backend; giao diện tải ảnh trực tiếp bằng chữ ký tạm thời. Kiểm tra ảnh ở giao diện: loại ảnh và kích thước tối đa 5 MB.
-- Bổ sung cột SKU, hãng, giá cũ, thời hạn bảo hành, tồn kho, mô tả và URL ảnh dài hơn vào entity/schema. Cập nhật seed cho cài đặt mới và thêm migration cho database cũ, gồm chuyển tên danh mục sang mã slug mà giao diện dùng.
+- Bổ sung cột SKU, hãng, giá cũ, thời hạn bảo hành, tồn kho, mô tả và URL ảnh dài hơn vào entity/schema. Sau đợt rà soát trước Sprint 3, lưu thêm `image_public_id` của Cloudinary cùng URL qua migration 005. Cập nhật seed cho cài đặt mới và thêm migration cho database cũ, gồm chuyển tên danh mục sang mã slug mà giao diện dùng.
 - Bổ sung cấu hình mẫu Cloudinary, cấu hình API URL cho frontend và hướng dẫn migration/configuration trong README.
 
 ## Kiểm tra
@@ -33,11 +33,11 @@ Migration `001_product_catalog.sql` đã được áp dụng cho database local 
 
 1. `backend/.env` hiện dùng tài khoản có quyền rộng cho môi trường local. Trước staging/production, tạo user MySQL riêng với quyền tối thiểu trên database `thongvan`; không đưa `.env` vào Git.
 
-2. Next cảnh báo lockfile `/Users/hieuvannguyen/pnpm-lock.yaml` ngoài repo được chọn làm workspace root. Có thể chỉnh `frontend/next.config.mjs` để khai báo root rõ ràng.
+2. Đã khai báo `outputFileTracingRoot` trong `frontend/next.config.mjs`; build sau Sprint 3 không còn cảnh báo chọn lockfile ở thư mục cha.
 
 3. `npm audit` ghi nhận 2 advisories trong cây frontend: Next mức moderate và PostCSS mức high. Bản sửa tự động được đề xuất cần nâng Next qua major; cần đánh giá migration rồi mới nâng.
 
-4. Khi chuyển sang database có dữ liệu khác, sao lưu trước rồi chỉ chạy những migration còn thiếu theo thứ tự `001`, `002`, `003`. Database mới dùng `schema.sql`/`seed.sql` thì không chạy lại migration.
+4. Khi chuyển sang database có dữ liệu khác, sao lưu trước rồi chỉ chạy những migration còn thiếu theo thứ tự `001` đến `005`. Database mới dùng `schema.sql`/`seed.sql` thì không chạy lại migration.
 
 5. Nếu cài lại frontend dependencies khi cần, dùng:
 

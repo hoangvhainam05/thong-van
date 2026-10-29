@@ -14,12 +14,12 @@ export default function RegisterPage() {
   if (!ready) return <Loading />;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!/^0\d{9}$/.test(f.phone)) return setError("Số điện thoại cần có 10 chữ số, bắt đầu bằng 0.");
-    if (f.password.length < 6) return setError("Mật khẩu cần ít nhất 6 ký tự.");
+    if (f.password.length < 8) return setError("Mật khẩu cần ít nhất 8 ký tự.");
     if (f.password !== f.confirm) return setError("Hai mật khẩu chưa khớp nhau.");
-    const res = actions.register(f);
+    const res = await actions.register(f);
     if (!res.ok) return setError(res.error);
     router.push("/account/profile");
   };

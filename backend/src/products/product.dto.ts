@@ -42,6 +42,12 @@ export class CreateProductDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  costPrice?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   oldPrice?: number | null;
 
   @Type(() => Number)
@@ -64,7 +70,11 @@ export class CreateProductDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(1200)
   warranty?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(120)
+  maintenanceIntervalMonths?: number | null;
 
   @IsOptional()
   @Type(() => Number)
@@ -81,6 +91,11 @@ export class CreateProductDto {
   @IsString()
   @MaxLength(1000)
   imageUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  imagePublicId?: string | null;
 
   @IsOptional()
   @IsBoolean()

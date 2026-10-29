@@ -21,6 +21,9 @@ export class Product {
   @Column({ type: 'decimal', precision: 12, scale: 0 })
   price!: string;
 
+  @Column({ name: 'cost_price', type: 'decimal', precision: 12, scale: 0, nullable: true })
+  costPrice!: string | null;
+
   @Column({ name: 'old_price', type: 'decimal', precision: 12, scale: 0, nullable: true })
   oldPrice!: string | null;
 
@@ -36,8 +39,14 @@ export class Product {
   @Column({ name: 'image_url', type: 'varchar', length: 1000, nullable: true })
   imageUrl!: string | null;
 
+  @Column({ name: 'image_public_id', type: 'varchar', length: 255, nullable: true })
+  imagePublicId!: string | null;
+
   @Column({ name: 'warranty_months', type: 'int', default: 12 })
   warrantyMonths!: number;
+
+  @Column({ name: 'maintenance_interval_months', type: 'int', nullable: true })
+  maintenanceIntervalMonths!: number | null;
 
   @Column({ type: 'int', default: 10 })
   stock!: number;

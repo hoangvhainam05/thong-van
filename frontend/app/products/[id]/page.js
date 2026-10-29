@@ -4,27 +4,29 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
-import { CATEGORIES } from "@/lib/mock/catalog";
+import { useCategories } from "@/lib/categories";
 import { vnd } from "@/lib/format";
 import Art from "@/components/Art";
 import ProductCard from "@/components/ProductCard";
 import { Empty, Loading } from "@/components/ui";
 
 export default function ProductDetail() {
+  const { categories } = useCategories();
   const { id } = useParams();
   const router = useRouter();
-  const { ready, state, actions } = useStore();
+  const { ready, catalogStatus, shippingStatus, state, actions } = useStore();
   const [qty, setQty] = useState(1);
-  if (!ready) return <Loading />;
+  if (!ready || catalogStatus === "loading") return <Loading />;
+  if (catalogStatus === "error") return <div className="panel"><Empty title="Không tải được sản phẩm">Kiểm tra kết nối máy chủ và tải lại trang.</Empty></div>;
   const p = state.products.find((x) => x.id === Number(id));
   if (!p || !p.active) return <div className="panel"><Empty title="Sản phẩm không còn bán" action={<Link className="btn" href="/products">Xem sản phẩm khác</Link>} /></div>;
-  const cat = CATEGORIES.find((c) => c.id === p.category);
+  const cat = categories.find((c) => c.id === p.category);
   const related = state.products.filter((x) => x.category === p.category && x.id !== p.id && x.active).slice(0, 4);
 
   return (
     <>
       <nav className="small muted" style={{ marginBottom: 14 }}>
-        <Link href="/products">Sản phẩm</Link> / <Link href={`/products?cat=${cat.id}`}>{cat.name}</Link>
+        <Link href="/products">Sản phẩm</Link> / <Link href={`/products?cat=${p.category}`}>{cat?.name || p.category}</Link>
       </nav>
       <div className="two-col" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="panel" style={{ aspectRatio: "1 / 1", display: "grid", placeItems: "center", color: "var(--road)", background: "linear-gradient(180deg,#f3f6fa,#e6ecf3)" }}>
@@ -56,7 +58,7 @@ export default function ProductDetail() {
             <button className="btn secondary lg" disabled={!p.stock} onClick={() => actions.addToCart(p.id, qty)}>Thêm vào giỏ</button>
             <button className="btn lg" disabled={!p.stock} onClick={() => { actions.addToCart(p.id, qty); router.push("/cart"); }}>Mua ngay</button>
           </div>
-          <p className="small muted">Miễn phí giao cho đơn từ {vnd(state.settings.freeShipFrom)}. Bạn chọn ngày và khung giờ nhận hàng ở bước thanh toán.</p>
+          {shippingStatus === "ready" && <p className="small muted">Miễn phí giao cho đơn từ {vnd(state.settings.freeShipFrom)}. Bạn chọn ngày và khung giờ nhận hàng ở bước thanh toán.</p>}
         </div>
       </div>
       {related.length > 0 && (

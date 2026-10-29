@@ -1,76 +1,73 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useStore } from "@/lib/store";
-import { dateLabel, dateTime, hm, toMin } from "@/lib/format";
+import { api, loadToken } from "@/lib/api";
+import { dateLabel, num } from "@/lib/format";
 import { RequirePerm } from "@/components/Guard";
 import { PageHead } from "@/components/AdminShell";
 import RouteMap from "@/components/RouteMap";
-import { Empty, Kpi, OrderBadge, RouteBadge } from "@/components/ui";
+import { Empty, Loading, RouteBadge } from "@/components/ui";
 
 function RouteDetail() {
   const { id } = useParams();
-  const { state } = useStore();
-  const r = state.routes.find((x) => x.id === Number(id));
-  if (!r) return <div className="panel"><Empty title="Không tìm thấy tuyến" action={<Link href="/admin/dispatch" className="btn">Về điều phối</Link>} /></div>;
-  const driver = state.drivers.find((d) => d.id === r.driverId);
-  const vehicle = state.vehicles.find((v) => v.id === r.vehicleId);
-  const rows = r.stops.map((s) => ({ s, o: state.orders.find((x) => x.id === s.orderId) }));
-  const completed = rows.filter((x) => x.s.completedAt != null);
-  const onTime = completed.filter((x) => x.s.arrivedAt <= toMin(x.o.window.end)).length;
-  const saved = r.baselineKm ? Math.round(((r.baselineKm - r.totalKm) / r.baselineKm) * 100) : 0;
+  const [route, setRoute] = useState(null);
+  const [warehouse, setWarehouse] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  return (
-    <>
-      <Link href="/admin/dispatch" className="small muted">‹ Điều phối giao hàng</Link>
-      <PageHead title={`Tuyến ${r.code}`} sub={`${dateLabel(r.date)}, ${vehicle?.plate} (${vehicle?.type}), tài xế ${driver?.name || "chưa phân công"}`}>
-        <RouteBadge status={r.status} />
-      </PageHead>
-      <div className="kpis" style={{ marginBottom: 16 }}>
-        <Kpi label="Số điểm giao" value={r.stops.length} delta={`${completed.length} đã hoàn tất`} />
-        <Kpi label="Quãng đường" value={`${r.totalKm} km`} delta={`Thứ tự thủ công: ${r.baselineKm} km (${saved > 0 ? `−${saved}%` : "tương đương"})`} up={saved > 0} />
-        <Kpi label="Thời gian dự kiến" value={`${Math.floor(r.totalMin / 60)}h${String(r.totalMin % 60).padStart(2, "0")}`} delta={`Xuất kho ${state.settings.dayStart}`} />
-        <Kpi label="Đúng khung giờ" value={completed.length ? `${onTime}/${completed.length}` : "—"} delta="Trên số điểm đã giao" />
-      </div>
-      <div className="grid-2">
-        <RouteMap depot={state.settings.depot} routes={[{ id: r.id, name: r.code, status: r.status, stops: rows.map(({ s, o }) => ({ lat: o.lat, lng: o.lng, seq: s.seq, label: o.address, state: s.completedAt != null ? "done" : s.arrivedAt != null ? "here" : "" })) }]} />
-        <section className="panel">
-          <div className="panel-head"><h3>Nhật ký tuyến</h3></div>
-          <div className="panel-body small stack-sm">
-            <div className="row between"><span className="muted">Tạo bởi tối ưu</span><span>{dateTime(r.createdAt)}</span></div>
-            <div className="row between"><span className="muted">Chốt tuyến</span><span>{r.lockedAt ? `${dateTime(r.lockedAt)}${r.lockedBy ? `, ${r.lockedBy}` : ""}` : "Chưa chốt"}</span></div>
-            <div className="row between"><span className="muted">Xuất kho</span><span>{r.startedAt ? dateTime(r.startedAt) : "Chưa xuất kho"}</span></div>
-            <div className="row between"><span className="muted">Bộ giải</span><span>Heuristic chèn tham lam + 2-opt</span></div>
-          </div>
-        </section>
-      </div>
-      <section className="panel" style={{ marginTop: 16 }}>
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>#</th><th>Đơn</th><th>Địa chỉ</th><th>Khách hẹn</th><th>Kế hoạch</th><th>Báo khách</th><th>Thực tế</th><th>Kết quả</th></tr></thead>
-            <tbody>
-              {rows.map(({ s, o }) => {
-                const late = s.arrivedAt != null && s.arrivedAt > toMin(o.window.end);
-                return (
-                  <tr key={s.seq}>
-                    <td><span className={`seq ${s.completedAt != null ? "done" : ""}`}>{s.seq}</span></td>
-                    <td><Link href={`/admin/orders/${o.id}`} className="strong" style={{ color: "var(--road)" }}>{o.code}</Link><div className="tiny muted">{o.customerName}</div></td>
-                    <td className="small">{o.address}</td>
-                    <td className="nowrap">{o.window.start}–{o.window.end}</td>
-                    <td>{hm(s.planned)}</td>
-                    <td className="nowrap">{hm(s.etaStart)}–{hm(s.etaEnd)}</td>
-                    <td style={{ color: late ? "var(--stop)" : undefined }}>{s.arrivedAt != null ? hm(s.arrivedAt) : "—"}{late && <div className="tiny">Trễ hẹn</div>}</td>
-                    <td><OrderBadge status={o.status} />{o.failReason && <div className="tiny muted">{o.failReason}</div>}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </>
-  );
+  useEffect(() => {
+    const token = loadToken();
+    if (!token) {
+      setError("Vui lòng đăng nhập để xem tuyến.");
+      setLoading(false);
+      return;
+    }
+    Promise.all([
+      api("/api/routes/" + id, { token }),
+      api("/api/warehouse", { token }),
+    ]).then(([loadedRoute, loadedWarehouse]) => {
+      setRoute(loadedRoute);
+      setWarehouse(loadedWarehouse);
+    }).catch((err) => setError(err.message || "Không tải được tuyến."))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <Loading />;
+  if (error) return <div className="panel"><Empty title="Không tải được tuyến">{error} <Link href="/admin/dispatch">Về điều phối</Link></Empty></div>;
+  if (!route) return <div className="panel"><Empty title="Không tìm thấy tuyến" /></div>;
+
+  const saving = route.baseline_km > 0 ? Math.round((route.baseline_km - route.total_km) / route.baseline_km * 100) : null;
+  const points = route.stops.map((stop) => ({
+    lat: stop.lat, lng: stop.lng, seq: stop.sequence, label: stop.address,
+  }));
+  return <>
+    <Link href="/admin/dispatch" className="small muted">‹ Điều phối giao hàng</Link>
+    <PageHead title={"Tuyến " + route.code} sub={"Giao " + dateLabel(route.route_date) + " · " + route.vehicle + " · " + (route.driver_name || "chưa phân công")}>
+      <RouteBadge status={route.status} />
+    </PageHead>
+    <div className="kpis" style={{ marginBottom: 16 }}>
+      <div className="kpi"><div className="label">Điểm giao</div><div className="value">{route.stops.length}</div></div>
+      <div className="kpi"><div className="label">Quãng đường</div><div className="value">{route.total_km} km</div><div className="tiny muted">{route.distance_source === "estimate" ? "Số liệu ước tính" : "Định tuyến OpenRouteService"} · Thứ tự đặt hàng: {route.baseline_km ?? "—"} km{saving != null ? " · tiết kiệm " + saving + "%" : ""}</div></div>
+      <div className="kpi"><div className="label">Thời gian</div><div className="value">{num(route.total_minutes / 60, 1)} giờ</div><div className="tiny muted">Ca tối đa 8 giờ</div></div>
+    </div>
+    {warehouse && <RouteMap depot={route.depot || warehouse} routes={[{ id: route.id, name: route.code, status: route.status, stops: points }]} height={330} />}
+    <section className="panel" style={{ marginTop: 16 }}>
+      <div className="panel-head"><h3>Thứ tự giao đã lưu trong MySQL</h3></div>
+      <div className="table-wrap"><table className="table">
+        <thead><tr><th>#</th><th>Đơn</th><th>Địa chỉ</th><th>Khung giờ</th><th>Đến dự kiến</th><th>Trạng thái</th></tr></thead>
+        <tbody>{route.stops.map((stop) => <tr key={stop.stop_id}>
+          <td>{stop.sequence}</td>
+          <td><b>{stop.order_code}</b><div className="tiny muted">{stop.customer_name}</div></td>
+          <td>{stop.address}</td>
+          <td>{stop.time_window}</td>
+          <td>{new Date(stop.planned_arrival).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</td>
+          <td>{stop.order_status}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </section>
+  </>;
 }
 
 export default function RouteDetailPage() {

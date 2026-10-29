@@ -8,7 +8,7 @@ export default () => ({
     password: process.env.DB_PASSWORD || 'thongvan',
     name: process.env.DB_DATABASE || 'thongvan',
   },
-  staffToken: process.env.STAFF_TOKEN || 'doi-token-nay',
+  warranty: { contact: process.env.WARRANTY_CONTACT || '' },
   shipping: {
     fee: Number.parseInt(process.env.SHIPPING_FEE || '150000', 10),
     freeFrom: Number.parseInt(process.env.FREE_SHIP_FROM || '5000000', 10),
@@ -30,6 +30,7 @@ export default () => ({
     .map((origin) => origin.trim())
     .filter(Boolean),
   optimization: {
+    orsApiKey: process.env.ORS_API_KEY || '',
     dayStart: process.env.DELIVERY_DAY_START || '08:00',
     dayEnd: process.env.DELIVERY_DAY_END || '18:00',
     avgSpeedKmh: Number.parseFloat(process.env.AVG_SPEED_KMH || '30'),

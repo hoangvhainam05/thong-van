@@ -5,7 +5,6 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
-  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -38,6 +37,9 @@ export class Order {
 
   @Column({ name: 'is_gift', type: 'boolean', default: false })
   isGift!: boolean;
+
+  @Column({ name: 'is_urgent', type: 'boolean', default: false })
+  isUrgent!: boolean;
 
   @Column({ length: 255 })
   address!: string;
@@ -96,6 +98,6 @@ export class Order {
   @OneToMany(() => OrderHistoryEvent, (event) => event.order)
   history!: OrderHistoryEvent[];
 
-  @OneToOne(() => DeliveryStop, (stop) => stop.order)
-  stop!: DeliveryStop | null;
+  @OneToMany(() => DeliveryStop, (stop) => stop.order)
+  stops!: DeliveryStop[];
 }

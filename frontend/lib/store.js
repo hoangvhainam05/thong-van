@@ -9,7 +9,7 @@ import { buildSeed } from "./mock/seed";
 import { can, LOCKED, ROLES } from "./rbac";
 import { addDays, hm, toMin, ymd } from "./format";
 import { etaWindow, optimize } from "./optimizer";
-import { api, loadToken } from "./api";
+import { api, loadToken, saveToken } from "./api";
 
 const KEY = "thongvan_demo_v3";
 const StoreCtx = createContext(null);
@@ -29,6 +29,15 @@ function load() {
   return buildSeed();
 }
 
+// Không trộn dữ liệu khách mẫu với tài khoản MySQL có thể trùng ID.
+function prepareAccountData(d, user) {
+  if (!user.permissions.includes('order.place') && !user.permissions.includes('order.track_own')) return;
+  d.orders = d.orders.filter(o => o.authUserId === user.id);
+  d.notifications = [];
+  const existing = d.customers.find(c => c.authUserId === user.id);
+  d.customers = [{ ...(existing || { addresses: [] }), id: user.customerId, authUserId: user.id, name: user.name, phone: user.phone, email: user.email }];
+}
+
 function save(s) {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
@@ -40,6 +49,8 @@ function mapServerOrder(row, localId, customerId = 0) {
   return {
     id: localId,
     serverId: row.id,
+    routeId: row.route_id,
+    sequence: row.sequence,
     source: row.source || "WEB",
     inventoryReserved: Boolean(row.inventory_reserved),
     code: row.code,
@@ -57,6 +68,7 @@ function mapServerOrder(row, localId, customerId = 0) {
       productId: item.product_id,
       name: item.product_name,
       price: Number(item.unit_price),
+      install: Number(item.install_minutes || 0),
       qty: item.quantity,
     })),
     subtotal: Number(row.subtotal),
@@ -72,6 +84,7 @@ function mapServerOrder(row, localId, customerId = 0) {
       status: row.payment_status || "UNPAID",
     },
     paymentInstructions: row.payment_instructions || null,
+    failReason: [...(row.history || [])].reverse().find((event) => event.event_type === "STATUS" && event.to_value === "FAILED")?.note || "",
     requestedInfo: (row.history || [])
       .filter((event) => event.event_type === "INFO_REQUEST")
       .map((event) => ({ message: event.note, at: event.at })),
@@ -111,15 +124,29 @@ class PermissionError extends Error {}
 
 export function StoreProvider({ children }) {
   const [state, setState] = useState(null);
+  const [catalogStatus, setCatalogStatus] = useState("loading");
+  const [shippingStatus, setShippingStatus] = useState("loading");
   const [toasts, setToasts] = useState([]);
   const stateRef = useRef(null);
   stateRef.current = state;
 
   useEffect(() => {
-    setState(load());
+    const initial = load();
+    initial.session = null;
+    initial.users = [];
+    initial.settings.shippingFee = null;
+    initial.settings.freeShipFrom = null;
+    const token = loadToken();
+    if (!token) { setState(initial); return; }
+    api('/api/auth/me', { token }).then((user) => {
+      initial.users = [user];
+      prepareAccountData(initial, user);
+      initial.session = { userId: user.id };
+      initial.roleMatrix[user.role] = user.permissions;
+      setState(initial);
+    }).catch(() => { saveToken(''); setState(initial); });
   }, []);
-  // Danh mục công khai lấy từ API khi backend/MySQL sẵn sàng; nếu chưa chạy thì
-  // giữ dữ liệu mẫu để giao diện demo vẫn mở được.
+  // Danh mục thật phải đến từ API; màn sản phẩm hiện lỗi nếu API không sẵn sàng.
   useEffect(() => {
     if (!state?.seedDate) return undefined;
     let cancelled = false;
@@ -127,9 +154,21 @@ export function StoreProvider({ children }) {
       .then((products) => {
         if (!cancelled && Array.isArray(products)) {
           setState((current) => current ? { ...current, products } : current);
+          setCatalogStatus("ready");
         }
       })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setCatalogStatus("error"); });
+    return () => { cancelled = true; };
+  }, [state?.seedDate]);
+  useEffect(() => {
+    if (!state?.seedDate) return undefined;
+    let cancelled = false;
+    api('/api/orders/payment-instructions').then((config) => {
+      if (!cancelled && Number.isFinite(config.shipping_fee) && Number.isFinite(config.free_ship_from)) {
+        setState(current => current ? { ...current, settings: { ...current.settings, shippingFee: config.shipping_fee, freeShipFrom: config.free_ship_from } } : current);
+        setShippingStatus('ready');
+      } else if (!cancelled) setShippingStatus('error');
+    }).catch(() => { if (!cancelled) setShippingStatus('error'); });
     return () => { cancelled = true; };
   }, [state?.seedDate]);
   useEffect(() => {
@@ -144,7 +183,7 @@ export function StoreProvider({ children }) {
 
   const value = useMemo(() => {
     if (!state) return { ready: false, toasts, toast };
-    const user = state.session ? state.users.find((u) => u.id === state.session.userId && u.active) : null;
+    const user = state.session ? state.users.find((u) => u.id === state.session.userId) : null;
     const role = user?.role || null;
     const allowed = (perm) => can(state.roleMatrix, role, perm);
 
@@ -186,51 +225,39 @@ export function StoreProvider({ children }) {
 
     const actions = {
       // ------------------------------------------------------------ tài khoản
-      login(identifier, password) {
-        const id = identifier.trim().toLowerCase();
-        const u = stateRef.current.users.find((x) => x.email.toLowerCase() === id || x.phone === id);
-        if (!u || u.password !== password) return { ok: false, error: "Email/số điện thoại hoặc mật khẩu chưa đúng." };
-        if (!u.active) return { ok: false, error: "Tài khoản đã bị khoá. Liên hệ quản trị viên." };
-        mutate((d) => {
-          d.session = { userId: u.id, at: new Date().toISOString() };
-          if (u.role !== "CUSTOMER") log(d, "Đăng nhập", `${u.email} (${ROLES[u.role].label})`);
-        });
-        return { ok: true, user: u };
+      async refreshSession() {
+        const updated = await api('/api/auth/me', { token: loadToken() });
+        mutate((d) => { d.users = [updated]; d.roleMatrix[updated.role] = updated.permissions; });
+        return updated;
+      },
+      async login(identifier, password) {
+        try {
+          const result = await api('/api/auth/login', { method: 'POST', body: { identifier, password } });
+          saveToken(result.token);
+          mutate((d) => { d.users = [result.user]; prepareAccountData(d, result.user); d.session = { userId: result.user.id }; d.roleMatrix[result.user.role] = result.user.permissions; });
+          return { ok: true, user: result.user };
+        } catch (e) { return { ok: false, error: e.message }; }
       },
       logout() {
-        mutate((d) => {
-          d.session = null;
-        });
+        const token = loadToken();
+        if (token) api('/api/auth/logout', { method: 'POST', token }).catch(() => {});
+        saveToken('');
+        mutate((d) => { d.session = null; d.users = []; });
       },
-      register({ name, phone, email, password }) {
-        const s = stateRef.current;
-        if (s.users.some((u) => u.phone === phone || (email && u.email.toLowerCase() === email.toLowerCase())))
-          return { ok: false, error: "Số điện thoại hoặc email đã được dùng cho một tài khoản khác." };
-        mutate((d) => {
-          let c = d.customers.find((x) => x.phone === phone);
-          if (!c) {
-            c = { id: Math.max(...d.customers.map((x) => x.id)) + 1, name, phone, email, createdAt: new Date().toISOString(), addresses: [] };
-            d.customers.push(c);
-          }
-          const uid = Math.max(...d.users.map((x) => x.id)) + 1;
-          d.users.push({ id: uid, name, email: email || `${phone}@khach.local`, phone, password, role: "CUSTOMER", active: true, customerId: c.id });
-          d.session = { userId: uid, at: new Date().toISOString() };
-        });
-        return { ok: true };
+      async register({ name, phone, email, password }) {
+        try {
+          const result = await api('/api/auth/register', { method: 'POST', body: { name, phone, ...(email ? { email } : {}), password } });
+          saveToken(result.token);
+          mutate((d) => { d.users = [result.user]; prepareAccountData(d, result.user); d.session = { userId: result.user.id }; d.roleMatrix[result.user.role] = result.user.permissions; });
+          return { ok: true, user: result.user };
+        } catch (e) { return { ok: false, error: e.message }; }
       },
-      updateProfile: act(({ name, email }) =>
-        mutate((d) => {
-          const u = d.users.find((x) => x.id === user.id);
-          Object.assign(u, { name, email });
-          const c = d.customers.find((x) => x.id === user.customerId);
-          if (c) Object.assign(c, { name, email });
-        }), "Đã lưu thông tin"),
-      changePassword: act((oldPw, newPw) =>
-        mutate((d) => {
-          const u = d.users.find((x) => x.id === user.id);
-          if (u.password !== oldPw) throw new Error("Mật khẩu hiện tại chưa đúng.");
-          u.password = newPw;
-        }), "Đã đổi mật khẩu"),
+      async updateProfile(input) {
+        try { const updated = await api('/api/auth/me', { method:'PATCH', token:loadToken(), body:{ name:input.name, ...(input.email ? {email:input.email} : {}) } }); mutate(d => { d.users = [updated]; }); toast('Đã lưu thông tin'); return true; } catch(e) { toast(e.message,'bad'); return false; }
+      },
+      async changePassword(oldPw, newPw) {
+        try { await api('/api/auth/change-password', { method:'POST', token:loadToken(), body:{currentPassword:oldPw,newPassword:newPw} }); toast('Đã đổi mật khẩu'); return true; } catch(e) { toast(e.message,'bad'); return false; }
+      },
       saveAddress: act((addr) =>
         mutate((d) => {
           need("order.place");
@@ -297,6 +324,7 @@ export function StoreProvider({ children }) {
             const c = d.customers.find((x) => x.id === user.customerId);
             const id = Math.max(0, ...d.orders.map((o) => o.id)) + 1;
             created = mapServerOrder(saved, id, c.id);
+            created.authUserId = user.id;
             created.district = address.district || "";
             created.note = note || "";
             d.orders.push(created);
@@ -344,7 +372,7 @@ export function StoreProvider({ children }) {
             let serverOrder;
             if (order.serverId) {
               const token = loadToken();
-              if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+              if (!token) throw new Error("Vui lòng đăng nhập để xử lý đơn.");
               serverOrder = await api(`/api/orders/${order.serverId}/status`, { method: "PATCH", body: { status: "CONFIRMED" }, token });
             }
             mutate((d) => {
@@ -373,7 +401,7 @@ export function StoreProvider({ children }) {
             let serverOrder;
             if (order.serverId) {
               const token = loadToken();
-              if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+              if (!token) throw new Error("Vui lòng đăng nhập để xử lý đơn.");
               serverOrder = await api(`/api/orders/${order.serverId}/status`, { method: "PATCH", body: { status: "READY" }, token });
             }
             mutate((d) => {
@@ -399,7 +427,7 @@ export function StoreProvider({ children }) {
           if (order.payment.method !== "BANK") throw new Error("Đơn này không thanh toán bằng chuyển khoản.");
           if (order.serverId) {
             const token = loadToken();
-            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xác nhận thanh toán.");
+            if (!token) throw new Error("Vui lòng đăng nhập để xác nhận thanh toán.");
             await api(`/api/orders/${order.serverId}/payment`, { method: "PATCH", body: { status: "PAID" }, token });
           }
           mutate((d) => {
@@ -419,11 +447,11 @@ export function StoreProvider({ children }) {
         try {
           need("order.cancel");
           const order = stateRef.current.orders.find((x) => x.id === id);
-          if (!order || !["PENDING", "CONFIRMED", "READY"].includes(order.status)) throw new Error("Chỉ huỷ được đơn chưa xếp tuyến.");
+          if (!order || !["PENDING", "CONFIRMED", "READY", "SCHEDULED", "FAILED"].includes(order.status)) throw new Error("Không thể huỷ đơn đang giao, đã giao hoặc đã huỷ.");
           let serverOrder;
           if (order.serverId) {
             const token = loadToken();
-            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+            if (!token) throw new Error("Vui lòng đăng nhập để xử lý đơn.");
             serverOrder = await api(`/api/orders/${order.serverId}/status`, { method: "PATCH", body: { status: "CANCELLED", reason }, token });
           }
           mutate((d) => {
@@ -438,6 +466,7 @@ export function StoreProvider({ children }) {
             notify(d, current, "Đơn đã bị huỷ", `Đơn ${current.code} đã được huỷ. Lý do: ${reason}.`);
             log(d, "Huỷ đơn", `${current.code}: ${reason}`);
           });
+          if (order.serverId) await actions.loadOrders();
           toast("Đã huỷ đơn");
           return true;
         } catch (error) {
@@ -452,7 +481,7 @@ export function StoreProvider({ children }) {
           if (!order || !["PENDING", "CONFIRMED"].includes(order.status)) throw new Error("Chỉ yêu cầu bổ sung thông tin cho đơn đang xử lý.");
           if (order.serverId) {
             const token = loadToken();
-            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để xử lý đơn trên máy chủ.");
+            if (!token) throw new Error("Vui lòng đăng nhập để xử lý đơn.");
             await api(`/api/orders/${order.serverId}/request-info`, { method: "POST", body: { message }, token });
           }
           mutate((d) => {
@@ -477,7 +506,7 @@ export function StoreProvider({ children }) {
           if (!order || ["SCHEDULED", "OUT_FOR_DELIVERY", "DELIVERED"].includes(order.status)) throw new Error("Đơn đã xếp tuyến, không sửa được vị trí.");
           if (order.serverId) {
             const token = loadToken();
-            if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để sửa vị trí trên máy chủ.");
+            if (!token) throw new Error("Vui lòng đăng nhập để sửa vị trí.");
             await api(`/api/orders/${order.serverId}/location`, { method: "PATCH", body: { lat, lng, address }, token });
           }
           mutate((d) => {
@@ -511,38 +540,26 @@ export function StoreProvider({ children }) {
         try {
           const rows = await api("/api/orders", { token });
           if (!Array.isArray(rows)) throw new Error("Dữ liệu đơn hàng từ máy chủ không hợp lệ.");
-          mutate((d) => {
-            const prior = new Map(d.orders.filter((o) => o.serverId).map((o) => [o.serverId, o]));
-            const codes = new Set(rows.map((o) => o.code));
-            d.orders = d.orders.filter((o) => o.serverId || !codes.has(o.code));
-            let nextId = Math.max(0, ...d.orders.map((o) => o.id));
-            for (const row of rows) {
-              const previous = prior.get(row.id);
-              const matching = d.orders.find((o) => o.code === row.code);
-              const localId = previous?.id || matching?.id || ++nextId;
-              const customerId = d.customers.find((c) => c.phone === row.phone)?.id || 0;
-              const mapped = mapServerOrder(row, localId, customerId);
-              if (previous) {
-                const i = d.orders.findIndex((o) => o.serverId === row.id);
-                if (i >= 0) d.orders[i] = mapped;
-                else d.orders.push(mapped);
-              } else if (matching) {
-                const i = d.orders.findIndex((o) => o.id === matching.id);
-                d.orders[i] = mapped;
-              } else d.orders.push(mapped);
-            }
-          });
+          mutate((d) => { d.orders = rows.map((row) => mapServerOrder(row, row.id, row.customer_id)); });
           return true;
         } catch (error) {
+          mutate((d) => { d.orders = []; });
           toast(error.message || "Không tải được đơn hàng từ máy chủ.", "bad");
           return false;
         }
+      },
+      async loadOrder(id) {
+        try {
+          const row = await api(`/api/orders/${id}`, { token: loadToken() });
+          mutate((d) => { d.orders = d.orders.filter((o) => o.id !== row.id || !o.serverId); d.orders = d.orders.filter(o => o.id !== row.id); d.orders.push(mapServerOrder(row, row.id, row.customer_id)); });
+          return true;
+        } catch (error) { toast(error.message || "Không tải được đơn hàng.", "bad"); return false; }
       },
       async createCounterOrder({ customerName, phone, address, lat, lng, deliveryDate, window, paymentMethod, note, items, clientRequestId }) {
         try {
           need("order.confirm");
           const token = loadToken();
-          if (!token) throw new Error("Nhập staff token trong Quản trị sản phẩm để tạo đơn tại quầy.");
+          if (!token) throw new Error("Vui lòng đăng nhập để tạo đơn tại quầy.");
           const saved = await api("/api/orders/counter", {
             method: "POST",
             token,
@@ -571,9 +588,7 @@ export function StoreProvider({ children }) {
               created = existing;
               return;
             }
-            const localId = Math.max(0, ...d.orders.map((o) => o.id)) + 1;
-            const customerId = d.customers.find((c) => c.phone === phone)?.id || 0;
-            created = mapServerOrder(saved, localId, customerId);
+            created = mapServerOrder(saved, saved.id, saved.customer_id);
             d.orders.push(created);
             for (const item of created.items) {
               const product = d.products.find((p) => p.id === item.productId);
@@ -593,7 +608,7 @@ export function StoreProvider({ children }) {
         try {
           need("product.manage");
           const token = loadToken();
-          if (!token) throw new Error("Nhập staff token để lưu sản phẩm vào máy chủ.");
+          if (!token) throw new Error("Vui lòng đăng nhập để lưu sản phẩm.");
           const saved = await api(p.id ? `/api/products/admin/${p.id}` : "/api/products/admin", {
             method: p.id ? "PATCH" : "POST", body: p, token,
           });
@@ -614,7 +629,7 @@ export function StoreProvider({ children }) {
         try {
           need("product.manage");
           const token = loadToken();
-          if (!token) throw new Error("Nhập staff token để cập nhật sản phẩm.");
+          if (!token) throw new Error("Vui lòng đăng nhập để cập nhật sản phẩm.");
           const product = stateRef.current.products.find((x) => x.id === id);
           if (!product) throw new Error("Không tìm thấy sản phẩm.");
           const saved = await api(`/api/products/admin/${id}/visibility`, {
@@ -838,14 +853,17 @@ export function StoreProvider({ children }) {
       resetDemo: () => {
         const fresh = buildSeed();
         fresh.session = stateRef.current.session;
+        fresh.users = stateRef.current.users;
+        if (user) prepareAccountData(fresh, user);
+        fresh.roleMatrix = stateRef.current.roleMatrix;
         stateRef.current = fresh;
         setState(fresh);
         toast("Đã khôi phục dữ liệu mẫu");
       },
     };
 
-    return { ready: true, state, user, role, can: allowed, actions, toasts, toast, productById };
-  }, [state, toasts, toast]);
+    return { ready: true, catalogStatus, shippingStatus, state, user, role, can: allowed, actions, toasts, toast, productById };
+  }, [state, catalogStatus, shippingStatus, toasts, toast]);
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

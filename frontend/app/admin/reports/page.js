@@ -1,85 +1,14 @@
 "use client";
-
-import { useState } from "react";
-import { dayStats, useStore } from "@/lib/store";
-import { addDays, num, shortDate, vndShort, ymd } from "@/lib/format";
-import { RequirePerm } from "@/components/Guard";
-import { PageHead } from "@/components/AdminShell";
-import Bars from "@/components/Bars";
-import { Kpi, Seg } from "@/components/ui";
-
-function Reports() {
-  const { state } = useStore();
-  const [range, setRange] = useState(14);
-  const today = ymd();
-  const days = Array.from({ length: range }, (_, i) => addDays(today, -range + i)); // không tính hôm nay (chưa xong)
-  const stats = days.map((d) => ({ d, ...dayStats(state, d) }));
-  const sum = (k) => stats.reduce((s, x) => s + (x[k] || 0), 0);
-  const completed = sum("completed");
-  const onTime = stats.reduce((s, x) => s + (x.onTimeRate || 0) * x.completed, 0);
-  const inRange = state.orders.filter((o) => o.deliveryDate >= days[0] && o.deliveryDate < today);
-  const failReasons = Object.entries(inRange.filter((o) => o.status === "FAILED").reduce((m, o) => ({ ...m, [o.failReason]: (m[o.failReason] || 0) + 1 }), {})).sort((a, b) => b[1] - a[1]);
-  const byDistrict = Object.entries(inRange.reduce((m, o) => ({ ...m, [o.district || "Khác"]: (m[o.district || "Khác"] || 0) + 1 }), {})).sort((a, b) => b[1] - a[1]);
-  const productSales = {};
-  inRange.filter((o) => o.status === "DELIVERED").forEach((o) => o.items.forEach((it) => { productSales[it.name] = (productSales[it.name] || 0) + it.qty; }));
-  const topProducts = Object.entries(productSales).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const maxD = Math.max(1, ...byDistrict.map((x) => x[1]));
-
-  return (
-    <>
-      <PageHead title="Báo cáo giao hàng" sub="Hiệu quả tối ưu tuyến và chất lượng giao, không tính ngày hôm nay.">
-        <Seg value={range} onChange={setRange} items={[{ value: 7, label: "7 ngày" }, { value: 14, label: "14 ngày" }, { value: 21, label: "21 ngày" }]} />
-      </PageHead>
-      <div className="kpis" style={{ marginBottom: 16 }}>
-        <Kpi accent label="Đơn đã giao" value={num(sum("delivered"))} delta={`${sum("failed")} thất bại, ${sum("cancelled")} huỷ`} />
-        <Kpi label="Doanh thu" value={vndShort(sum("revenue"))} />
-        <Kpi label="Đúng khung giờ" value={`${completed ? Math.round((onTime / completed) * 100) : 0}%`} delta={`${completed} điểm giao`} up />
-        <Kpi label="Tổng km chạy" value={`${num(sum("km"))} km`} delta={`Thủ công ước tính ${num(sum("baseline"))} km`} />
-        <Kpi label="Km tiết kiệm" value={`${num(sum("savedKm"))} km`} delta={`${sum("baseline") ? Math.round((sum("savedKm") / sum("baseline")) * 100) : 0}% quãng đường`} up />
-      </div>
-      <div className="grid-2" style={{ marginBottom: 16 }}>
-        <section className="panel">
-          <div className="panel-head"><h3>Km tiết kiệm mỗi ngày</h3><span className="small muted">so với giao theo thứ tự đặt hàng</span></div>
-          <div className="panel-body"><Bars highlightLast={false} data={stats.map((s) => ({ label: shortDate(s.d), value: Math.round(s.savedKm) }))} /></div>
-        </section>
-        <section className="panel">
-          <div className="panel-head"><h3>Tỷ lệ đúng khung giờ</h3><span className="small muted">%</span></div>
-          <div className="panel-body"><Bars highlightLast={false} data={stats.map((s) => ({ label: shortDate(s.d), value: s.onTimeRate != null ? Math.round(s.onTimeRate * 100) : 0, color: s.onTimeRate != null && s.onTimeRate < 0.85 ? "var(--move)" : "var(--go)" }))} /></div>
-        </section>
-      </div>
-      <div className="grid-2">
-        <section className="panel">
-          <div className="panel-head"><h3>Đơn theo khu vực</h3></div>
-          <div className="panel-body stack-sm">
-            {byDistrict.map(([d, n]) => (
-              <div key={d} className="row small" style={{ flexWrap: "nowrap" }}>
-                <span style={{ width: 120 }}>{d}</span>
-                <div className="grow progress" style={{ height: 10 }}><span style={{ width: `${(n / maxD) * 100}%`, background: "var(--road)" }} /></div>
-                <span style={{ width: 30 }} className="right">{n}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-        <div className="stack">
-          <section className="panel">
-            <div className="panel-head"><h3>Lý do giao thất bại</h3></div>
-            <div className="panel-body stack-sm small">
-              {failReasons.length === 0 && <span className="muted">Không có đơn giao thất bại.</span>}
-              {failReasons.map(([r, n]) => <div key={r} className="row between"><span>{r}</span><b>{n}</b></div>)}
-            </div>
-          </section>
-          <section className="panel">
-            <div className="panel-head"><h3>Sản phẩm giao nhiều</h3></div>
-            <div className="panel-body stack-sm small">
-              {topProducts.map(([name, n]) => <div key={name} className="row between"><span className="grow">{name}</span><b>{n}</b></div>)}
-            </div>
-          </section>
-        </div>
-      </div>
-    </>
-  );
+import { useEffect,useState } from 'react';
+import { api,loadToken } from '@/lib/api';
+import { addDays,dateLabel,vnd,ymd } from '@/lib/format';
+import { RequirePerm } from '@/components/Guard';
+import { PageHead } from '@/components/AdminShell';
+import { Kpi,Loading } from '@/components/ui';
+function Reports(){
+ const [range,setRange]=useState({from:addDays(ymd(),-13),to:ymd()}),[data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+ useEffect(()=>{let active=true;setLoading(true);api(`/api/admin/reports?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`,{token:loadToken()}).then(x=>{if(active){setData(x);setError('');}}).catch(e=>{if(active){setData(null);setError(e.message);}}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[range]);
+ const t=data?.totals;
+ return <><PageHead title="Báo cáo giao hàng" sub="Đơn theo ngày giao hiện tại; kết quả từng lần giao theo ngày hoàn tất; tuyến theo ngày tuyến."><label className="small">Từ <input className="input" type="date" value={range.from} onChange={e=>setRange({...range,from:e.target.value})}/></label><label className="small">Đến <input className="input" type="date" value={range.to} onChange={e=>setRange({...range,to:e.target.value})}/></label></PageHead>{error&&<div className="notice bad">{error}</div>}{loading?<Loading/>:t&&<><div className="kpis" style={{marginBottom:16}}><Kpi accent label="Tổng đơn" value={t.orders} delta={`${t.delivered_orders} đã giao · ${t.cancelled} hủy`}/><Kpi label="Giá trị đơn đã giao" value={vnd(t.revenue)} delta="Không phải số tiền đã đối soát"/><Kpi label="Đúng khung giờ" value={t.on_time_rate==null?'—':`${Math.round(t.on_time_rate*100)}%`} delta={`${t.on_time}/${t.timed} lần giao có giờ đến`}/><Kpi label="Lần giao thất bại" value={t.failed_attempts} delta={t.failure_rate==null?'Chưa có lần giao':`${Math.round(t.failure_rate*100)}% trên ${t.attempts} lần giao`}/><Kpi label="Km kế hoạch" value={`${t.planned_km.toFixed(1)} km`} delta={`${t.routes} tuyến đã chốt`}/><Kpi label="Chênh lệch so với cơ sở" value={t.comparable_routes ? `${t.saved_km.toFixed(1)} km` : '—'} delta={`${t.comparable_routes} tuyến có số liệu so sánh`}/></div><div className="notice small" style={{marginBottom:16}}>Km là quãng đường kế hoạch, không phải GPS thực tế. Chênh lệch = km cơ sở trừ km kế hoạch trên các tuyến có cơ sở; giá trị âm là dài hơn.</div><div className="panel table-wrap"><table className="table"><thead><tr><th>Ngày</th><th>Đơn</th><th>Giá trị đã giao</th><th>Lần giao thành công / thất bại</th><th>Đúng giờ</th><th>Km kế hoạch</th></tr></thead><tbody>{data.series.length===0?<tr><td colSpan={6}>Không có dữ liệu trong khoảng này.</td></tr>:data.series.map(row=><tr key={row.date}><td>{dateLabel(row.date)}</td><td>{row.orders}</td><td>{vnd(row.revenue)}</td><td>{row.delivered_attempts} / {row.failed_attempts}</td><td>{row.timed?`${row.on_time}/${row.timed}`:'—'}</td><td>{row.planned_km.toFixed(1)}</td></tr>)}</tbody></table></div></>}</>;
 }
-
-export default function ReportsPage() {
-  return <RequirePerm perm="report.view"><Reports /></RequirePerm>;
-}
+export default function ReportsPage(){return <RequirePerm perm="report.view"><Reports/></RequirePerm>;}

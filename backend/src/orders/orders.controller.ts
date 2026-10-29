@@ -9,9 +9,9 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { StaffTokenGuard } from '../common/staff-token.guard';
+import { AuthGuard, RequirePermission } from '../auth/auth.guard';
 import { OrderStatus } from '../database/entities';
-import { CreateOrderDto, LocationUpdateDto, PaymentUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
+import { CreateOrderDto, LocationUpdateDto, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('api/orders')
@@ -19,7 +19,8 @@ export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
   @Patch(':orderId/status')
-  @UseGuards(StaffTokenGuard)
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.status')
   updateStatus(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() body: StatusUpdateDto,
@@ -28,7 +29,8 @@ export class OrdersController {
   }
 
   @Patch(':orderId/payment')
-  @UseGuards(StaffTokenGuard)
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.confirm')
   updatePayment(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() body: PaymentUpdateDto,
@@ -37,7 +39,8 @@ export class OrdersController {
   }
 
   @Post(':orderId/request-info')
-  @UseGuards(StaffTokenGuard)
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.confirm')
   requestInfo(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() body: RequestInfoDto,
@@ -46,12 +49,20 @@ export class OrdersController {
   }
 
   @Patch(':orderId/location')
-  @UseGuards(StaffTokenGuard)
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.edit_location')
   updateLocation(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() body: LocationUpdateDto,
   ) {
     return this.orders.updateLocation(orderId, body);
+  }
+
+  @Patch(':orderId/priority')
+  @UseGuards(AuthGuard)
+  @RequirePermission('route.optimize')
+  updatePriority(@Param('orderId', ParseIntPipe) orderId: number, @Body() body: PriorityUpdateDto) {
+    return this.orders.updatePriority(orderId, body);
   }
 
   @Post()
@@ -60,13 +71,15 @@ export class OrdersController {
   }
 
   @Post('counter')
-  @UseGuards(StaffTokenGuard)
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.confirm')
   createCounter(@Body() body: CreateOrderDto) {
     return this.orders.create(body, 'COUNTER');
   }
 
   @Get()
-  @UseGuards(StaffTokenGuard)
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.view_all')
   list(
     @Query('delivery_date') deliveryDate?: string,
     @Query('status') status?: OrderStatus,
@@ -77,5 +90,12 @@ export class OrdersController {
   @Get('payment-instructions')
   paymentInstructions() {
     return this.orders.getPaymentInstructions();
+  }
+
+  @Get(':orderId')
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.view_all')
+  async detail(@Param('orderId', ParseIntPipe) orderId: number) {
+    return this.orders.toOut(await this.orders.findOne(orderId));
   }
 }

@@ -45,7 +45,9 @@ export function Empty({ title, children, action }) {
 
 export function Modal({ title, onClose, children, footer, wide }) {
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e) => {
+      if (e.key === "Escape" && (title === "Chọn vị trí giao hàng" || !document.querySelector(".location-map"))) onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);

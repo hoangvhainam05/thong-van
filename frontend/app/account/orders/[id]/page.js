@@ -1,41 +1,14 @@
 "use client";
-
-import Link from "next/link";
-import { Suspense } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import { useStore } from "@/lib/store";
-import OrderTracking from "@/components/OrderTracking";
-import { Empty, Loading } from "@/components/ui";
-
-function Detail() {
-  const { id } = useParams();
-  const params = useSearchParams();
-  const { state, user, actions } = useStore();
-  const order = state.orders.find((o) => o.id === Number(id));
-  // khách chỉ xem được đơn của chính mình
-  if (!order || order.customerId !== user.customerId)
-    return <div className="panel"><Empty title="Không tìm thấy đơn hàng" action={<Link className="btn" href="/account/orders">Về danh sách đơn</Link>} /></div>;
-
-  return (
-    <div className="stack">
-      <Link href="/account/orders" className="small muted">‹ Đơn hàng của tôi</Link>
-      {params.get("new") && (
-        <div className="notice ok">Đặt hàng thành công. Mã đơn của bạn là <b>{order.code}</b>. Cửa hàng sẽ gọi xác nhận trong ít phút.</div>
-      )}
-      <OrderTracking
-        order={order}
-        actions={order.status === "PENDING" && !order.serverId && (
-          <div className="row">
-            <button className="btn secondary sm" onClick={() => confirm("Huỷ đơn này?") && actions.cancelOwnOrder(order.id)}>Huỷ đơn</button>
-            <span className="small muted">Bạn có thể tự huỷ khi đơn chưa được xác nhận.</span>
-          </div>
-        )}
-      />
-      {order.status === "PENDING" && order.serverId && <p className="small muted">Muốn huỷ đơn, vui lòng liên hệ cửa hàng để nhân viên xử lý trên hệ thống.</p>}
-    </div>
-  );
+import Link from 'next/link';
+import { Suspense, useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import { api, loadToken } from '@/lib/api';
+import RemoteTracking from '@/components/RemoteTracking';
+import { Loading } from '@/components/ui';
+function Detail(){
+ const {id}=useParams(), params=useSearchParams();const [tracking,setTracking]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+ useEffect(()=>{let mounted=true;async function refresh(){try{const data=await api(`/api/account/orders/${encodeURIComponent(id)}`,{token:loadToken()});if(mounted){setTracking(data);setError('');}}catch(e){if(mounted){setTracking(null);setError(e.message);}}finally{if(mounted)setLoading(false);}}refresh();const timer=setInterval(refresh,30000);return()=>{mounted=false;clearInterval(timer);};},[id]);
+ if(loading)return <Loading/>;
+ return <div className="stack"><Link href="/account/orders" className="small muted">‹ Đơn hàng của tôi</Link>{error && <div className="notice bad">{error}</div>}{tracking && <>{params.get('new') && <div className="notice ok">Đặt hàng thành công. Mã đơn của bạn là <b>{tracking.code}</b>.</div>}<RemoteTracking tracking={tracking} proofRequest={{path:`/api/account/orders/${id}/proof`,options:{token:loadToken()}}}/></>}</div>;
 }
-
-export default function OrderDetailPage() {
-  return <Suspense fallback={<Loading />}><Detail /></Suspense>;
-}
+export default function OrderDetailPage(){return <Suspense fallback={<Loading/>}><Detail/></Suspense>;}

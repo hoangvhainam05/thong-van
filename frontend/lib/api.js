@@ -1,12 +1,13 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function api(path, { method = "GET", body, token } = {}) {
-  const headers = { "Content-Type": "application/json" };
-  if (token) headers["X-Staff-Token"] = token;
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  const headers = isForm ? {} : { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
     cache: "no-store",
   });
   const data = await res.json().catch(() => null);
@@ -37,14 +38,14 @@ export const today = () => {
 // Token nhân viên lưu trong sessionStorage (mất khi đóng tab)
 export const loadToken = () => {
   try {
-    return sessionStorage.getItem("tv_staff_token") || "";
+    return sessionStorage.getItem("tv_session_token") || "";
   } catch {
     return "";
   }
 };
 export const saveToken = (t) => {
   try {
-    sessionStorage.setItem("tv_staff_token", t);
+    sessionStorage.setItem("tv_session_token", t);
   } catch {}
 };
 

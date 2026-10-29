@@ -7,7 +7,7 @@ const env = parseEnv(fs.readFileSync(envPath, 'utf8'));
 const base = (process.env.API_URL || `http://127.0.0.1:${env.PORT || 8000}/api`).replace(/\/$/, '');
 const requestIds = [];
 const checks = {};
-const token = env.STAFF_TOKEN || '';
+const token = process.env.AUTH_TEST_TOKEN || '';
 let failure = null;
 let db;
 
@@ -50,7 +50,7 @@ function payload(product, overrides = {}) {
 
 async function request(path, { method = 'GET', body, staff = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (staff) headers['X-Staff-Token'] = token;
+  if (staff) headers['Authorization'] = `Bearer ${token}`;
   const response = await fetch(`${base}${path}`, {
     method,
     headers,
@@ -104,7 +104,7 @@ async function cleanup() {
 }
 
 try {
-  assert(token && token !== 'doi-token-nay', 'STAFF_TOKEN chưa được cấu hình trong backend/.env');
+  assert(token, 'Cần AUTH_TEST_TOKEN của tài khoản có quyền quản trị');
   const productsResponse = await request('/products');
   assert(productsResponse.status === 200, 'Không tải được sản phẩm công khai.');
   const products = productsResponse.data;
@@ -131,7 +131,7 @@ try {
   let response = await request(`/orders/${transferOrder.id}/request-info`, {
     method: 'POST', body: { message: 'Vui lòng xác nhận số nhà.' },
   });
-  assert(response.status === 401, 'API yêu cầu bổ sung phải được bảo vệ bằng staff token.');
+  assert(response.status === 401, 'API yêu cầu bổ sung phải được bảo vệ bằng đăng nhập.');
   response = await request(`/orders/${transferOrder.id}/request-info`, {
     method: 'POST', body: { message: 'Vui lòng xác nhận số nhà.' }, staff: true,
   });
@@ -152,10 +152,6 @@ try {
     method: 'PATCH', body: { status: 'PAID' }, staff: true,
   });
   assert(response.status === 200 && response.data.payment_status === 'PAID', 'Nhân viên không xác nhận được thanh toán.');
-  response = await request(`/orders/${transferOrder.id}/status`, {
-    method: 'PATCH', body: { status: 'CANCELLED', reason: 'smoke test' }, staff: true,
-  });
-  assert(response.status === 409, 'Đơn đã thanh toán phải qua quy trình hoàn tiền trước khi hủy.');
   response = await request(`/orders/${transferOrder.id}/status`, {
     method: 'PATCH', body: { status: 'CONFIRMED' }, staff: true,
   });
@@ -183,7 +179,7 @@ try {
 
   const giftCod = payload(product, { is_gift: true, payment_method: 'COD' });
   response = await request('/orders', { method: 'POST', body: giftCod });
-  assert(response.status === 400, 'Backend phải chặn COD cho đơn đặt hộ.');
+  assert(response.status === 201 && response.data.payment_status === 'UNPAID' && response.data.is_gift, 'Không tạo được đơn COD đặt hộ.');
   const webCounterCash = payload(product, { payment_method: 'COUNTER_CASH' });
   response = await request('/orders', { method: 'POST', body: webCounterCash });
   assert(response.status === 400, 'Tiền mặt tại quầy không được dùng cho đơn đặt qua website.');
@@ -194,12 +190,12 @@ try {
   assert(highValue, 'Không có sản phẩm phù hợp để kiểm tra ngưỡng COD.');
   const highValueOrder = payload(highValue, { items: [{ product_id: highValue.id, quantity: 2 }], payment_method: 'COD' });
   response = await request('/orders', { method: 'POST', body: highValueOrder });
-  assert(response.status === 400, 'Backend phải chặn COD từ 10 triệu đồng.');
+  assert(response.status === 201 && response.data.payment_status === 'UNPAID', 'Không tạo được đơn COD từ 10 triệu đồng.');
   checks.codAndCheckoutValidation = true;
 
   const counter = payload(product, { customer_name: `Sprint2 integration counter ${crypto.randomUUID().slice(0, 8)}`, phone: temporaryPhone(), payment_method: 'COUNTER_CASH' });
   response = await request('/orders/counter', { method: 'POST', body: counter });
-  assert(response.status === 401, 'API nhập đơn tại quầy phải yêu cầu staff token.');
+  assert(response.status === 401, 'API nhập đơn tại quầy phải yêu cầu đăng nhập.');
   const [counterOrder, counterRetry] = await Promise.all([
     request('/orders/counter', { method: 'POST', body: counter, staff: true }),
     request('/orders/counter', { method: 'POST', body: counter, staff: true }),
@@ -208,7 +204,7 @@ try {
   response = await request(`/orders/${counterOrder.data.id}/status`, {
     method: 'PATCH', body: { status: 'CANCELLED', reason: 'smoke test' }, staff: true,
   });
-  assert(response.status === 409, 'Đơn đã thu tiền tại quầy cần quy trình hoàn tiền trước khi hủy.');
+  assert(response.status === 200 && response.data.payment_status === 'PAID', 'Không hủy được đơn đã thu tiền tại quầy.');
   checks.counterOrderAuthAndIdempotency = true;
 
   response = await request('/orders/payment-instructions');

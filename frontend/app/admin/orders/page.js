@@ -1,9 +1,12 @@
 "use client";
 
+import LocationPicker from "@/components/LocationPicker";
+import CancelOrderModal from "@/components/CancelOrderModal";
+
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ORDER_STATUS, routeOfOrder, useStore } from "@/lib/store";
+import { ORDER_STATUS, useStore } from "@/lib/store";
 import { addDays, dateLabel, vnd, ymd } from "@/lib/format";
 import { Can, RequirePerm } from "@/components/Guard";
 import { PageHead } from "@/components/AdminShell";
@@ -15,12 +18,16 @@ const PAGE = 25;
 function Orders() {
   const { state, can, actions } = useStore();
   const params = useSearchParams();
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(false);
   const [tab, setTab] = useState(params.get("status") || "ALL");
   const [day, setDay] = useState("all");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState([]);
   const [page, setPage] = useState(1);
+  const [cancelOrder, setCancelOrder] = useState(null);
   const [counterOpen, setCounterOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [counter, setCounter] = useState({ customerName: "", phone: "", address: "", deliveryDate: addDays(ymd(), 1), start: "08:00", end: "17:00", productId: "", quantity: 1, paymentMethod: "COUNTER_CASH", note: "" });
   const [bankAvailable, setBankAvailable] = useState(false);
   const [counterSaving, setCounterSaving] = useState(false);
@@ -28,7 +35,7 @@ function Orders() {
   const counterRequestId = useRef(null);
   const today = ymd();
 
-  useEffect(() => { actions.loadOrders(); }, []);
+  useEffect(() => { actions.loadOrders().then(ok => { setOrdersError(!ok); setOrdersLoading(false); }); }, []);
   useEffect(() => {
     let active = true;
     api("/api/orders/payment-instructions")
@@ -55,6 +62,8 @@ function Orders() {
   const selected = list.filter((o) => sel.includes(o.id));
   const toggle = (id) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
+  if (ordersLoading) return <Loading />;
+  if (ordersError) return <div className="notice bad">Không tải được đơn từ máy chủ. Vui lòng tải lại trang.</div>;
   return (
     <>
       <PageHead title="Đơn hàng" sub="Xác nhận đơn, chuẩn bị hàng và theo dõi tình trạng giao.">
@@ -97,8 +106,6 @@ function Orders() {
               </thead>
               <tbody>
                 {shown.map((o) => {
-                  const r = routeOfOrder(state, o.id);
-                  const stop = r?.stops.find((s) => s.orderId === o.id);
                   return (
                     <tr key={o.id} className={sel.includes(o.id) ? "selected" : ""}>
                       {can("order.confirm") && <td><input type="checkbox" aria-label={`Chọn ${o.code}`} checked={sel.includes(o.id)} onChange={() => toggle(o.id)} /></td>}
@@ -110,13 +117,14 @@ function Orders() {
                       </td>
                       <td className="small" style={{ maxWidth: 260 }}>{o.items.map((i) => i.name).join(", ")}</td>
                       <td className="num">{vnd(o.total)}<div className="tiny muted">{o.payment.method === "BANK" ? (o.payment.status === "PAID" ? "Đã chuyển khoản" : "Chờ chuyển khoản") : (o.payment.status === "PAID" ? "Đã thu tiền" : "COD")}</div></td>
-                      <td><OrderBadge status={o.status} />{stop && <div className="tiny muted" style={{ marginTop: 4 }}>{r.code}, điểm {stop.seq}</div>}</td>
+                      <td><OrderBadge status={o.status} />{o.routeId && <div className="tiny muted" style={{ marginTop: 4 }}>Tuyến {o.routeId}, điểm {o.sequence}</div>}</td>
                       <td className="nowrap">
                         <Can perm="order.confirm">
                           {o.status === "PENDING" && (o.payment.method !== "BANK" || o.payment.status === "PAID") && <button className="btn sm" onClick={() => actions.confirmOrders([o.id])}>Xác nhận</button>}
                           {o.status === "PENDING" && o.payment.method === "BANK" && o.payment.status === "PENDING" && <Link className="btn sm secondary" href={`/admin/orders/${o.id}`}>Đối soát</Link>}
                           {o.status === "CONFIRMED" && <button className="btn sm secondary" onClick={() => actions.markReady([o.id])}>Sẵn sàng</button>}
                         </Can>
+                        <Can perm="order.cancel">{["PENDING", "CONFIRMED", "READY", "SCHEDULED", "FAILED"].includes(o.status) && <button className="btn ghost sm" onClick={() => setCancelOrder(o)}>Huỷ đơn</button>}</Can>
                       </td>
                     </tr>
                   );
@@ -132,6 +140,8 @@ function Orders() {
         )}
       </div>
 
+      {cancelOrder && <CancelOrderModal order={cancelOrder} onClose={() => setCancelOrder(null)} />}
+      {pickerOpen && <LocationPicker initial={counter} onClose={() => setPickerOpen(false)} onSelect={(location) => { setCounter((current) => ({ ...current, ...location, address: location.address || current.address })); setPickerOpen(false); }} />}
       {counterOpen && <Modal title="Tạo đơn mua tại quầy" onClose={() => setCounterOpen(false)}
         footer={<><button className="btn secondary" disabled={counterSaving} onClick={() => setCounterOpen(false)}>Huỷ</button><button className="btn" disabled={counterSaving} onClick={async () => {
           const product = state.products.find((p) => p.id === Number(counter.productId));
@@ -142,7 +152,7 @@ function Orders() {
           setCounterError("");
           setCounterSaving(true);
           const order = await actions.createCounterOrder({
-            customerName: counter.customerName.trim(), phone: counter.phone, address: counter.address.trim(),
+            customerName: counter.customerName.trim(), phone: counter.phone, address: counter.address.trim(), lat: counter.lat, lng: counter.lng,
             deliveryDate: counter.deliveryDate, window: { start: counter.start, end: counter.end },
             paymentMethod: counter.paymentMethod, note: counter.note,
             items: [{ product_id: product.id, quantity: Number(counter.quantity) }],
@@ -157,13 +167,14 @@ function Orders() {
           <Field label="Số điện thoại"><input className="input" inputMode="tel" value={counter.phone} onChange={(e) => setCounter({ ...counter, phone: e.target.value })} /></Field>
           <Field label="Ngày giao"><input className="input" type="date" min={today} value={counter.deliveryDate} onChange={(e) => setCounter({ ...counter, deliveryDate: e.target.value })} /></Field>
           <Field label="Địa chỉ giao" full><input className="input" value={counter.address} onChange={(e) => setCounter({ ...counter, address: e.target.value })} /></Field>
+          <button type="button" className="btn secondary full" onClick={() => setPickerOpen(true)}>{counter.lat != null ? "Đã ghim · Chọn lại" : "Chọn vị trí trên bản đồ"}</button>
           <Field label="Sản phẩm"><select className="input" value={counter.productId} onChange={(e) => setCounter({ ...counter, productId: e.target.value })}><option value="">Chọn sản phẩm</option>{state.products.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} · còn {p.stock}</option>)}</select></Field>
           <Field label="Số lượng"><input className="input" type="number" min="1" max="20" value={counter.quantity} onChange={(e) => setCounter({ ...counter, quantity: e.target.value })} /></Field>
           <Field label="Từ"><input className="input" type="time" value={counter.start} onChange={(e) => setCounter({ ...counter, start: e.target.value })} /></Field>
           <Field label="Đến"><input className="input" type="time" value={counter.end} onChange={(e) => setCounter({ ...counter, end: e.target.value })} /></Field>
           <Field label="Thanh toán"><select className="input" value={counter.paymentMethod} onChange={(e) => setCounter({ ...counter, paymentMethod: e.target.value })}><option value="COUNTER_CASH">Tiền mặt tại quầy</option><option value="COD">Tiền mặt khi nhận</option>{bankAvailable && <option value="BANK">Chuyển khoản</option>}</select></Field>
           <Field label="Ghi chú" full><input className="input" value={counter.note} onChange={(e) => setCounter({ ...counter, note: e.target.value })} /></Field>
-          <p className="small muted full">Đơn quầy được kiểm tra tồn kho và quy tắc thanh toán như đơn trên website. Staff token phải được kết nối ở Quản trị sản phẩm.</p>
+          <p className="small muted full">Đơn quầy được kiểm tra tồn kho và quy tắc thanh toán như đơn trên website. Cần đăng nhập với tài khoản có quyền xử lý đơn.</p>
         </div>
       </Modal>}
     </>

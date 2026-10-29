@@ -9,3 +9,11 @@ export * from './product.entity';
 export * from './route.entity';
 export * from './vehicle.entity';
 export * from './warehouse.entity';
+export * from './permission.entity';
+export * from './role.entity';
+export * from './user.entity';
+export * from './user-notification-read.entity';
+export * from './audit-event.entity';
+export * from './maintenance-record.entity';
+
+export * from './category.entity';
