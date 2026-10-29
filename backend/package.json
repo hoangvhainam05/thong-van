@@ -2,6 +2,7 @@
   "name": "thongvan-backend",
   "version": "0.1.0",
   "private": true,
+  "main": "dist/main.js",
   "scripts": {
     "build": "nest build",
     "start": "nest start",

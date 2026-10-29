@@ -3,7 +3,8 @@
   "services": {
     "backend": {
       "root": "backend",
-      "framework": "nestjs"
+      "framework": "nestjs",
+      "entrypoint": "dist/main.js"
     },
     "frontend": {
       "root": "frontend",
