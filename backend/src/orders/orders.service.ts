@@ -151,7 +151,7 @@ export class OrdersService {
     }
 
     const order = await this.findOne(id);
-    return this.toOut(order);
+    return await this.toOut(order);
   }
 
   async list(deliveryDate?: string, status?: OrderStatus) {
@@ -160,7 +160,8 @@ export class OrdersService {
       ...(status ? { status } : {}),
     };
     const rows = await this.orders.find({ where, relations: ORDER_RELATIONS, order: { id: 'DESC' } });
-    return rows.map((order) => this.toOut(order));
+    const instructions = await this.getPaymentInstructions();
+    return rows.map((order) => this.toOutSync(order, instructions));
   }
 
   async updateStatus(id: number, body: StatusUpdateDto) {
@@ -320,13 +321,31 @@ export class OrdersService {
     return order;
   }
 
-  private paymentInstructions(order: Order) {
+  private paymentInstructions(order: Order, destination?: any) {
     if (order.paymentMethod !== PaymentMethod.BANK_TRANSFER || order.paymentStatus === PaymentStatus.PAID) return null;
-    const destination = this.getPaymentInstructions();
+    const dest = destination || this.syncPaymentInstructions();
     return {
-      ...destination,
-      transfer_content: `${destination.transfer_prefix} ${order.code || `TV${String(order.id).padStart(6, '0')}`}`,
+      ...dest,
+      transfer_content: `${dest.transfer_prefix} ${order.code || `TV${String(order.id).padStart(6, '0')}`}`,
       amount: Number(order.total),
+    };
+  }
+
+  private syncPaymentInstructions() {
+    const bankName = this.config.get<string>('payment.bankName', '').trim();
+    const accountName = this.config.get<string>('payment.accountName', '').trim();
+    const accountNumber = this.config.get<string>('payment.accountNumber', '').trim();
+    const prefix = (this.config.get<string>('payment.transferContentPrefix', 'THONGVAN')).trim() || 'THONGVAN';
+    const shippingFee = this.config.get<number>('shipping.fee', 150_000);
+    const freeFrom = this.config.get<number>('shipping.freeFrom', 5_000_000);
+    return {
+      configured: Boolean(bankName && accountName && accountNumber),
+      bank_name: bankName,
+      account_name: accountName,
+      account_number: accountNumber,
+      transfer_prefix: prefix,
+      shipping_fee: shippingFee,
+      free_ship_from: freeFrom,
     };
   }
 
@@ -349,7 +368,12 @@ export class OrdersService {
     };
   }
 
-  toOut(order: Order) {
+  async toOut(order: Order, destination?: any) {
+    const dest = destination !== undefined ? destination : await this.getPaymentInstructions();
+    return this.toOutSync(order, dest);
+  }
+
+  toOutSync(order: Order, destination?: any) {
     return {
       id: order.id,
       customer_id: order.customerId,
@@ -371,7 +395,7 @@ export class OrdersService {
       total: Number(order.total),
       payment_method: order.paymentMethod,
       payment_status: order.paymentStatus || PaymentStatus.UNPAID,
-      payment_instructions: this.paymentInstructions(order),
+      payment_instructions: this.paymentInstructions(order, destination),
       status: order.status,
       source: order.source || 'WEB',
       inventory_reserved: Boolean(order.clientRequestId),
