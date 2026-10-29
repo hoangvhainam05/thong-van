@@ -69,7 +69,7 @@ export const DEFAULT_MATRIX = {
   MANAGER: [
     "backoffice.access", "dashboard.view", "order.view_all", "order.confirm", "order.edit_location",
     "order.cancel", "customer.view", "dispatch.view", "route.optimize", "route.approve",
-    "route.dispatch", "fleet.manage", "report.view",
+    "route.dispatch", "fleet.manage", "report.view", "settings.manage",
   ],
   SALES: [
     "backoffice.access", "dashboard.view", "order.view_all", "order.confirm", "order.edit_location",

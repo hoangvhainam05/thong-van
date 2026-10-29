@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, FindOptionsRelations, IsNull, Repository } from 'typeorm';
-import { Customer, DeliveryRoute, DeliveryStop, Order, OrderHistoryEvent, OrderHistoryEventType, OrderItem, OrderStatus, PaymentStatus, Product, RouteStatus, Warehouse } from '../database/entities';
+import { Customer, DeliveryRoute, DeliveryStop, Order, OrderHistoryEvent, OrderHistoryEventType, OrderItem, OrderStatus, PaymentStatus, Product, RouteStatus, SystemSetting, Warehouse } from '../database/entities';
 import { CreateOrderDto, LocationUpdateDto, PaymentMethod, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
 
 const ORDER_RELATIONS: FindOptionsRelations<Order> = {
@@ -79,9 +79,10 @@ export class OrdersService {
         subtotal += Number(product.price) * quantity;
       }
 
-      const shippingFee = subtotal >= this.config.get<number>('shipping.freeFrom', 5_000_000)
-        ? 0
-        : this.config.get<number>('shipping.fee', 150_000);
+      const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
+      const freeFrom = setting ? Number(setting.freeShipFrom) : this.config.get<number>('shipping.freeFrom', 5_000_000);
+      const defaultFee = setting ? Number(setting.shippingFee) : this.config.get<number>('shipping.fee', 150_000);
+      const shippingFee = subtotal >= freeFrom ? 0 : defaultFee;
       const total = subtotal + shippingFee;
       if (body.payment_method === PaymentMethod.COUNTER_CASH && source !== 'COUNTER') {
         throw new BadRequestException('Thanh toán tiền mặt tại quầy chỉ dùng khi nhân viên nhập đơn quầy.');
@@ -329,19 +330,22 @@ export class OrdersService {
     };
   }
 
-  getPaymentInstructions() {
-    const bankName = this.config.get<string>('payment.bankName', '').trim();
-    const accountName = this.config.get<string>('payment.accountName', '').trim();
-    const accountNumber = this.config.get<string>('payment.accountNumber', '').trim();
-    const prefix = this.config.get<string>('payment.transferContentPrefix', 'THONGVAN').trim() || 'THONGVAN';
+  async getPaymentInstructions() {
+    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
+    const bankName = (setting?.bankName ?? this.config.get<string>('payment.bankName', '')).trim();
+    const accountName = (setting?.bankAccountName ?? this.config.get<string>('payment.accountName', '')).trim();
+    const accountNumber = (setting?.bankAccountNumber ?? this.config.get<string>('payment.accountNumber', '')).trim();
+    const prefix = (setting?.bankTransferPrefix || this.config.get<string>('payment.transferContentPrefix', 'THONGVAN')).trim() || 'THONGVAN';
+    const shippingFee = setting ? Number(setting.shippingFee) : this.config.get<number>('shipping.fee', 150_000);
+    const freeFrom = setting ? Number(setting.freeShipFrom) : this.config.get<number>('shipping.freeFrom', 5_000_000);
     return {
       configured: Boolean(bankName && accountName && accountNumber),
       bank_name: bankName,
       account_name: accountName,
       account_number: accountNumber,
       transfer_prefix: prefix,
-      shipping_fee: this.config.get<number>('shipping.fee', 150_000),
-      free_ship_from: this.config.get<number>('shipping.freeFrom', 5_000_000),
+      shipping_fee: shippingFee,
+      free_ship_from: freeFrom,
     };
   }
 

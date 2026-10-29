@@ -15,5 +15,6 @@ export * from './user.entity';
 export * from './user-notification-read.entity';
 export * from './audit-event.entity';
 export * from './maintenance-record.entity';
+export * from './system-setting.entity';
 
 export * from './category.entity';

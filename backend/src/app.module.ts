@@ -21,6 +21,7 @@ import {
   UserNotificationRead,
   Vehicle,
   Warehouse,
+  SystemSetting,
 } from './database/entities';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
@@ -66,7 +67,7 @@ function databaseOptions(config: ConfigService) {
       database: url.pathname.replace(/^\//, ''),
       charset: 'utf8mb4',
       ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
-      entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse],
+      entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse, SystemSetting],
       synchronize: false,
     };
   }
@@ -78,7 +79,7 @@ function databaseOptions(config: ConfigService) {
     password: config.get<string>('database.password'),
     database: config.get<string>('database.name'),
     charset: 'utf8mb4',
-    entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse],
+    entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse, SystemSetting],
     synchronize: false,
   };
 }

@@ -16,6 +16,7 @@ import {
   RouteStatus,
   Vehicle,
   Warehouse,
+  SystemSetting,
 } from '../database/entities';
 import { buildMatrices, subsetMatrices, LatLng } from '../optimization/distance';
 import { RoadMatrixService } from '../optimization/road-matrix.service';
@@ -157,13 +158,14 @@ export class RoutesService {
     if (JSON.stringify(stops) !== JSON.stringify(initialSpecs)) {
       throw new ConflictException('Đơn giao hàng đã thay đổi; vui lòng tối ưu lại');
     }
+    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
     const result = optimize(depot, stops, vehicleSpecs, {
-      dayStart: timeToMinutes(this.config.get<string>('optimization.dayStart', '08:00')),
-      dayEnd: timeToMinutes(this.config.get<string>('optimization.dayEnd', '18:00')),
-      weightKm: this.config.get<number>('optimization.weightKm', 1),
-      weightTime: this.config.get<number>('optimization.weightTime', 0.5),
-      roadFactor: this.config.get<number>('optimization.roadFactor', 1.35),
-      speedKmh: this.config.get<number>('optimization.avgSpeedKmh', 30),
+      dayStart: timeToMinutes(setting?.deliveryDayStart || this.config.get<string>('optimization.dayStart', '08:00')),
+      dayEnd: timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')),
+      weightKm: setting ? Number(setting.weightKm) : this.config.get<number>('optimization.weightKm', 1),
+      weightTime: setting ? Number(setting.weightTime) : this.config.get<number>('optimization.weightTime', 0.5),
+      roadFactor: setting ? Number(setting.roadFactor) : this.config.get<number>('optimization.roadFactor', 1.35),
+      speedKmh: setting ? Number(setting.avgSpeedKmh) : this.config.get<number>('optimization.avgSpeedKmh', 30),
       maxRouteMinutes: 480,
       matrix,
     });
@@ -307,7 +309,7 @@ export class RoutesService {
       const routeWarehouse = route.warehouseId === warehouse.id ? warehouse : await manager.getRepository(Warehouse).findOne({ where: { id: route.warehouseId } });
       if (!routeWarehouse) throw new ConflictException('Không tìm thấy kho của tuyến');
       const depot = { lat: Number(routeWarehouse.lat), lng: Number(routeWarehouse.lng) };
-      const options = this.solverOptions();
+      const options = await this.solverOptions();
       const stored = route.routingMatrix;
       const currentPoints: LatLng[] = [[depot.lat, depot.lng], ...specs.map((spec): LatLng => [spec.lat, spec.lng])];
       let routeMatrix;
@@ -477,12 +479,13 @@ export class RoutesService {
     };
   }
 
-  private solverOptions() {
+  private async solverOptions() {
+    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
     return {
-      dayStart: timeToMinutes(this.config.get<string>('optimization.dayStart', '08:00')),
-      dayEnd: timeToMinutes(this.config.get<string>('optimization.dayEnd', '18:00')),
-      roadFactor: this.config.get<number>('optimization.roadFactor', 1.35),
-      speedKmh: this.config.get<number>('optimization.avgSpeedKmh', 30),
+      dayStart: timeToMinutes(setting?.deliveryDayStart || this.config.get<string>('optimization.dayStart', '08:00')),
+      dayEnd: timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')),
+      roadFactor: setting ? Number(setting.roadFactor) : this.config.get<number>('optimization.roadFactor', 1.35),
+      speedKmh: setting ? Number(setting.avgSpeedKmh) : this.config.get<number>('optimization.avgSpeedKmh', 30),
       maxRouteMinutes: 480,
     };
   }

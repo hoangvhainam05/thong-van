@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
+import { SystemSetting } from '../database/entities';
+import { UpdateSettingsDto } from './admin.dto';
 
 function checkedRange(from:string,to:string) {
   const parse=(s:string)=>{ if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new BadRequestException('Ngày phải có dạng YYYY-MM-DD'); const d=new Date(`${s}T00:00:00Z`);if(Number.isNaN(d.getTime()) || d.toISOString().slice(0,10)!==s)throw new BadRequestException('Ngày không hợp lệ');return d.getTime(); };
@@ -46,6 +48,53 @@ export class AdminService {
   }
   async settings(){
     const [warehouse]=await this.db.query('SELECT id,name,address,lat,lng FROM warehouse ORDER BY id LIMIT 1');
-    return {warehouse:warehouse||null,shipping:{fee:this.config.get<number>('shipping.fee'),free_from:this.config.get<number>('shipping.freeFrom')},optimization:{day_start:this.config.get<string>('optimization.dayStart'),day_end:this.config.get<string>('optimization.dayEnd'),speed_kmh:this.config.get<number>('optimization.avgSpeedKmh'),road_factor:this.config.get<number>('optimization.roadFactor'),weight_km:this.config.get<number>('optimization.weightKm'),weight_time:this.config.get<number>('optimization.weightTime')}};
+    const [setting]=await this.db.query('SELECT * FROM system_setting WHERE id=1');
+    return {
+      warehouse: warehouse || null,
+      shipping: {
+        fee: setting ? Number(setting.shipping_fee) : this.config.get<number>('shipping.fee', 150000),
+        free_from: setting ? Number(setting.free_ship_from) : this.config.get<number>('shipping.freeFrom', 5000000),
+      },
+      optimization: {
+        day_start: setting?.delivery_day_start || this.config.get<string>('optimization.dayStart', '08:00'),
+        day_end: setting?.delivery_day_end || this.config.get<string>('optimization.dayEnd', '18:00'),
+        speed_kmh: setting ? Number(setting.avg_speed_kmh) : this.config.get<number>('optimization.avgSpeedKmh', 30),
+        road_factor: setting ? Number(setting.road_factor) : this.config.get<number>('optimization.roadFactor', 1.35),
+        weight_km: setting ? Number(setting.weight_km) : this.config.get<number>('optimization.weightKm', 1.0),
+        weight_time: setting ? Number(setting.weight_time) : this.config.get<number>('optimization.weightTime', 0.5),
+      },
+      payment: {
+        bank_name: setting?.bank_name ?? this.config.get<string>('payment.bankName', ''),
+        bank_account_name: setting?.bank_account_name ?? this.config.get<string>('payment.accountName', ''),
+        bank_account_number: setting?.bank_account_number ?? this.config.get<string>('payment.accountNumber', ''),
+        bank_transfer_prefix: setting?.bank_transfer_prefix || this.config.get<string>('payment.transferContentPrefix', 'THONGVAN'),
+      },
+      warranty: {
+        contact: setting?.warranty_contact ?? this.config.get<string>('warranty.contact', ''),
+      },
+    };
+  }
+
+  async updateSettings(body: UpdateSettingsDto){
+    const repo = this.db.getRepository(SystemSetting);
+    let row = await repo.findOne({ where: { id: 1 } });
+    if (!row) {
+      row = repo.create({ id: 1 });
+    }
+    if (body.shipping_fee !== undefined) row.shippingFee = body.shipping_fee;
+    if (body.free_ship_from !== undefined) row.freeShipFrom = body.free_ship_from;
+    if (body.delivery_day_start !== undefined) row.deliveryDayStart = body.delivery_day_start;
+    if (body.delivery_day_end !== undefined) row.deliveryDayEnd = body.delivery_day_end;
+    if (body.avg_speed_kmh !== undefined) row.avgSpeedKmh = String(body.avg_speed_kmh);
+    if (body.road_factor !== undefined) row.roadFactor = String(body.road_factor);
+    if (body.weight_km !== undefined) row.weightKm = String(body.weight_km);
+    if (body.weight_time !== undefined) row.weightTime = String(body.weight_time);
+    if (body.bank_name !== undefined) row.bankName = body.bank_name;
+    if (body.bank_account_name !== undefined) row.bankAccountName = body.bank_account_name;
+    if (body.bank_account_number !== undefined) row.bankAccountNumber = body.bank_account_number;
+    if (body.bank_transfer_prefix !== undefined) row.bankTransferPrefix = body.bank_transfer_prefix;
+    if (body.warranty_contact !== undefined) row.warrantyContact = body.warranty_contact;
+    await repo.save(row);
+    return this.settings();
   }
 }

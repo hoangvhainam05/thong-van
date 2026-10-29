@@ -1,6 +1,7 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard, RequirePermission } from '../auth/auth.guard';
 import { AdminService } from './admin.service';
+import { UpdateSettingsDto } from './admin.dto';
 @Controller('api/admin')
 @UseGuards(AuthGuard)
 export class AdminController {
@@ -10,4 +11,5 @@ export class AdminController {
   @Get('customers') @RequirePermission('customer.view') customers(){return this.admin.customers();}
   @Get('audit') @RequirePermission('audit.view') audit(@Query('limit') limit?:string,@Query('before') before?:string){return this.admin.audit(limit===undefined?50:Number(limit),before);}
   @Get('settings') @RequirePermission('settings.manage') settings(){return this.admin.settings();}
+  @Patch('settings') @RequirePermission('settings.manage') updateSettings(@Body() body: UpdateSettingsDto){return this.admin.updateSettings(body);}
 }

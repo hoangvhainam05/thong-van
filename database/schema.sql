@@ -138,7 +138,7 @@ INSERT INTO permission (code, name) VALUES
 INSERT INTO role_permission (role_id, permission_id)
 SELECT r.id, p.id FROM role r JOIN permission p ON
   (r.code = 'ADMIN' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.edit_location', 'order.cancel', 'customer.view', 'product.manage', 'dispatch.view', 'route.optimize', 'route.approve', 'route.dispatch', 'fleet.manage', 'report.view', 'user.manage', 'role.manage', 'settings.manage', 'audit.view'))
-  OR (r.code = 'MANAGER' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.edit_location', 'order.cancel', 'customer.view', 'dispatch.view', 'route.optimize', 'route.approve', 'route.dispatch', 'fleet.manage', 'report.view'))
+  OR (r.code = 'MANAGER' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.edit_location', 'order.cancel', 'customer.view', 'dispatch.view', 'route.optimize', 'route.approve', 'route.dispatch', 'fleet.manage', 'report.view', 'settings.manage'))
   OR (r.code = 'SALES' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.edit_location', 'customer.view', 'product.manage', 'dispatch.view'))
   OR (r.code = 'DRIVER' AND p.code IN ('delivery.app', 'delivery.update'))
   OR (r.code = 'CUSTOMER' AND p.code IN ('order.place', 'order.track_own', 'notification.own'));
@@ -311,3 +311,27 @@ CREATE TABLE maintenance_reminder_read (
   CONSTRAINT fk_maintenance_read_user FOREIGN KEY (user_id) REFERENCES `user`(id) ON DELETE CASCADE,
   CONSTRAINT fk_maintenance_read_item FOREIGN KEY (order_item_id) REFERENCES order_item(id) ON DELETE CASCADE
 );
+
+-- Cấu hình hệ thống động (có thể chỉnh sửa qua giao diện Quản lý / Admin)
+CREATE TABLE IF NOT EXISTS system_setting (
+  id INT PRIMARY KEY DEFAULT 1,
+  shipping_fee INT NOT NULL DEFAULT 150000,
+  free_ship_from INT NOT NULL DEFAULT 5000000,
+  delivery_day_start VARCHAR(10) NOT NULL DEFAULT '08:00',
+  delivery_day_end VARCHAR(10) NOT NULL DEFAULT '18:00',
+  avg_speed_kmh DECIMAL(5,2) NOT NULL DEFAULT 30.00,
+  road_factor DECIMAL(4,2) NOT NULL DEFAULT 1.35,
+  weight_km DECIMAL(4,2) NOT NULL DEFAULT 1.00,
+  weight_time DECIMAL(4,2) NOT NULL DEFAULT 0.50,
+  bank_name VARCHAR(120) NULL,
+  bank_account_name VARCHAR(120) NULL,
+  bank_account_number VARCHAR(60) NULL,
+  bank_transfer_prefix VARCHAR(60) NOT NULL DEFAULT 'THONGVAN',
+  warranty_contact VARCHAR(255) NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+INSERT INTO system_setting (id, shipping_fee, free_ship_from, delivery_day_start, delivery_day_end, avg_speed_kmh, road_factor, weight_km, weight_time, bank_name, bank_account_name, bank_account_number, bank_transfer_prefix, warranty_contact)
+VALUES (1, 150000, 5000000, '08:00', '18:00', 30.00, 1.35, 1.00, 0.50, 'MB Bank', 'CUA HANG THONG VAN', '9999999999', 'THONGVAN', '0988 000 001 - CSKH Thông Vân')
+ON DUPLICATE KEY UPDATE id=id;
+
