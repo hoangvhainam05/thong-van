@@ -49,37 +49,82 @@ import { TrackingModule } from './tracking/tracking.module';
 })
 export class AppModule {}
 
-function databaseOptions(config: ConfigService) {
-  const rawUrl = config.get<string>('database.url');
-  if (rawUrl) {
+function parseDatabaseUrl(rawUrl: string) {
+  try {
     const url = new URL(rawUrl);
-    const useSsl =
-      url.searchParams.get('ssl-mode') === 'REQUIRED' ||
-      url.searchParams.get('ssl') === 'true' ||
-      process.env.DATABASE_SSL === 'true' ||
-      url.hostname.includes('aivencloud.com');
     return {
-      type: 'mysql' as const,
       host: url.hostname,
       port: Number(url.port || 3306),
       username: decodeURIComponent(url.username),
       password: decodeURIComponent(url.password),
       database: url.pathname.replace(/^\//, ''),
-      charset: 'utf8mb4',
-      ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
-      entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse, SystemSetting],
-      synchronize: false,
+      sslMode: url.searchParams.get('ssl-mode') || url.searchParams.get('ssl'),
     };
+  } catch {
+    const match = rawUrl.match(/^(?:mysql:\/\/)?([^:]+):(.*)@([^:/]+)(?::(\d+))?\/(.*)$/);
+    if (match) {
+      const [, username, password, host, port, dbAndQuery] = match;
+      const [database, query] = (dbAndQuery || '').split('?');
+      const searchParams = new URLSearchParams(query || '');
+      return {
+        host,
+        port: Number(port || 3306),
+        username: decodeURIComponent(username),
+        password: decodeURIComponent(password),
+        database,
+        sslMode: searchParams.get('ssl-mode') || searchParams.get('ssl'),
+      };
+    }
+    return null;
   }
+}
+
+function databaseOptions(config: ConfigService) {
+  const rawUrl = (config.get<string>('database.url') || '').trim();
+  const parsed = rawUrl ? parseDatabaseUrl(rawUrl) : null;
+
+  const host = parsed?.host || config.get<string>('database.host') || '127.0.0.1';
+  const port = parsed?.port || config.get<number>('database.port') || 3306;
+  const username = parsed?.username || config.get<string>('database.username') || 'thongvan';
+  const password = parsed?.password !== undefined ? parsed.password : (config.get<string>('database.password') || 'thongvan');
+  const database = parsed?.database || config.get<string>('database.name') || 'thongvan';
+
+  const useSsl =
+    parsed?.sslMode === 'REQUIRED' ||
+    parsed?.sslMode === 'true' ||
+    process.env.DATABASE_SSL === 'true' ||
+    host.includes('aivencloud.com');
+
   return {
     type: 'mysql' as const,
-    host: config.get<string>('database.host'),
-    port: config.get<number>('database.port'),
-    username: config.get<string>('database.username'),
-    password: config.get<string>('database.password'),
-    database: config.get<string>('database.name'),
+    host,
+    port,
+    username,
+    password,
+    database,
     charset: 'utf8mb4',
-    entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse, SystemSetting],
+    ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+    entities: [
+      Category,
+      AuditEvent,
+      MaintenanceRecord,
+      MaintenanceReminderRead,
+      Customer,
+      DeliveryRoute,
+      DeliveryStop,
+      Driver,
+      Order,
+      OrderHistoryEvent,
+      OrderItem,
+      Product,
+      Permission,
+      Role,
+      User,
+      UserNotificationRead,
+      Vehicle,
+      Warehouse,
+      SystemSetting,
+    ],
     synchronize: false,
   };
 }
