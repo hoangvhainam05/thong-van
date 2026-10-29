@@ -52,6 +52,11 @@ function databaseOptions(config: ConfigService) {
   const rawUrl = config.get<string>('database.url');
   if (rawUrl) {
     const url = new URL(rawUrl);
+    const useSsl =
+      url.searchParams.get('ssl-mode') === 'REQUIRED' ||
+      url.searchParams.get('ssl') === 'true' ||
+      process.env.DATABASE_SSL === 'true' ||
+      url.hostname.includes('aivencloud.com');
     return {
       type: 'mysql' as const,
       host: url.hostname,
@@ -60,6 +65,7 @@ function databaseOptions(config: ConfigService) {
       password: decodeURIComponent(url.password),
       database: url.pathname.replace(/^\//, ''),
       charset: 'utf8mb4',
+      ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
       entities: [Category, AuditEvent, MaintenanceRecord, MaintenanceReminderRead, Customer, DeliveryRoute, DeliveryStop, Driver, Order, OrderHistoryEvent, OrderItem, Product, Permission, Role, User, UserNotificationRead, Vehicle, Warehouse],
       synchronize: false,
     };
