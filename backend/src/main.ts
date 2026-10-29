@@ -9,8 +9,9 @@ import { HttpExceptionFilter } from './common/http-exception.filter';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
+  const corsOrigins = config.get<string[] | boolean>('corsOrigins', ['http://localhost:3000']);
   app.enableCors({
-    origin: config.get<string[]>('corsOrigins', ['http://localhost:3000']),
+    origin: corsOrigins,
     methods: '*',
     allowedHeaders: '*',
   });
@@ -22,7 +23,9 @@ async function bootstrap(): Promise<void> {
     .setDescription('Hệ thống quản lý đơn hàng và tối ưu hoá giao hàng thông minh')
     .setVersion('0.1.0')
     .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  const swaggerDoc = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, swaggerDoc);
+  SwaggerModule.setup('api/docs', app, swaggerDoc);
 
   await app.listen(config.get<number>('port', 8000));
 }

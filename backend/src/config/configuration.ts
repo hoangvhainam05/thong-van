@@ -25,10 +25,12 @@ export default () => ({
     apiSecret: process.env.CLOUDINARY_API_SECRET || '',
     productsFolder: process.env.CLOUDINARY_PRODUCTS_FOLDER || 'thong-van/products',
   },
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  corsOrigins: process.env.CORS_ORIGINS === '*'
+    ? true
+    : (process.env.CORS_ORIGINS || 'http://localhost:3000')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
   optimization: {
     orsApiKey: process.env.ORS_API_KEY || '',
     dayStart: process.env.DELIVERY_DAY_START || '08:00',

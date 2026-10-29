@@ -1,10 +1,32 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function resolveUrl(path) {
+  // On the server (runtime functions / SSR), use the Vercel service binding BACKEND_URL
+  if (typeof window === "undefined") {
+    const baseUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+    return new URL(normalizedPath, normalizedBase).toString();
+  }
+
+  // In the browser (client-side):
+  // If NEXT_PUBLIC_API_URL is configured (e.g. for standalone local dev), resolve against it.
+  // Otherwise, return relative path so requests route to the same origin through Vercel rewrites.
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const normalizedBase = process.env.NEXT_PUBLIC_API_URL.endsWith("/")
+      ? process.env.NEXT_PUBLIC_API_URL
+      : `${process.env.NEXT_PUBLIC_API_URL}/`;
+    const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+    return new URL(normalizedPath, normalizedBase).toString();
+  }
+
+  return path;
+}
 
 export async function api(path, { method = "GET", body, token } = {}) {
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const headers = isForm ? {} : { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${BASE}${path}`, {
+  const url = resolveUrl(path);
+  const res = await fetch(url, {
     method,
     headers,
     body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
