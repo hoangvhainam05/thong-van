@@ -4,11 +4,13 @@
     "backend": {
       "root": "backend",
       "framework": "nestjs",
-      "entrypoint": "dist/main.js"
+      "entrypoint": "dist/main.js",
+      "buildCommand": "npm run build"
     },
     "frontend": {
       "root": "frontend",
       "framework": "nextjs",
+      "buildCommand": "npm run build",
       "bindings": [
         {
           "type": "service",
