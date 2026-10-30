@@ -5,7 +5,12 @@
       "root": "backend",
       "framework": "nestjs",
       "entrypoint": "src/main.ts",
-      "buildCommand": "npm run build"
+      "buildCommand": "npm run build",
+      "functions": {
+        "src/main.ts": {
+          "includeFiles": "node_modules/**"
+        }
+      }
     },
     "frontend": {
       "root": "frontend",
