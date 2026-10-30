@@ -29,19 +29,19 @@ export class SystemSetting {
   @Column({ name: 'weight_time', type: 'decimal', precision: 4, scale: 2, default: 0.50 })
   weightTime!: string;
 
-  @Column({ name: 'bank_name', length: 120, nullable: true })
+  @Column({ name: 'bank_name', type: 'varchar', length: 120, nullable: true })
   bankName!: string | null;
 
-  @Column({ name: 'bank_account_name', length: 120, nullable: true })
+  @Column({ name: 'bank_account_name', type: 'varchar', length: 120, nullable: true })
   bankAccountName!: string | null;
 
-  @Column({ name: 'bank_account_number', length: 60, nullable: true })
+  @Column({ name: 'bank_account_number', type: 'varchar', length: 60, nullable: true })
   bankAccountNumber!: string | null;
 
   @Column({ name: 'bank_transfer_prefix', length: 60, default: 'THONGVAN' })
   bankTransferPrefix!: string;
 
-  @Column({ name: 'warranty_contact', length: 255, nullable: true })
+  @Column({ name: 'warranty_contact', type: 'varchar', length: 255, nullable: true })
   warrantyContact!: string | null;
 
   @UpdateDateColumn({ name: 'updated_at' })

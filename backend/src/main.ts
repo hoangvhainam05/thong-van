@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { createServer } from 'node:http';
+import { IncomingMessage, ServerResponse } from 'node:http';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -7,10 +7,10 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 
-async function bootstrap(): Promise<void> {
+async function bootstrap() {
   const port = Number(process.env.PORT || 8000);
   try {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, { abortOnError: false });
     const config = app.get(ConfigService);
     const corsOrigins = config.get<string[] | boolean>('corsOrigins', ['http://localhost:3000']);
     app.enableCors({
@@ -30,41 +30,30 @@ async function bootstrap(): Promise<void> {
     SwaggerModule.setup('docs', app, swaggerDoc);
     SwaggerModule.setup('api/docs', app, swaggerDoc);
 
-    await app.listen(port);
-    console.log(`[Bootstrap] NestJS running successfully on port ${port}`);
+    if (process.env.VERCEL) {
+      await app.init();
+    } else {
+      await app.listen(port);
+      console.log(`[Bootstrap] NestJS running successfully on port ${port}`);
+    }
+    return app.getHttpAdapter().getInstance();
   } catch (err: any) {
     console.error('[Bootstrap Critical Error]:', err);
-
-    // Fallback server so Vercel doesn't crash with FUNCTION_INVOCATION_FAILED
-    // and returns the exact error details to HTTP callers
-    const server = createServer((_req, res) => {
-      res.statusCode = 500;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', '*');
-      res.setHeader('Access-Control-Allow-Headers', '*');
-
-      const responseBody = JSON.stringify({
-        statusCode: 500,
-        error: 'BACKEND_STARTUP_FAILED',
-        message: `Lỗi kết nối cơ sở dữ liệu: ${err?.message || String(err)}`,
-        detail: err?.message || String(err),
-        dbConfig: {
-          hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-          dbHost: process.env.DB_HOST || (process.env.DATABASE_URL ? 'from DATABASE_URL' : '127.0.0.1 (mặc định/chưa cấu hình)'),
-          dbPort: process.env.DB_PORT || (process.env.DATABASE_URL ? 'from DATABASE_URL' : '3306'),
-          dbDatabase: process.env.DB_DATABASE || (process.env.DATABASE_URL ? 'from DATABASE_URL' : 'thongvan'),
-          databaseSsl: process.env.DATABASE_SSL || '(chưa đặt)',
-        },
-      });
-
-      res.end(responseBody);
-    });
-
-    server.listen(port, () => {
-      console.log(`[Bootstrap] Fallback error server listening on port ${port}`);
-    });
+    throw err;
   }
 }
 
-void bootstrap();
+let application: ReturnType<typeof bootstrap> | undefined;
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    application ??= bootstrap();
+    const expressApp = await application;
+    expressApp(req, res);
+  } catch {
+    application = undefined;
+    res.statusCode = 503;
+    res.end('Backend unavailable');
+  }
+}
+
+if (!process.env.VERCEL) void bootstrap();
