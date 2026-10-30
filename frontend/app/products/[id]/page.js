@@ -16,10 +16,12 @@ export default function ProductDetail() {
   const router = useRouter();
   const { ready, catalogStatus, shippingStatus, state, actions } = useStore();
   const [qty, setQty] = useState(1);
+  const [selectedImage, setSelectedImage] = useState(0);
   if (!ready || catalogStatus === "loading") return <Loading />;
   if (catalogStatus === "error") return <div className="panel"><Empty title="Không tải được sản phẩm">Kiểm tra kết nối máy chủ và tải lại trang.</Empty></div>;
   const p = state.products.find((x) => x.id === Number(id));
   if (!p || !p.active) return <div className="panel"><Empty title="Sản phẩm không còn bán" action={<Link className="btn" href="/products">Xem sản phẩm khác</Link>} /></div>;
+  const images = p.images?.length ? p.images : (p.imageUrl ? [{ imageUrl: p.imageUrl }] : []);
   const cat = categories.find((c) => c.id === p.category);
   const related = state.products.filter((x) => x.category === p.category && x.id !== p.id && x.active).slice(0, 4);
 
@@ -29,9 +31,10 @@ export default function ProductDetail() {
         <Link href="/products">Sản phẩm</Link> / <Link href={`/products?cat=${p.category}`}>{cat?.name || p.category}</Link>
       </nav>
       <div className="two-col" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div className="panel" style={{ aspectRatio: "1 / 1", display: "grid", placeItems: "center", color: "var(--road)", background: "linear-gradient(180deg,#f3f6fa,#e6ecf3)" }}>
-          {p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Art category={p.category} className="detail-art" label={p.name} />}
+        <div className="stack-sm"><div className="panel" style={{ aspectRatio: "1 / 1", display: "grid", placeItems: "center", color: "var(--road)", background: "linear-gradient(180deg,#f3f6fa,#e6ecf3)" }}>
+          {images.length ? <img src={images[selectedImage]?.imageUrl || images[0].imageUrl} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Art category={p.category} className="detail-art" label={p.name} />}
         </div>
+        {images.length > 1 && <div className="row" style={{ flexWrap: "wrap" }}>{images.map((image, index) => <button type="button" key={`${image.imageUrl}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`Xem ảnh ${index + 1}`} aria-pressed={index === selectedImage} style={{ border: index === selectedImage ? "2px solid var(--road)" : "1px solid #ddd", padding: 2, background: "white" }}><img src={image.imageUrl} alt="" style={{ width: 64, height: 64, objectFit: "cover" }} /></button>)}</div>}</div>
         <div className="stack">
           <div>
             <div className="small muted">{p.brand} · Mã {p.sku}</div>

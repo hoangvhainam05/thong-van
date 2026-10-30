@@ -41,6 +41,7 @@ describe('ProductsService', () => {
       description: 'Mô tả',
       imageUrl: 'https://res.cloudinary.com/demo/image/upload/fridge.webp',
       imagePublicId: undefined,
+      images: [{ imageUrl: 'https://res.cloudinary.com/demo/image/upload/fridge.webp', imagePublicId: undefined }],
       active: true,
       rating: 0,
       sold: 0,

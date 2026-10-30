@@ -25,9 +25,9 @@ function Products() {
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState("");
-  const [imageFile, setImageFile] = useState(null);
+  const [imageFiles, setImageFiles] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [imagePreview, setImagePreview] = useState("");
+  const [imagePreviews, setImagePreviews] = useState([]);
   const list = state.products.filter((p) => (!cat || p.category === cat) && (!q || p.name.toLowerCase().includes(q.toLowerCase()) || p.sku.toLowerCase().includes(q.toLowerCase())));
 
   useEffect(() => {
@@ -42,14 +42,10 @@ function Products() {
   }, []);
 
   useEffect(() => {
-    if (!imageFile) {
-      setImagePreview("");
-      return undefined;
-    }
-    const url = URL.createObjectURL(imageFile);
-    setImagePreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [imageFile]);
+    const urls = imageFiles.map(file => URL.createObjectURL(file));
+    setImagePreviews(urls);
+    return () => urls.forEach(url => URL.revokeObjectURL(url));
+  }, [imageFiles]);
 
   const uploadImage = async (file) => {
     const signed = await api("/api/products/admin/upload-signature", { method: "POST", token });
@@ -68,18 +64,19 @@ function Products() {
   const save = async () => {
     if (!edit.name || !edit.brand || !edit.category || edit.price <= 0 || (edit.costPrice !== null && edit.costPrice !== "" && Number(edit.costPrice) < 0)) { setConnectionError("Vui lòng nhập tên, hãng, danh mục, giá bán hợp lệ và giá nhập không âm."); return; }
     if (!connected) return;
-    if (imageFile && (!imageFile.type.startsWith("image/") || imageFile.size > 5 * 1024 * 1024)) {
+    if (imageFiles.some(file => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) {
       setConnectionError("Ảnh phải là định dạng hình ảnh và nhỏ hơn 5 MB.");
       return;
     }
+    if ((edit.images || []).length + imageFiles.length > 20) { setConnectionError("Chỉ được chọn tối đa 20 ảnh."); return; }
     setSaving(true);
     setConnectionError("");
     try {
-      const image = imageFile ? await uploadImage(imageFile) : { imageUrl: edit.imageUrl, imagePublicId: edit.imagePublicId };
-      const saved = await actions.saveProduct({ ...edit, ...image, price: Number(edit.price), costPrice: edit.costPrice === "" || edit.costPrice == null ? null : Number(edit.costPrice), oldPrice: edit.oldPrice ? Number(edit.oldPrice) : null, volume: Number(edit.volume), weight: Number(edit.weight), install: Number(edit.install), stock: Number(edit.stock), warranty: Number(edit.warranty), maintenanceIntervalMonths: edit.maintenanceIntervalMonths ? Number(edit.maintenanceIntervalMonths) : null });
+      const images = [...(edit.images || []), ...await Promise.all(imageFiles.map(uploadImage))];
+      const saved = await actions.saveProduct({ ...edit, images, price: Number(edit.price), costPrice: edit.costPrice === "" || edit.costPrice == null ? null : Number(edit.costPrice), oldPrice: edit.oldPrice ? Number(edit.oldPrice) : null, volume: Number(edit.volume), weight: Number(edit.weight), install: Number(edit.install), stock: Number(edit.stock), warranty: Number(edit.warranty), maintenanceIntervalMonths: edit.maintenanceIntervalMonths ? Number(edit.maintenanceIntervalMonths) : null });
       if (!saved) return;
       setEdit(null);
-      setImageFile(null);
+      setImageFiles([]);
     } catch (error) {
       setConnectionError(error.message || "Không lưu được sản phẩm.");
     } finally {
@@ -113,7 +110,7 @@ function Products() {
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <button className="btn secondary" disabled={!connected} onClick={() => setManagingCategories(true)}>Quản lý danh mục</button>
-        <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFile(null); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
+        <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFiles([]); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
       </PageHead>
       {(connectionError || categoryError) && <div className="notice bad" style={{ marginBottom: 14 }}>{connectionError || categoryError}</div>}
       <div className="panel table-wrap">
@@ -136,7 +133,7 @@ function Products() {
                 <td className="num">{p.install ? `${p.install} phút` : "—"}</td>
                 <td>{p.active ? <span className="badge ok">Đang bán</span> : <span className="badge">Đã ẩn</span>}</td>
                 <td className="nowrap">
-                  <button className="btn ghost sm" disabled={!connected} onClick={() => { setImageFile(null); setEdit({ ...p }); }}>Sửa</button>
+                  <button className="btn ghost sm" disabled={!connected} onClick={() => { setImageFiles([]); setEdit({ ...p }); }}>Sửa</button>
                   <button className="btn ghost sm" disabled={!connected} onClick={() => actions.toggleProduct(p.id)}>{p.active ? "Ẩn" : "Mở bán"}</button>
                 </td>
               </tr>
@@ -160,7 +157,7 @@ function Products() {
       )}
       {edit && (
         <Modal wide title={edit.id ? "Sửa sản phẩm" : "Thêm sản phẩm"} onClose={() => setEdit(null)}
-          footer={<><button className="btn secondary" onClick={() => { setEdit(null); setImageFile(null); }}>Huỷ</button><button className="btn" disabled={saving} onClick={save}>{saving ? "Đang lưu…" : "Lưu sản phẩm"}</button></>}>
+          footer={<><button className="btn secondary" onClick={() => { setEdit(null); setImageFiles([]); }}>Huỷ</button><button className="btn" disabled={saving} onClick={save}>{saving ? "Đang lưu…" : "Lưu sản phẩm"}</button></>}>
           <div className="form-grid">
             <Field label="Tên sản phẩm" full><input className="input" value={edit.name} onChange={set("name")} /></Field>
             <Field label="Hãng"><input className="input" value={edit.brand} onChange={set("brand")} /></Field>
@@ -178,9 +175,12 @@ function Products() {
             <Field label="Mô tả" full><textarea className="input" rows={3} value={edit.description} onChange={set("description")} /></Field>
             <Field label="Ảnh sản phẩm" full>
               <div className="stack-sm">
-                <input className="input" type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
-                <span className="tiny muted">Tối đa 5 MB. Ảnh được tải lên Cloudinary khi lưu sản phẩm.</span>
-                {(imagePreview || edit.imageUrl) && <img src={imagePreview || edit.imageUrl} alt="Xem trước sản phẩm" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8 }} />}
+                <input className="input" type="file" accept="image/*" multiple onChange={(e) => { setImageFiles(old => [...old, ...Array.from(e.target.files || [])]); e.target.value = ""; }} />
+                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Ảnh đầu tiên là ảnh chính.</span>
+                <div className="row" style={{ flexWrap: "wrap" }}>
+                  {(edit.images || []).map((image, index) => <div key={`${image.imageUrl}-${index}`}><img src={image.imageUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><button type="button" className="btn ghost sm" onClick={() => setEdit({ ...edit, images: edit.images.filter((_, i) => i !== index) })}>Xóa</button></div>)}
+                  {imagePreviews.map((url, index) => <div key={url}><img src={url} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><button type="button" className="btn ghost sm" onClick={() => setImageFiles(files => files.filter((_, i) => i !== index))}>Xóa</button></div>)}
+                </div>
               </div>
             </Field>
           </div>

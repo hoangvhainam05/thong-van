@@ -36,6 +36,9 @@ export class Product {
   @Column({ name: 'install_minutes', type: 'int' })
   installMinutes!: number;
 
+  @Column({ type: 'json', nullable: true })
+  images!: { imageUrl: string; imagePublicId: string | null }[] | null;
+
   @Column({ name: 'image_url', type: 'varchar', length: 1000, nullable: true })
   imageUrl!: string | null;
 

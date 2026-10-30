@@ -6,7 +6,7 @@ export class RateLimitGuard implements CanActivate {
   private readonly buckets = new Map<string,{count:number;expires:number}>();
   canActivate(context:ExecutionContext):boolean {
     const req=context.switchToHttp().getRequest<{ip?:string;path:string}>();
-    const login=req.path==='/api/auth/login' || req.path==='/api/auth/register';
+    const login=req.path.startsWith('/api/auth/');
     const limit=login?10:60, windowMs=login?5*60_000:60_000, now=Date.now();
     const key=`${login?'auth':'tracking'}:${req.ip || 'unknown'}`;
     if(this.buckets.size>=10000) for(const [k,b] of this.buckets) if(b.expires<=now)this.buckets.delete(k);

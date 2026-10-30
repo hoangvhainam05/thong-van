@@ -28,9 +28,12 @@ export class RoleDto {
 export class RegisterDto {
   @IsString() @MinLength(1) @MaxLength(120) name!: string;
   @IsString() @Matches(/^0\d{9}$/) phone!: string;
-  @IsOptional() @IsEmail() @MaxLength(120) email?: string;
+  @IsEmail() @MaxLength(120) email!: string;
   @IsString() @MinLength(8) @MaxLength(128) password!: string;
+  @Matches(/^\d{6}$/) otp!: string;
 }
+export class OtpRequestDto { @IsEmail() @MaxLength(120) email!: string; @Matches(/^(register|reset)$/) purpose!: string; }
+export class ResetPasswordDto { @IsEmail() @MaxLength(120) email!: string; @Matches(/^\d{6}$/) otp!: string; @IsString() @MinLength(8) @MaxLength(128) newPassword!: string; }
 export class ProfileDto {
   @IsString() @MinLength(1) @MaxLength(120) name!: string;
   @IsOptional() @IsEmail() @MaxLength(120) email?: string;

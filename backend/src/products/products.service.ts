@@ -46,8 +46,9 @@ export class ProductsService {
       maintenanceIntervalMonths: input.maintenanceIntervalMonths ?? null,
       stock: input.stock ?? 0,
       description: input.description?.trim() || null,
-      imageUrl: input.imageUrl?.trim() || null,
-      imagePublicId: input.imagePublicId?.trim() || null,
+      images: input.images ?? null,
+      imageUrl: input.images ? input.images[0]?.imageUrl || null : input.imageUrl?.trim() || null,
+      imagePublicId: input.images ? input.images[0]?.imagePublicId || null : input.imagePublicId?.trim() || null,
       active: input.active ?? true,
     });
     const saved = await this.products.save(product);
@@ -80,8 +81,13 @@ export class ProductsService {
     if (input.maintenanceIntervalMonths !== undefined) product.maintenanceIntervalMonths = input.maintenanceIntervalMonths;
     if (input.stock !== undefined) product.stock = input.stock;
     if (input.description !== undefined) product.description = input.description?.trim() || null;
-    if (input.imageUrl !== undefined) product.imageUrl = input.imageUrl?.trim() || null;
-    if (input.imagePublicId !== undefined) product.imagePublicId = input.imagePublicId?.trim() || null;
+    if (input.images !== undefined) {
+      product.images = input.images.map(image => ({ imageUrl: image.imageUrl, imagePublicId: image.imagePublicId || null }));
+      product.imageUrl = product.images[0]?.imageUrl || null;
+      product.imagePublicId = product.images[0]?.imagePublicId || null;
+    }
+    if (input.images === undefined && input.imageUrl !== undefined) product.imageUrl = input.imageUrl?.trim() || null;
+    if (input.images === undefined && input.imagePublicId !== undefined) product.imagePublicId = input.imagePublicId?.trim() || null;
     if (input.active !== undefined) product.active = input.active;
 
     return this.toView(await this.products.save(product), true);
@@ -115,6 +121,7 @@ export class ProductsService {
       maintenanceIntervalMonths: product.maintenanceIntervalMonths ?? null,
       stock: product.stock,
       description: product.description || '',
+      images: product.images ?? (product.imageUrl ? [{ imageUrl: product.imageUrl, imagePublicId: product.imagePublicId }] : []),
       imageUrl: product.imageUrl,
       imagePublicId: product.imagePublicId,
       active: product.active,

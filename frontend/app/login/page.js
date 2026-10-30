@@ -42,6 +42,7 @@ function LoginForm() {
           <form className="stack" onSubmit={(e) => { e.preventDefault(); go(id, pw); }}>
             <Field label="Email hoặc số điện thoại"><input className="input" value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" required /></Field>
             <Field label="Mật khẩu"><input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required /></Field>
+            <Link href="/forgot-password" className="small">Quên mật khẩu?</Link>
             {error && <div className="notice bad">{error}</div>}
             <button className="btn lg block">Đăng nhập</button>
           </form>

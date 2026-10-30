@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes, randomInt, scrypt as scryptCallback, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
+import { createTransport } from 'nodemailer';
+import { EntityManager } from 'typeorm';
 
 const scrypt = promisify(scryptCallback);
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -20,7 +22,55 @@ async function verify(password: string, stored: string) {
 export interface Principal { id: number; name: string; email: string | null; phone: string | null; role: string; customerId: number | null; driverId: number | null; permissions: string[] }
 @Injectable()
 export class AuthService {
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
+  private cleanupTimer: ReturnType<typeof setInterval>;
+  constructor(@InjectDataSource() private readonly db: DataSource) {
+    this.cleanupTimer = setInterval(() => { void this.db.query('DELETE FROM auth_otp WHERE expires_at<=NOW()').catch(() => {}); }, 30_000);
+    this.cleanupTimer.unref();
+  }
+  onModuleDestroy() { clearInterval(this.cleanupTimer); }
+  async requestOtp(rawEmail: string, purpose: string) {
+    const email = rawEmail.trim().toLowerCase();
+    const [user] = await this.db.query('SELECT id,active FROM `user` WHERE email=?', [email]);
+    if (purpose === 'register' && user) throw new ConflictException('Email đã được sử dụng');
+    // Trả lời giống nhau khi tài khoản không tồn tại để tránh lộ danh sách tài khoản.
+    if (purpose === 'reset' && (!user || !user.active)) return { message: 'Nếu email hợp lệ, mã xác nhận đã được gửi.' };
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) throw new BadRequestException('Chưa cấu hình gửi email. Vui lòng liên hệ cửa hàng.');
+    const newCode = String(randomInt(0, 1000000)).padStart(6, '0');
+    const code = await this.db.transaction(async manager => {
+      await manager.query('DELETE FROM auth_otp WHERE expires_at<=NOW()');
+      await manager.query('INSERT INTO auth_otp(email,purpose,code,expires_at) VALUES(?,?,?,DATE_ADD(NOW(), INTERVAL 3 MINUTE)) ON DUPLICATE KEY UPDATE email=VALUES(email)', [email,purpose,newCode]);
+      const [row] = await manager.query('SELECT code FROM auth_otp WHERE email=? AND purpose=? FOR UPDATE', [email,purpose]);
+      return row.code;
+    });
+    try {
+      await createTransport({ service: 'gmail', auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } }).sendMail({ from: process.env.SMTP_USER, to: email, subject: 'Mã xác nhận Thông Vân', text: `Mã xác nhận của bạn là ${code}. Mã có hiệu lực trong 3 phút kể từ lần gửi đầu tiên. Không chia sẻ mã này với người khác.` });
+    } catch { throw new BadRequestException('Không gửi được email. Vui lòng thử lại sau.'); }
+    return { message: 'Nếu email hợp lệ, mã xác nhận đã được gửi.' };
+  }
+  private async consumeOtp(manager: EntityManager, email: string, purpose: string, otp: string) {
+    const result = await manager.query('DELETE FROM auth_otp WHERE email=? AND purpose=? AND code=? AND expires_at>NOW() AND attempts<5', [email,purpose,otp]);
+    if (!result.affectedRows) throw new BadRequestException('Mã xác nhận không đúng, đã hết hạn hoặc đã được sử dụng.');
+  }
+  private async checkOtp(email: string, purpose: string, otp: string) {
+    const [row] = await this.db.query('SELECT code FROM auth_otp WHERE email=? AND purpose=? AND expires_at>NOW() AND attempts<5', [email,purpose]);
+    if (!row || row.code !== otp) {
+      await this.db.query('UPDATE auth_otp SET attempts=attempts+1 WHERE email=? AND purpose=? AND expires_at>NOW()', [email,purpose]);
+      throw new BadRequestException('Mã xác nhận không đúng, đã hết hạn hoặc đã được sử dụng.');
+    }
+  }
+  async resetPassword(rawEmail: string, otp: string, newPassword: string) {
+    const email = rawEmail.trim().toLowerCase();
+    await this.checkOtp(email, 'reset', otp);
+    const passwordHash = await hashPassword(newPassword);
+    await this.db.transaction(async manager => {
+      await this.consumeOtp(manager, email, 'reset', otp);
+      const [user] = await manager.query('SELECT id FROM `user` WHERE email=? AND active=1 FOR UPDATE', [email]);
+      if (!user) throw new BadRequestException('Không thể đặt lại mật khẩu.');
+      await manager.query('UPDATE `user` SET password_hash=? WHERE id=?', [passwordHash,user.id]);
+      await manager.query('DELETE FROM user_session WHERE user_id=?', [user.id]);
+    });
+    return { message: 'Đã đặt lại mật khẩu.' };
+  }
   async principal(id: number): Promise<Principal> {
     const [user] = await this.db.query('SELECT u.id,u.name,u.email,u.phone,u.customer_id customerId,u.driver_id driverId,r.code role FROM `user` u JOIN role r ON r.id=u.role_id WHERE u.id=? AND u.active=1', [id]);
     if (!user) throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
@@ -41,10 +91,13 @@ export class AuthService {
     return { token, user: await this.principal(user.id) };
   }
   async logout(token: string) { await this.db.query('DELETE FROM user_session WHERE token_hash=?', [digest(token)]); }
-  async register(input: {name:string; phone:string; email?:string; password:string}) {
+  async register(input: {name:string; phone:string; email:string; password:string; otp:string}) {
+    input.email = input.email.trim().toLowerCase();
+    await this.checkOtp(input.email, 'register', input.otp);
     const passwordHash = await hashPassword(input.password);
     try {
       await this.db.transaction(async manager => {
+        await this.consumeOtp(manager, input.email, 'register', input.otp);
         const [role] = await manager.query("SELECT id FROM role WHERE code='CUSTOMER'");
         if (!role) throw new BadRequestException('Chưa cấu hình vai trò khách hàng');
         const [existing] = await manager.query('SELECT id FROM customer WHERE phone=?',[input.phone]);

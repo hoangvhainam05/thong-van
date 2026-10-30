@@ -244,9 +244,9 @@ export function StoreProvider({ children }) {
         saveToken('');
         mutate((d) => { d.session = null; d.users = []; });
       },
-      async register({ name, phone, email, password }) {
+      async register({ name, phone, email, password, otp }) {
         try {
-          const result = await api('/api/auth/register', { method: 'POST', body: { name, phone, ...(email ? { email } : {}), password } });
+          const result = await api('/api/auth/register', { method: 'POST', body: { name, phone, email, password, otp } });
           saveToken(result.token);
           mutate((d) => { d.users = [result.user]; prepareAccountData(d, result.user); d.session = { userId: result.user.id }; d.roleMatrix[result.user.role] = result.user.permissions; });
           return { ok: true, user: result.user };

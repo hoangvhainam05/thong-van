@@ -2,6 +2,9 @@ import { PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsArray,
+  ArrayMaxSize,
+  ValidateNested,
   IsInt,
   IsNumber,
   IsOptional,
@@ -11,6 +14,11 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+
+export class ProductImageDto {
+  @IsString() @MinLength(1) @MaxLength(1000) imageUrl!: string;
+  @IsOptional() @IsString() @MaxLength(255) imagePublicId?: string | null;
+}
 
 export class CreateProductDto {
   @IsOptional()
@@ -86,6 +94,9 @@ export class CreateProductDto {
   @IsString()
   @MaxLength(10000)
   description?: string | null;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => ProductImageDto)
+  images?: ProductImageDto[];
 
   @IsOptional()
   @IsString()

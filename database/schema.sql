@@ -45,6 +45,7 @@ CREATE TABLE product (
   volume_m3       DECIMAL(6,3)  NOT NULL DEFAULT 0.1,
   weight_kg       DECIMAL(7,2)  NOT NULL DEFAULT 1,
   install_minutes INT           NOT NULL DEFAULT 10,
+  images          JSON NULL,
   image_url       VARCHAR(1000) NULL,
   image_public_id VARCHAR(255) NULL,
   warranty_months INT           NOT NULL DEFAULT 12,
@@ -335,3 +336,14 @@ INSERT INTO system_setting (id, shipping_fee, free_ship_from, delivery_day_start
 VALUES (1, 150000, 5000000, '08:00', '18:00', 30.00, 1.35, 1.00, 0.50, 'MB Bank', 'CUA HANG THONG VAN', '9999999999', 'THONGVAN', '0988 000 001 - CSKH Thông Vân')
 ON DUPLICATE KEY UPDATE id=id;
 
+
+-- OTP dùng một lần, được dọn sau khi hết hạn hoặc xác nhận thành công.
+CREATE TABLE auth_otp (
+  email VARCHAR(120) NOT NULL,
+  purpose VARCHAR(20) NOT NULL,
+  code CHAR(6) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (email, purpose),
+  INDEX idx_auth_otp_expiry (expires_at)
+);

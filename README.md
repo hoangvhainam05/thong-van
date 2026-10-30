@@ -190,3 +190,9 @@ GPS real-time, thông báo SMS/Zalo, cổng thanh toán online, geocoding tự �
 
 ## 6. Agent hỗ trợ (agency-agents)
 Xem `CLAUDE.md` để biết agent nào dùng cho việc gì.
+
+### Ảnh sản phẩm và mã xác nhận email
+
+Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_images_otp.sql` một lần trước khi cập nhật ứng dụng. Migration giữ ảnh hiện tại làm ảnh đầu tiên; cơ sở dữ liệu mới dùng `database/schema.sql`. Trang quản trị cho phép chọn tối đa 20 ảnh, mỗi ảnh tối đa 5 MB; ảnh đầu tiên là ảnh đại diện.
+
+Cấu hình `GMAIL_USER` và `GMAIL_APP_PASSWORD` trong môi trường backend (mật khẩu ứng dụng Gmail), rồi khởi động lại backend. Đăng ký yêu cầu email và mã xác nhận; người dùng có thể đặt lại mật khẩu bằng email đã đăng ký. Mã gồm 6 số, có hiệu lực 3 phút kể từ lần gửi đầu tiên; gửi lại trong thời gian này dùng cùng mã và không gia hạn. Mã được xóa khi xác nhận thành công; bản ghi hết hạn được dọn định kỳ khi backend đang chạy và khi có yêu cầu mã mới. Tài khoản không có email cần liên hệ quản trị viên để cập nhật trước khi dùng tính năng quên mật khẩu. Chức năng giới hạn yêu cầu hiện tại chạy theo từng tiến trình; khi triển khai nhiều máy chủ cần bổ sung giới hạn dùng chung.

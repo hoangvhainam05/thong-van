@@ -2,12 +2,14 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, U
 import { AuthGuard, AuthRequest, RequirePermission } from './auth.guard';
 import { RateLimitGuard } from './rate-limit.guard';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginDto, PasswordDto, ProfileDto, RegisterDto, RoleDto, UpdateUserDto } from './auth.dto';
+import { CreateUserDto, LoginDto, PasswordDto, ProfileDto, RegisterDto, OtpRequestDto, ResetPasswordDto, RoleDto, UpdateUserDto } from './auth.dto';
 @Controller('api')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
   @Post('auth/login') @UseGuards(RateLimitGuard) login(@Body() input: LoginDto) { return this.auth.login(input.identifier,input.password); }
   @Post('auth/register') @UseGuards(RateLimitGuard) register(@Body() input: RegisterDto) { return this.auth.register(input); }
+  @Post('auth/otp') @UseGuards(RateLimitGuard) requestOtp(@Body() input: OtpRequestDto) { return this.auth.requestOtp(input.email, input.purpose); }
+  @Post('auth/reset-password') @UseGuards(RateLimitGuard) resetPassword(@Body() input: ResetPasswordDto) { return this.auth.resetPassword(input.email, input.otp, input.newPassword); }
   @Get('auth/me') @UseGuards(AuthGuard) me(@Req() req: AuthRequest) { return req.user; }
   @Patch('auth/me') @UseGuards(AuthGuard) profile(@Req() req: AuthRequest, @Body() input: ProfileDto) { return this.auth.profile(req.user.id,input); }
   @Post('auth/change-password') @UseGuards(AuthGuard) password(@Req() req: AuthRequest, @Body() input: PasswordDto) { return this.auth.changePassword(req.user.id,req.token,input.currentPassword,input.newPassword); }
