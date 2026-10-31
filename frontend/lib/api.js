@@ -1,24 +1,29 @@
 export function resolveUrl(path) {
+  let url = path;
   // On the server (runtime functions / SSR), use the Vercel service binding BACKEND_URL
   if (typeof window === "undefined") {
     const baseUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
     const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
-    return new URL(normalizedPath, normalizedBase).toString();
-  }
-
-  // In the browser (client-side):
-  // If NEXT_PUBLIC_API_URL is configured (e.g. for standalone local dev), resolve against it.
-  // Otherwise, return relative path so requests route to the same origin through Vercel rewrites.
-  if (process.env.NEXT_PUBLIC_API_URL) {
+    url = new URL(normalizedPath, normalizedBase).toString();
+  } else if (process.env.NEXT_PUBLIC_API_URL) {
+    // In the browser (client-side):
+    // If NEXT_PUBLIC_API_URL is configured (e.g. for standalone local dev), resolve against it.
+    // Otherwise, return relative path so requests route to the same origin through Vercel rewrites.
     const normalizedBase = process.env.NEXT_PUBLIC_API_URL.endsWith("/")
       ? process.env.NEXT_PUBLIC_API_URL
       : `${process.env.NEXT_PUBLIC_API_URL}/`;
     const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
-    return new URL(normalizedPath, normalizedBase).toString();
+    url = new URL(normalizedPath, normalizedBase).toString();
   }
 
-  return path;
+  // Restore Leaflet URL template placeholders ({z}, {x}, {y}, {s}, {r}) that new URL() percent-encodes
+  return url
+    .replace(/%7Bz%7D/gi, "{z}")
+    .replace(/%7Bx%7D/gi, "{x}")
+    .replace(/%7By%7D/gi, "{y}")
+    .replace(/%7Bs%7D/gi, "{s}")
+    .replace(/%7Br%7D/gi, "{r}");
 }
 
 export async function api(path, { method = "GET", body, token } = {}) {

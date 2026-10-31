@@ -7,10 +7,10 @@ export function addMapTiles(L, map) {
     attribution: 'Ảnh vệ tinh © <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener noreferrer">MapTiler</a> / Google / <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OSM</a>',
   });
 
-  const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxNativeZoom: 19,
+  const street = L.tileLayer(resolveUrl('/api/location/tiles/{z}/{x}/{y}?type=street'), {
+    maxNativeZoom: 20,
     maxZoom: 22,
-    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    attribution: 'Bản đồ đường phố © Geoapify / Google / <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OSM</a>',
   });
 
   satellite.addTo(map);

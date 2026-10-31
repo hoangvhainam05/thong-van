@@ -84,6 +84,23 @@ describe('SystemController MapTiler satellite tiles', () => {
     expect(global.fetch).toHaveBeenCalledWith('https://mt1.google.com/vt/lyrs=y&x=1000&y=2000&z=22', expect.any(Object));
   });
 
+  test('proxies street map tiles when type=street', async () => {
+    process.env.GEOAPIFY_API_KEY = 'geo-key';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/png' },
+      arrayBuffer: async () => new Uint8Array([7, 8, 9]).buffer,
+    });
+    const response = { set: jest.fn() } as any;
+
+    await controller.mapTile('13', '6400', '3790', response, 'street');
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://maps.geoapify.com/v1/tile/osm-bright/13/6400/3790.png?apiKey=geo-key',
+      expect.any(Object),
+    );
+    expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'image/png' }));
+  });
+
   test('rejects invalid tile coordinates before contacting tile providers', async () => {
     process.env.MAPTILER_API_KEY = 'server-key';
     global.fetch = jest.fn();

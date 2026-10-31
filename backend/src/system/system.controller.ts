@@ -34,14 +34,66 @@ export class SystemController {
   private maptilerRestrictedUntil = 0;
 
   @Get('location/tiles/:z/:x/:y')
-  async mapTile(@Param('z') rawZ: string, @Param('x') rawX: string, @Param('y') rawY: string, @Res({ passthrough: true }) response: Response) {
-    const key = process.env.MAPTILER_API_KEY?.trim();
+  async mapTile(
+    @Param('z') rawZ: string,
+    @Param('x') rawX: string,
+    @Param('y') rawY: string,
+    @Res({ passthrough: true }) response: Response,
+    @Query('type') type?: string,
+  ) {
     const z = Number(rawZ), x = Number(rawX), y = Number(rawY);
     const tileLimit = Number.isInteger(z) && z >= 0 && z <= 22 ? 2 ** z : 0;
     if (!tileLimit || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= tileLimit || y >= tileLimit) {
       throw new BadRequestException('Tọa độ tile không hợp lệ');
     }
-    // 1. Thử MapTiler nếu có key và không trong thời gian cooldown
+
+    // 1. Bản đồ đường phố (khi type === 'street')
+    if (type === 'street') {
+      const geoKey = process.env.GEOAPIFY_API_KEY?.trim();
+      if (geoKey) {
+        try {
+          const tile = await fetch(`https://maps.geoapify.com/v1/tile/osm-bright/${z}/${x}/${y}.png?apiKey=${encodeURIComponent(geoKey)}`, { signal: AbortSignal.timeout(6000) });
+          if (tile.ok) {
+            response.set({
+              'Content-Type': tile.headers.get('content-type') || 'image/png',
+              'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+            });
+            return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
+          }
+        } catch {}
+      }
+      try {
+        const tile = await fetch(`https://mt1.google.com/vt/lyrs=m&x=${x}&y=${y}&z=${z}`, {
+          signal: AbortSignal.timeout(6000),
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        if (tile.ok) {
+          response.set({
+            'Content-Type': tile.headers.get('content-type') || 'image/png',
+            'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+          });
+          return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
+        }
+      } catch {}
+      try {
+        const tile = await fetch(`https://tile.openstreetmap.de/${z}/${x}/${y}.png`, {
+          signal: AbortSignal.timeout(6000),
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        if (tile.ok) {
+          response.set({
+            'Content-Type': tile.headers.get('content-type') || 'image/png',
+            'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+          });
+          return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
+        }
+      } catch {}
+      throw new ServiceUnavailableException('Không tải được bản đồ đường phố');
+    }
+
+    // 2. Bản đồ vệ tinh (mặc định)
+    const key = process.env.MAPTILER_API_KEY?.trim();
+    // 2.1 Thử MapTiler nếu có key và không trong thời gian cooldown
     if (key && Date.now() > this.maptilerRestrictedUntil) {
       try {
         const tile = await fetch(`https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(4000) });
@@ -57,7 +109,7 @@ export class SystemController {
         }
       } catch {}
     }
-    // 2. Dự phòng ảnh vệ tinh Google Hybrid (ảnh vệ tinh độ nét cao kèm tên đường tiếng Việt)
+    // 2.2 Dự phòng ảnh vệ tinh Google Hybrid (ảnh vệ tinh độ nét cao kèm tên đường tiếng Việt)
     try {
       const tile = await fetch(`https://mt1.google.com/vt/lyrs=y&x=${x}&y=${y}&z=${z}`, {
         signal: AbortSignal.timeout(8000),
@@ -71,7 +123,7 @@ export class SystemController {
         return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
       }
     } catch {}
-    // 3. Dự phòng tiếp theo: Esri World Imagery
+    // 2.3 Dự phòng tiếp theo: Esri World Imagery
     try {
       const tile = await fetch(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`, {
         signal: AbortSignal.timeout(8000),
