@@ -158,17 +158,33 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       if (!res.ok) throw new Error();
       const data = await res.json();
       if (request !== locationSequence.current || !Number.isFinite(data.lat) || !Number.isFinite(data.lng)) return;
-      // Di chuyển ghim và kích hoạt chọn toạ độ xấp xỉ
       move(data.lat, data.lng);
-      setError(`Thiết bị chưa cấp quyền GPS chính xác. Bản đồ đã định vị theo mạng ở khu vực ${data.city || 'của bạn'}. Bạn hãy kéo ghim đến đúng nhà hoặc gõ số nhà vào ô tìm kiếm bên trên.`);
+
+      if (locationError?.code === 1) {
+        let isReloadPending = false;
+        try {
+          if (navigator.permissions?.query) {
+            const perm = await navigator.permissions.query({ name: "geolocation" });
+            if (perm?.state === "granted") isReloadPending = true;
+          }
+        } catch {}
+
+        if (isReloadPending) {
+          setError("Bạn vừa cấp quyền trên Chrome: Vui lòng bấm nút 'Reload' (Tải lại) ở thanh thông báo màu hồng phía trên cùng của trình duyệt để Chrome áp dụng quyền định vị.");
+        } else {
+          setError("Trình duyệt hoặc máy tính chưa cho phép định vị GPS. Vui lòng bấm nút 'Reload' màu hồng phía trên, hoặc bấm 'Tìm' ô địa chỉ để bay đến vị trí nhà bạn.");
+        }
+      } else {
+        setError(`Thiết bị chưa trả về GPS chính xác (máy tính thường không có chip GPS). Bản đồ đã định vị tạm thời ở ${data.city || 'khu vực của bạn'}. Bạn hãy kéo ghim hoặc bấm 'Tìm' để đến đúng nhà.`);
+      }
     } catch {
       if (request !== locationSequence.current) return;
       if (locationError?.code === 1) {
-        setError("Trình duyệt đang chặn quyền vị trí. Vui lòng bấm vào biểu tượng ổ khoá 🔒 bên cạnh thanh địa chỉ để Bật quyền Vị trí, hoặc gõ địa chỉ vào ô tìm kiếm bên trên.");
+        setError("Quyền vị trí chưa được kích hoạt. Hãy bấm nút 'Reload' màu hồng ở thanh thông báo của Chrome hoặc kiểm tra Cài đặt hệ thống Mac.");
       } else if (locationError?.code === 3) {
-        setError("Định vị GPS quá thời gian. Bạn vui lòng gõ địa chỉ vào ô tìm kiếm hoặc bấm chọn trực tiếp trên bản đồ.");
+        setError("Định vị GPS quá thời gian. Bạn vui lòng bấm nút 'Tìm' ở ô địa chỉ bên trên.");
       } else {
-        setError("Thiết bị chưa xác định được toạ độ GPS. Bạn vui lòng gõ địa chỉ vào ô tìm kiếm hoặc bấm chọn trực tiếp trên bản đồ.");
+        setError("Không đo được toạ độ GPS từ thiết bị. Bạn vui lòng bấm 'Tìm' ở ô địa chỉ bên trên.");
       }
     } finally {
       if (request === locationSequence.current) setLocating(false);
@@ -178,25 +194,36 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
   function locate() {
     if (!navigator.geolocation) return setError("Trình duyệt không hỗ trợ định vị.");
     const request = ++locationSequence.current;
-    setLocating(true); setError(""); clearAccuracy();
+    setLocating(true);
+    setError("");
+    clearAccuracy();
+
     const onSuccess = (p) => {
       if (request !== locationSequence.current) return;
       setLocating(false);
+      setError("");
       const { latitude, longitude, accuracy: meters } = p.coords;
       move(latitude, longitude);
       if (Number.isFinite(meters) && leaflet.current && map.current) {
         setAccuracy(Math.ceil(meters));
-        accuracyCircle.current = leaflet.current.circle([latitude, longitude], { radius: meters, color: "#1b4f8c", weight: 1, fillOpacity: 0.12, interactive: false }).addTo(map.current);
+        accuracyCircle.current = leaflet.current.circle([latitude, longitude], {
+          radius: meters,
+          color: "#1b4f8c",
+          weight: 1,
+          fillOpacity: 0.12,
+          interactive: false,
+        }).addTo(map.current);
       }
     };
-    navigator.geolocation.getCurrentPosition(onSuccess, (locationError) => {
-      if (request !== locationSequence.current) return;
-      if (locationError.code !== 2) return void useApproximateLocation(request, locationError);
-      setError("Thiết bị chưa trả về vị trí mạng. Đang thử GPS chính xác…");
-      navigator.geolocation.getCurrentPosition(onSuccess, (preciseError) => {
-        if (request === locationSequence.current) void useApproximateLocation(request, preciseError);
-      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
-    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 });
+
+    navigator.geolocation.getCurrentPosition(
+      onSuccess,
+      (locationError) => {
+        if (request !== locationSequence.current) return;
+        useApproximateLocation(request, locationError);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
   }
 
   return <Modal wide title={warehouse ? "Chọn vị trí kho" : "Chọn vị trí giao hàng"} onClose={onClose} footer={<><button className="btn secondary" onClick={onClose}>Huỷ</button><button className="btn" disabled={!point || loading} onClick={() => onSelect({ lat: point[0], lng: point[1], address, district })}>Xác nhận vị trí</button></>}>
