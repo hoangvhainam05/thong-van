@@ -98,7 +98,18 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
         setAccuracy(Math.ceil(meters));
         accuracyCircle.current = leaflet.current.circle([latitude, longitude], { radius: meters, color: "#1b4f8c", weight: 1, fillOpacity: 0.12, interactive: false }).addTo(map.current);
       }
-    }, () => { setLocating(false); setError("Không lấy được vị trí hiện tại. Hãy cho phép truy cập vị trí hoặc chọn trên bản đồ."); }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    }, (locationError) => {
+      setLocating(false);
+      if (locationError.code === 1) {
+        setError("Chrome chưa được hệ điều hành cho phép định vị. Hãy bật Dịch vụ định vị cho Google Chrome trong Cài đặt hệ thống, rồi thử lại.");
+      } else if (locationError.code === 2) {
+        setError("Thiết bị chưa xác định được vị trí. Hãy bật Wi-Fi và Dịch vụ định vị, rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
+      } else if (locationError.code === 3) {
+        setError("Định vị mất quá nhiều thời gian. Hãy kiểm tra Wi-Fi/Dịch vụ định vị rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
+      } else {
+        setError("Không lấy được vị trí hiện tại. Hãy kiểm tra quyền định vị của Chrome hoặc chọn trực tiếp trên bản đồ.");
+      }
+    }, { enableHighAccuracy: false, maximumAge: 300000, timeout: 15000 });
   }
   return <Modal wide title={warehouse ? "Chọn vị trí kho" : "Chọn vị trí giao hàng"} onClose={onClose} footer={<><button className="btn secondary" onClick={onClose}>Huỷ</button><button className="btn" disabled={!point || loading} onClick={() => onSelect({ lat: point[0], lng: point[1], address, district })}>Xác nhận vị trí</button></>}>
     <div className="stack-sm">
