@@ -114,6 +114,7 @@ p { margin: 0; }
 .tiny { font-size: 12px; }
 .strong { font-weight: 700; }
 .nowrap { white-space: nowrap; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .right { text-align: right; }
 .divider { height: 1px; background: var(--line-soft); margin: 4px 0; }
 .price { font-weight: 800; color: var(--road); }

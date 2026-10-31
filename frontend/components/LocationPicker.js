@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui";
+import { api } from "@/lib/api";
 
 const DEFAULT = [16.0678, 108.2208];
-const service = "https://nominatim.osm.org";
 
 export default function LocationPicker({ initial, onClose, onSelect, warehouse = false }) {
   const element = useRef(null), map = useRef(null), marker = useRef(null), sequence = useRef(0), searchSequence = useRef(0), locationSequence = useRef(0), accuracyCircle = useRef(null), leaflet = useRef(null);
@@ -24,11 +24,9 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
     const request = ++sequence.current;
     setPoint([lat, lng]); setLoading(true); setError(""); setAddress(""); setDistrict("");
     try {
-      const res = await fetch(`${service}/reverse?format=jsonv2&addressdetails=1&accept-language=vi&lat=${lat}&lon=${lng}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      const [data] = await api(`/api/location/geocode?${new URLSearchParams({ reverse: "1", lat, lon: lng })}`);
       if (request !== sequence.current) return;
-      if (!data.display_name) throw new Error();
+      if (!data?.display_name) throw new Error();
       setAddress(data.display_name.slice(0, 255));
       setDistrict(data.address?.city_district || data.address?.district || data.address?.county || "");
     } catch { if (request === sequence.current) setError("Không tìm được địa chỉ cho điểm này. Bạn có thể nhập địa chỉ sau khi xác nhận."); }
@@ -65,14 +63,10 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
     e.preventDefault(); if (!query.trim()) return;
     const request = ++searchSequence.current;
     const center = map.current?.getCenter() || { lat: DEFAULT[0], lng: DEFAULT[1] };
-    const latSpan = 0.23, lngSpan = 0.23 / Math.max(Math.cos(center.lat * Math.PI / 180), 0.1);
-    const viewbox = [center.lng - lngSpan, center.lat + latSpan, center.lng + lngSpan, center.lat - latSpan].join(",");
     setError(""); setResults([]); setHouseNumberMissing(false);
     try {
-      const params = new URLSearchParams({ format: "jsonv2", addressdetails: "1", limit: "20", countrycodes: "vn", "accept-language": "vi", q: query.trim(), viewbox, bounded: "1" });
-      const res = await fetch(`${service}/search?${params}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      const params = new URLSearchParams({ q: query.trim(), lat: center.lat, lon: center.lng });
+      const data = await api(`/api/location/geocode?${params}`);
       if (request !== searchSequence.current) return;
       const distance = (item) => {
         const lat = (Number(item.lat) - center.lat) * Math.PI / 180;
@@ -141,7 +135,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       {accuracy != null && <p className="small muted" aria-live="polite">Vị trí thiết bị có sai số ước tính khoảng {accuracy} m (vòng tròn xanh). Hãy kéo ghim đến đúng vị trí.</p>}
       <div className="small" aria-live="polite">{loading ? "Đang tìm địa chỉ gần ghim…" : !point ? "Chưa chọn vị trí." : "Địa chỉ gần ghim chỉ mang tính tham khảo; hãy sửa đúng số nhà trước khi xác nhận."}</div>
       {point && <label className="field"><span>{warehouse ? "Địa chỉ kho" : "Địa chỉ nhận hàng"}</span><input className="input" maxLength={255} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Nhập số nhà và địa chỉ chính xác" /></label>}
-      <p className="tiny muted">Địa chỉ được tra cứu từ OpenStreetMap và có thể chưa đầy đủ số nhà; vui lòng kiểm tra và bổ sung sau khi chọn.</p>
+      <p className="tiny muted">Địa chỉ được tra cứu bởi <a href="https://www.geoapify.com/" target="_blank" rel="noreferrer">Geoapify</a> và có thể chưa đầy đủ số nhà; vui lòng kiểm tra và bổ sung sau khi chọn.</p>
     </div>
   </Modal>;
 }

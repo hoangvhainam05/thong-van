@@ -66,8 +66,8 @@ function Frame({ children }) {
         <div className="me">
           <Avatar name={user.name} />
           <div className="grow">
-            <div style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>{user.name}</div>
-            <div className="tiny">{user.email}</div>
+            <div className="truncate" style={{ color: "#fff", fontWeight: 600, fontSize: 14 }} title={user.name}>{user.name}</div>
+            <div className="tiny truncate" title={user.email}>{user.email}</div>
           </div>
         </div>
       </aside>
