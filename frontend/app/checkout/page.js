@@ -25,13 +25,17 @@ function Checkout() {
   const [newAddr, setNewAddr] = useState({ address: "", district: "", lat: "", lng: "" });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
-  const [geocoding, setGeocoding] = useState(false);
   const searchTimeoutRef = useRef(null);
 
   const onAddressChange = (val) => {
-    setNewAddr((prev) => ({ ...prev, address: val, lat: "", lng: "" }));
+    if (!val || !val.trim()) {
+      setNewAddr({ address: "", district: "", lat: "", lng: "" });
+      setSuggestions([]);
+      return;
+    }
+    setNewAddr((prev) => ({ ...prev, address: val }));
     clearTimeout(searchTimeoutRef.current);
-    if (!val || val.trim().length < 3) {
+    if (val.trim().length < 3) {
       setSuggestions([]);
       return;
     }
@@ -53,26 +57,11 @@ function Checkout() {
       lng: Number(item.lon),
     });
     setSuggestions([]);
+    setPickerOpen(true);
   };
 
-  const onAddressBlur = async () => {
+  const onAddressBlur = () => {
     setTimeout(() => setSuggestions([]), 250);
-    if (!newAddr.address || newAddr.address.trim().length < 6 || newAddr.lat) return;
-    setGeocoding(true);
-    try {
-      const data = await api(`/api/location/geocode?q=${encodeURIComponent(newAddr.address.trim())}`);
-      if (Array.isArray(data) && data[0]?.lat && data[0]?.lon) {
-        setNewAddr((prev) => ({
-          ...prev,
-          lat: Number(data[0].lat),
-          lng: Number(data[0].lon),
-          district: prev.district || data[0].address?.city_district || data[0].address?.district || data[0].address?.county || "",
-        }));
-      }
-    } catch {}
-    finally {
-      setGeocoding(false);
-    }
   };
   const [date, setDate] = useState(addDays(ymd(), 1));
   const [win, setWin] = useState("day");
@@ -110,9 +99,19 @@ function Checkout() {
     setError("");
     let address;
     if (addrId === "new") {
-      if (newAddr.address.trim().length < 8) return setError("Nhập địa chỉ giao hàng đầy đủ (số nhà, đường, phường, quận).");
-      address = { address: newAddr.address, district: newAddr.district, lat: newAddr.lat ? Number(newAddr.lat) : null, lng: newAddr.lng ? Number(newAddr.lng) : null };
-    } else address = customer.addresses.find((a) => a.id === addrId);
+      if (newAddr.address.trim().length < 5) return setError("Vui lòng nhập địa chỉ giao hàng.");
+      if (!newAddr.lat || !newAddr.lng) {
+        setPickerOpen(true);
+        return setError("Bắt buộc phải ghim vị trí trên bản đồ để lấy toạ độ giao hàng chính xác.");
+      }
+      address = { address: newAddr.address, district: newAddr.district, lat: Number(newAddr.lat), lng: Number(newAddr.lng) };
+    } else {
+      address = customer.addresses.find((a) => a.id === addrId);
+      if (!address?.lat || !address?.lng) {
+        setPickerOpen(true);
+        return setError("Địa chỉ này chưa có toạ độ ghim trên bản đồ. Vui lòng ghim vị trí để tài xế giao hàng chính xác.");
+      }
+    }
     const w = win === "custom" ? custom : WINDOWS.find((x) => x.id === win);
     if (isGift && (!recipientName.trim() || !/^0\d{9,10}$/.test(recipientPhone))) {
       return setError("Nhập tên người nhận và số điện thoại hợp lệ cho đơn đặt hộ.");
@@ -141,7 +140,23 @@ function Checkout() {
 
   return (
     <>
-      {pickerOpen && <LocationPicker initial={newAddr} onClose={() => setPickerOpen(false)} onSelect={(location) => { setNewAddr((a) => ({ ...a, ...location, address: location.address || a.address, district: location.district || a.district })); setPickerOpen(false); }} />}
+      {pickerOpen && (
+        <LocationPicker
+          initial={addrId === "new" ? newAddr : (customer?.addresses?.find((a) => a.id === addrId) || newAddr)}
+          onClose={() => setPickerOpen(false)}
+          onSelect={(location) => {
+            setNewAddr((prev) => ({
+              ...prev,
+              ...location,
+              address: location.address || (addrId === "new" ? prev.address : customer?.addresses?.find((a) => a.id === addrId)?.address) || "",
+              district: location.district || prev.district || "",
+            }));
+            setAddrId("new");
+            setPickerOpen(false);
+            setError("");
+          }}
+        />
+      )}
       <div className="steps-bar"><span>Giỏ hàng</span><span>›</span><span className="on">Giao hàng và thanh toán</span><span>›</span><span>Theo dõi đơn</span></div>
       <h1 style={{ marginBottom: 18 }}>Đặt hàng</h1>
       <div className="two-col">
@@ -164,29 +179,123 @@ function Checkout() {
           <section className="panel">
             <div className="panel-head"><h3>Địa chỉ nhận hàng</h3></div>
             <div className="panel-body stack">
-              <div className="choice">
-                {customer.addresses.map((a) => (
-                  <label key={a.id}>
-                    <input type="radio" name="addr" checked={addrId === a.id} onChange={() => setAddrId(a.id)} />
-                    <span><b>{a.label}</b><br /><span className="small muted">{a.address}</span></span>
+              {customer?.addresses?.length > 0 && (
+                <div className="choice">
+                  {customer.addresses.map((a) => {
+                    const hasCoords = a.lat && a.lng;
+                    return (
+                      <label key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <input type="radio" name="addr" checked={addrId === a.id} onChange={() => setAddrId(a.id)} />
+                          <span>
+                            <b>{a.label}</b>
+                            {hasCoords ? (
+                              <span className="tiny" style={{ color: "var(--go)", marginLeft: 8, fontWeight: 600 }}>✓ Đã có toạ độ</span>
+                            ) : (
+                              <span className="tiny" style={{ color: "var(--stop)", marginLeft: 8, fontWeight: 600 }}>⚠ Chưa ghim toạ độ</span>
+                            )}
+                            <br /><span className="small muted">{a.address}</span>
+                          </span>
+                        </div>
+                        {!hasCoords && addrId === a.id && (
+                          <button
+                            type="button"
+                            className="btn sm signal"
+                            onClick={() => {
+                              setNewAddr({ address: a.address, district: a.district || "", lat: "", lng: "" });
+                              setAddrId("new");
+                              setPickerOpen(true);
+                            }}
+                          >
+                            📍 Ghim toạ độ
+                          </button>
+                        )}
+                      </label>
+                    );
+                  })}
+                  <label>
+                    <input type="radio" name="addr" checked={addrId === "new"} onChange={() => setAddrId("new")} />
+                    <span><b>Địa chỉ khác / Ghim vị trí mới</b></span>
                   </label>
-                ))}
-                <label>
-                  <input type="radio" name="addr" checked={addrId === "new"} onChange={() => setAddrId("new")} />
-                  <span><b>Địa chỉ khác</b></span>
-                </label>
-              </div>
+                </div>
+              )}
+
+              {addrId !== "new" && (() => {
+                const selected = customer?.addresses?.find((a) => a.id === addrId);
+                const hasCoords = selected?.lat && selected?.lng;
+                if (!selected) return null;
+                return (
+                  <div style={{ marginTop: 4 }}>
+                    {hasCoords ? (
+                      <div style={{ padding: "10px 14px", background: "#ecfdf5", border: "1px solid #10b981", borderRadius: "var(--r-sm)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#065f46" }}>
+                            ✓ Đã có toạ độ ghim GPS ({Number(selected.lat).toFixed(4)}, {Number(selected.lng).toFixed(4)})
+                          </div>
+                          <div className="tiny" style={{ color: "#047857", marginTop: 2 }}>
+                            Tài xế sẽ được dẫn đường bằng GPS đến chính xác vị trí này.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn sm secondary"
+                          onClick={() => {
+                            setNewAddr({ address: selected.address, district: selected.district || "", lat: selected.lat, lng: selected.lng });
+                            setAddrId("new");
+                            setPickerOpen(true);
+                          }}
+                        >
+                          📍 Xem / Chỉnh lại ghim
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px dashed #d97706", borderRadius: "var(--r-sm)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#92400e" }}>
+                            ⚠ Địa chỉ này chưa có toạ độ ghim trên bản đồ (Bắt buộc)
+                          </div>
+                          <div className="tiny" style={{ color: "#78350f", marginTop: 2 }}>
+                            Vui lòng ghim vị trí để tài xế tìm đúng nhà bạn khi giao hàng.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn sm signal"
+                          onClick={() => {
+                            setNewAddr({ address: selected.address, district: selected.district || "", lat: "", lng: "" });
+                            setAddrId("new");
+                            setPickerOpen(true);
+                          }}
+                        >
+                          📍 Mở bản đồ để ghim ngay
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {addrId === "new" && (
                 <div className="form-grid">
                   <div className="field full" style={{ position: "relative" }}>
-                    <span>Địa chỉ nhận hàng</span>
-                    <input
-                      className="input"
-                      value={newAddr.address}
-                      onChange={(e) => onAddressChange(e.target.value)}
-                      onBlur={onAddressBlur}
-                      placeholder="Nhập số nhà, ngõ, tên đường, phường, quận..."
-                    />
+                    <span>Địa chỉ nhận hàng <span style={{ color: "var(--stop)" }}>*</span></span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        className="input grow"
+                        value={newAddr.address}
+                        onChange={(e) => onAddressChange(e.target.value)}
+                        onBlur={onAddressBlur}
+                        placeholder="Nhập tên xã, huyện, đường hoặc số nhà..."
+                      />
+                      <button
+                        type="button"
+                        className={`btn ${newAddr.lat ? "secondary" : "signal"}`}
+                        onClick={() => setPickerOpen(true)}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        📍 {newAddr.lat ? "Chỉnh vị trí ghim" : "Ghim trên bản đồ *"}
+                      </button>
+                    </div>
                     {suggestions.length > 0 && (
                       <div className="map-results" style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: "#fff", boxShadow: "0 6px 18px rgba(0,0,0,0.18)", marginTop: 4, maxHeight: 180, overflowY: "auto", borderRadius: "var(--r-sm)" }}>
                         {suggestions.map((item) => (
@@ -202,27 +311,44 @@ function Checkout() {
                         ))}
                       </div>
                     )}
-                    {newAddr.lat ? (
-                      <div className="tiny" style={{ color: "var(--go)", marginTop: 5, display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
-                        <span>✓ Đã tự động định vị toạ độ trên bản đồ</span>
-                        <span className="muted font-normal">({Number(newAddr.lat).toFixed(4)}, {Number(newAddr.lng).toFixed(4)})</span>
+                  </div>
+
+                  <div className="field full">
+                    {newAddr.lat && newAddr.lng ? (
+                      <div style={{ padding: "10px 14px", background: "#ecfdf5", border: "1px solid #10b981", borderRadius: "var(--r-sm)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#065f46", display: "flex", alignItems: "center", gap: 6 }}>
+                            <span>✓ Đã ghim toạ độ GPS chính xác</span>
+                            <span className="tiny font-normal muted">({Number(newAddr.lat).toFixed(5)}, {Number(newAddr.lng).toFixed(5)})</span>
+                          </div>
+                          <div className="tiny" style={{ color: "#047857", marginTop: 2 }}>
+                            Toạ độ GPS này sẽ dùng để dẫn đường cho tài xế đến đúng vị trí nhà bạn.
+                          </div>
+                        </div>
+                        <button type="button" className="btn sm secondary" onClick={() => setPickerOpen(true)}>
+                          📍 Chỉnh lại ghim
+                        </button>
                       </div>
-                    ) : geocoding ? (
-                      <div className="tiny muted" style={{ marginTop: 5 }}>Đang tự động xác định toạ độ địa chỉ…</div>
-                    ) : null}
+                    ) : (
+                      <div style={{ padding: "10px 14px", background: "#fffbeb", border: "1px dashed #d97706", borderRadius: "var(--r-sm)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#92400e" }}>
+                            ⚠ Bắt buộc ghim vị trí trên bản đồ
+                          </div>
+                          <div className="tiny" style={{ color: "#78350f", marginTop: 2 }}>
+                            Vui lòng mở bản đồ để ghim đúng vị trí nhà bạn (đặc biệt khu vực không có số nhà).
+                          </div>
+                        </div>
+                        <button type="button" className="btn sm signal" onClick={() => setPickerOpen(true)}>
+                          📍 Mở bản đồ để ghim (Bắt buộc)
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <Field label="Chú thích địa chỉ" hint="Ví dụ: hẻm nhỏ, tầng 2, gần cửa hàng">
-                    <input className="input" maxLength={220} value={addressNote} onChange={(e) => setAddressNote(e.target.value)} placeholder="Thông tin giúp tìm địa chỉ" />
+
+                  <Field label="Chú thích địa chỉ" hint="Ví dụ: đối diện cây xăng, nhà cổng xanh, trong ngõ">
+                    <input className="input" maxLength={220} value={addressNote} onChange={(e) => setAddressNote(e.target.value)} placeholder="Thông tin giúp tìm địa chỉ dễ hơn" />
                   </Field>
-                  <div className="field">
-                    <span>Vị trí trên bản đồ</span>
-                    <button type="button" className="btn secondary" onClick={() => setPickerOpen(true)}>
-                      {newAddr.lat ? "📍 Xem / Chỉnh lại trên bản đồ" : "Mở bản đồ chọn vị trí (tùy chọn)"}
-                    </button>
-                  </div>
-                  <p className="small muted full">
-                    Toạ độ bản đồ được xác định tự động khi bạn nhập địa chỉ. Bạn có thể bấm Đặt hàng ngay mà không cần mở bản đồ.
-                  </p>
                 </div>
               )}
             </div>
