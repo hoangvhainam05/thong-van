@@ -65,7 +65,7 @@ describe('SystemController MapTiler satellite tiles', () => {
       expect.any(Object),
     );
     expect(global.fetch).toHaveBeenNthCalledWith(2,
-      'https://mt1.google.com/vt/lyrs=y&x=6400&y=3790&z=13',
+      'https://mt1.google.com/vt/lyrs=s&x=6400&y=3790&z=13',
       expect.any(Object),
     );
     expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'image/jpeg' }));
@@ -81,7 +81,7 @@ describe('SystemController MapTiler satellite tiles', () => {
     const response = { set: jest.fn() } as any;
 
     await controller.mapTile('22', '1000', '2000', response);
-    expect(global.fetch).toHaveBeenCalledWith('https://mt1.google.com/vt/lyrs=y&x=1000&y=2000&z=22', expect.any(Object));
+    expect(global.fetch).toHaveBeenCalledWith('https://mt1.google.com/vt/lyrs=s&x=1000&y=2000&z=22', expect.any(Object));
   });
 
   test('proxies street map tiles when type=street', async () => {
