@@ -53,6 +53,21 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       }
       setTimeout(() => instance.invalidateSize(), 100);
       setTimeout(() => instance.invalidateSize(), 350);
+
+      if (!initialPoint && initial?.address?.trim()) {
+        api(`/api/location/geocode?${new URLSearchParams({ q: initial.address.trim(), lat: DEFAULT[0], lon: DEFAULT[1] })}`)
+          .then((data) => {
+            if (!active || !instance || !Array.isArray(data) || !data.length) return;
+            const top = data[0];
+            const lat = Number(top.lat), lng = Number(top.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+            instance.setView([lat, lng], 17);
+            marker.current?.setOpacity(1).setLatLng([lat, lng]);
+            setPoint([lat, lng]);
+            setDistrict(top.address?.city_district || top.address?.district || top.address?.county || "");
+          })
+          .catch(() => {});
+      }
     }).catch(() => setError("Không tải được bản đồ. Vui lòng thử lại."));
     return () => { active = false; sequence.current++; searchSequence.current++; locationSequence.current++; resizeObserver?.disconnect(); map.current?.remove(); map.current = null; };
   }, []);
