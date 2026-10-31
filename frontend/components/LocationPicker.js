@@ -17,9 +17,11 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
   const [results, setResults] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [accuracy, setAccuracy] = useState(null);
   const [houseNumberMissing, setHouseNumberMissing] = useState(false);
+  const queryTimeout = useRef(null);
 
   async function select(lat, lng) {
     const request = ++sequence.current;
@@ -69,7 +71,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
           .catch(() => {});
       }
     }).catch(() => setError("Không tải được bản đồ. Vui lòng thử lại."));
-    return () => { active = false; sequence.current++; searchSequence.current++; locationSequence.current++; resizeObserver?.disconnect(); map.current?.remove(); map.current = null; };
+    return () => { active = false; sequence.current++; searchSequence.current++; locationSequence.current++; clearTimeout(queryTimeout.current); resizeObserver?.disconnect(); map.current?.remove(); map.current = null; };
   }, []);
 
   function clearAccuracy() {
@@ -92,56 +94,94 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
     setDistrict(result.address?.city_district || result.address?.district || result.address?.county || "");
     setLoading(false); setError(""); setResults([]);
   }
+
+  const onQueryChange = (val) => {
+    setQuery(val);
+    setError("");
+    clearTimeout(queryTimeout.current);
+    if (!val.trim() || val.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+    queryTimeout.current = setTimeout(async () => {
+      const request = ++searchSequence.current;
+      const center = map.current?.getCenter() || { lat: DEFAULT[0], lng: DEFAULT[1] };
+      setSearching(true);
+      try {
+        const params = new URLSearchParams({ q: val.trim(), lat: center.lat, lon: center.lng });
+        const data = await api(`/api/location/geocode?${params}`);
+        if (request !== searchSequence.current) return;
+        if (Array.isArray(data)) {
+          setResults(data.slice(0, 5));
+        }
+      } catch {
+        if (request === searchSequence.current) setResults([]);
+      } finally {
+        if (request === searchSequence.current) setSearching(false);
+      }
+    }, 350);
+  };
+
   async function search(e) {
-    e.preventDefault(); if (!query.trim()) return;
+    e.preventDefault();
+    clearTimeout(queryTimeout.current);
+    if (!query.trim()) return;
     const request = ++searchSequence.current;
     const center = map.current?.getCenter() || { lat: DEFAULT[0], lng: DEFAULT[1] };
-    setError(""); setResults([]); setHouseNumberMissing(false);
+    setError(""); setSearching(true);
     try {
       const params = new URLSearchParams({ q: query.trim(), lat: center.lat, lon: center.lng });
       const data = await api(`/api/location/geocode?${params}`);
       if (request !== searchSequence.current) return;
-      const distance = (item) => {
-        const lat = (Number(item.lat) - center.lat) * Math.PI / 180;
-        const lng = (Number(item.lon) - center.lng) * Math.PI / 180;
-        const a = Math.sin(lat / 2) ** 2 + Math.cos(center.lat * Math.PI / 180) * Math.cos(Number(item.lat) * Math.PI / 180) * Math.sin(lng / 2) ** 2;
-        return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
-      };
-      const number = query.trim().match(/^(\d+[\w/.-]*)\b/)?.[1]?.toLowerCase();
-      const exactNumber = (item) => number && String(item.address?.house_number || "").toLowerCase() === number;
-      setHouseNumberMissing(Boolean(number && data.length && !data.some(exactNumber)));
-      setResults(data.sort((a, b) => Number(Boolean(exactNumber(b))) - Number(Boolean(exactNumber(a))) || distance(a) - distance(b)).slice(0, 5));
-      if (!data.length) setError("Không tìm thấy địa chỉ gần khu vực bản đồ. Hãy thử tên đường hoặc kéo bản đồ đến khu vực khác rồi tìm lại.");
-    } catch { if (request === searchSequence.current) setError("Không tìm kiếm được địa chỉ. Vui lòng thử lại hoặc chọn trực tiếp trên bản đồ."); }
+      if (Array.isArray(data) && data.length > 0) {
+        // Tự động chọn kết quả phù hợp nhất và bay bản đồ tới đó
+        chooseResult(data[0]);
+        if (data.length > 1) {
+          setResults(data.slice(1, 5));
+        } else {
+          setResults([]);
+        }
+      } else {
+        setResults([]);
+        setError("Không tìm thấy địa chỉ phù hợp. Hãy thử gõ tên đường hoặc chọn trực tiếp trên bản đồ.");
+      }
+    } catch {
+      if (request === searchSequence.current) setError("Không tìm kiếm được địa chỉ. Vui lòng thử lại hoặc chọn trực tiếp trên bản đồ.");
+    } finally {
+      if (request === searchSequence.current) setSearching(false);
+    }
   }
+
   async function useApproximateLocation(request, locationError) {
     try {
       const res = await fetch('/api/location/approximate', { cache: 'no-store' });
       if (!res.ok) throw new Error();
       const data = await res.json();
       if (request !== locationSequence.current || !Number.isFinite(data.lat) || !Number.isFinite(data.lng)) return;
-      map.current?.setView([data.lat, data.lng], 13);
-      setError(`Không lấy được GPS. Bản đồ đã chuyển đến khu vực ${data.city || 'gần bạn'} theo mạng; hãy chạm vào đúng vị trí giao hàng.`);
+      // Di chuyển ghim và kích hoạt chọn toạ độ xấp xỉ
+      move(data.lat, data.lng);
+      setError(`Thiết bị chưa cấp quyền GPS chính xác. Bản đồ đã định vị theo mạng ở khu vực ${data.city || 'của bạn'}. Bạn hãy kéo ghim đến đúng nhà hoặc gõ số nhà vào ô tìm kiếm bên trên.`);
     } catch {
       if (request !== locationSequence.current) return;
-      if (locationError.code === 1) {
-        setError("Chrome chưa được hệ điều hành cho phép định vị. Hãy bật Dịch vụ định vị cho Google Chrome trong Cài đặt hệ thống, rồi thử lại.");
-      } else if (locationError.code === 3) {
-        setError("Định vị mất quá nhiều thời gian. Hãy kiểm tra Wi-Fi/Dịch vụ định vị rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
+      if (locationError?.code === 1) {
+        setError("Trình duyệt đang chặn quyền vị trí. Vui lòng bấm vào biểu tượng ổ khoá 🔒 bên cạnh thanh địa chỉ để Bật quyền Vị trí, hoặc gõ địa chỉ vào ô tìm kiếm bên trên.");
+      } else if (locationError?.code === 3) {
+        setError("Định vị GPS quá thời gian. Bạn vui lòng gõ địa chỉ vào ô tìm kiếm hoặc bấm chọn trực tiếp trên bản đồ.");
       } else {
-        setError("Thiết bị chưa xác định được vị trí. Hãy bật Wi-Fi và Dịch vụ định vị, rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
+        setError("Thiết bị chưa xác định được toạ độ GPS. Bạn vui lòng gõ địa chỉ vào ô tìm kiếm hoặc bấm chọn trực tiếp trên bản đồ.");
       }
     } finally {
       if (request === locationSequence.current) setLocating(false);
     }
   }
+
   function locate() {
     if (!navigator.geolocation) return setError("Trình duyệt không hỗ trợ định vị.");
     const request = ++locationSequence.current;
-    setLocating(true); setError("");
+    setLocating(true); setError(""); clearAccuracy();
     const onSuccess = (p) => {
       if (request !== locationSequence.current) return;
-      setLocating(false); clearAccuracy();
+      setLocating(false);
       const { latitude, longitude, accuracy: meters } = p.coords;
       move(latitude, longitude);
       if (Number.isFinite(meters) && leaflet.current && map.current) {
@@ -155,13 +195,68 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       setError("Thiết bị chưa trả về vị trí mạng. Đang thử GPS chính xác…");
       navigator.geolocation.getCurrentPosition(onSuccess, (preciseError) => {
         if (request === locationSequence.current) void useApproximateLocation(request, preciseError);
-      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
-    }, { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 });
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 });
   }
+
   return <Modal wide title={warehouse ? "Chọn vị trí kho" : "Chọn vị trí giao hàng"} onClose={onClose} footer={<><button className="btn secondary" onClick={onClose}>Huỷ</button><button className="btn" disabled={!point || loading} onClick={() => onSelect({ lat: point[0], lng: point[1], address, district })}>Xác nhận vị trí</button></>}>
     <div className="stack-sm">
-      <form className="row map-search" onSubmit={search}><input className="input grow" aria-label="Tìm địa chỉ" placeholder="Tìm số nhà, đường hoặc địa điểm" value={query} onChange={(e) => setQuery(e.target.value)} /><button className="btn secondary" type="submit">Tìm</button><button className="btn secondary" type="button" disabled={locating} onClick={locate}>{locating ? "Đang định vị…" : "Vị trí của tôi"}</button></form>
-      {results.length > 0 && <><p className="tiny muted">{houseNumberMissing ? "Không tìm thấy chính xác số nhà trong dữ liệu bản đồ. Các kết quả dưới đây là vị trí tham khảo; hãy ghim và nhập lại số nhà." : "Kết quả gần khu vực bản đồ. Kiểm tra địa chỉ và vị trí trước khi chọn."}</p><div className="map-results">{results.map((result) => <button type="button" key={result.place_id} onClick={() => chooseResult(result)}>{result.display_name}</button>)}</div></>}
+      <div style={{ position: "relative" }}>
+        <form className="row map-search" onSubmit={search}>
+          <input
+            className="input grow"
+            aria-label="Tìm địa chỉ"
+            placeholder="Tìm số nhà, đường hoặc địa điểm..."
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+          />
+          <button className="btn secondary" type="submit" disabled={searching}>
+            {searching ? "Đang tìm…" : "Tìm"}
+          </button>
+          <button className="btn secondary" type="button" disabled={locating} onClick={locate}>
+            {locating ? "Đang định vị…" : "📍 Vị trí của tôi"}
+          </button>
+        </form>
+        {results.length > 0 && (
+          <div
+            className="map-results"
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              right: 0,
+              zIndex: 50,
+              background: "#fff",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
+              marginTop: 4,
+              maxHeight: 180,
+              overflowY: "auto",
+              borderRadius: "var(--r-sm)",
+            }}
+          >
+            {results.map((result) => (
+              <button
+                type="button"
+                key={result.place_id || `${result.lat},${result.lon}`}
+                onClick={() => chooseResult(result)}
+                style={{
+                  textAlign: "left",
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: 0,
+                  borderBottom: "1px solid var(--line-soft)",
+                  background: "transparent",
+                  cursor: "pointer",
+                  display: "block",
+                }}
+              >
+                <div className="small strong">{result.display_name}</div>
+                {result.address?.district && <div className="tiny muted">{result.address.district}</div>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <p className="small muted">Tìm kiếm ưu tiên khu vực giữa bản đồ. Nhấn vào bản đồ hoặc kéo ghim đến đúng vị trí cần chọn.</p>
       <div className="map-box"><div ref={element} className="location-map" aria-label="Bản đồ chọn vị trí" /></div>
       {error && <div className="notice warn">{error}</div>}
