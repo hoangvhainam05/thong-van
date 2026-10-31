@@ -31,26 +31,60 @@ export class SystemController {
     } catch { throw new ServiceUnavailableException('Không tìm được địa chỉ, vui lòng thử lại'); }
   }
 
+  private maptilerRestrictedUntil = 0;
+
   @Get('location/tiles/:z/:x/:y')
   async mapTile(@Param('z') rawZ: string, @Param('x') rawX: string, @Param('y') rawY: string, @Res({ passthrough: true }) response: Response) {
     const key = process.env.MAPTILER_API_KEY?.trim();
-    if (!key) throw new ServiceUnavailableException('Chưa cấu hình bản đồ');
     const z = Number(rawZ), x = Number(rawX), y = Number(rawY);
-    const tileLimit = Number.isInteger(z) && z >= 0 && z <= 20 ? 2 ** z : 0;
+    const tileLimit = Number.isInteger(z) && z >= 0 && z <= 22 ? 2 ** z : 0;
     if (!tileLimit || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= tileLimit || y >= tileLimit) {
       throw new BadRequestException('Tọa độ tile không hợp lệ');
     }
-    try {
-      const tile = await fetch(`https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) });
-      if (!tile.ok) throw new Error();
-      response.set({
-        'Content-Type': tile.headers.get('content-type') || 'image/jpeg',
-        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
-      });
-      return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
-    } catch {
-      throw new ServiceUnavailableException('Không tải được bản đồ');
+    // 1. Thử MapTiler nếu có key và không trong thời gian cooldown
+    if (key && Date.now() > this.maptilerRestrictedUntil) {
+      try {
+        const tile = await fetch(`https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(4000) });
+        if (tile.ok) {
+          response.set({
+            'Content-Type': tile.headers.get('content-type') || 'image/jpeg',
+            'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+          });
+          return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
+        }
+        if (tile.status === 401 || tile.status === 403) {
+          this.maptilerRestrictedUntil = Date.now() + 60_000;
+        }
+      } catch {}
     }
+    // 2. Dự phòng ảnh vệ tinh Google Hybrid (ảnh vệ tinh độ nét cao kèm tên đường tiếng Việt)
+    try {
+      const tile = await fetch(`https://mt1.google.com/vt/lyrs=y&x=${x}&y=${y}&z=${z}`, {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
+      if (tile.ok) {
+        response.set({
+          'Content-Type': tile.headers.get('content-type') || 'image/jpeg',
+          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+        });
+        return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
+      }
+    } catch {}
+    // 3. Dự phòng tiếp theo: Esri World Imagery
+    try {
+      const tile = await fetch(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (tile.ok) {
+        response.set({
+          'Content-Type': tile.headers.get('content-type') || 'image/jpeg',
+          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+        });
+        return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
+      }
+    } catch {}
+    throw new ServiceUnavailableException('Không tải được bản đồ');
   }
 
   @Get('location/approximate')

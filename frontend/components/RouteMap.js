@@ -12,7 +12,7 @@ export default function RouteMap({ depot, routes = [], loose = [], height = 460,
   const [loadingRoad, setLoadingRoad] = useState(false);
   const data = JSON.stringify({ depot, routes, loose, focusId });
   useEffect(() => {
-    let active = true, instance;
+    let active = true, instance, resizeObserver = null;
     const { depot, routes, loose, focusId } = JSON.parse(data);
     setRouteError(""); setLoadingRoad(routes.length > 0);
     import("leaflet").then((module) => {
@@ -52,9 +52,14 @@ export default function RouteMap({ depot, routes = [], loose = [], height = 460,
       if (points.length === 1) instance.setView(points[0], 15);
       else if (points.length) instance.fitBounds(points, { padding: [35, 35], maxZoom: 16 });
       else instance.setView([16.0678, 108.2208], 12);
+      if (typeof ResizeObserver !== "undefined" && element.current) {
+        resizeObserver = new ResizeObserver(() => instance?.invalidateSize());
+        resizeObserver.observe(element.current);
+      }
       setTimeout(() => instance?.invalidateSize(), 100);
+      setTimeout(() => instance?.invalidateSize(), 350);
     });
-    return () => { active = false; instance?.remove(); };
+    return () => { active = false; resizeObserver?.disconnect(); instance?.remove(); };
   }, [data]);
   return <div className="stack-sm"><div className="map-box"><div ref={element} style={{ height }} aria-label="Bản đồ tuyến giao hàng" />
     <div className="map-legend"><span>■ Kho</span>{routes.map((r, i) => <span key={r.id} style={{ color: r.color || ROUTE_COLORS[i % ROUTE_COLORS.length], fontWeight: 600 }}>— {r.name}</span>)}{loose.length > 0 && <span>● Chưa xếp tuyến</span>}<span>Đường đi ô tô</span></div>

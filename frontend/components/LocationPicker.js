@@ -35,7 +35,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
   }
 
   useEffect(() => {
-    let active = true;
+    let active = true, resizeObserver = null;
     import("leaflet").then((module) => {
       if (!active) return;
       const L = module.default || module;
@@ -47,9 +47,14 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       if (!initialPoint) marker.current.setOpacity(0);
       instance.on("click", (e) => { clearAccuracy(); marker.current.setOpacity(1).setLatLng(e.latlng); select(e.latlng.lat, e.latlng.lng); });
       marker.current.on("dragend", () => { clearAccuracy(); const p = marker.current.getLatLng(); select(p.lat, p.lng); });
+      if (typeof ResizeObserver !== "undefined" && element.current) {
+        resizeObserver = new ResizeObserver(() => instance.invalidateSize());
+        resizeObserver.observe(element.current);
+      }
       setTimeout(() => instance.invalidateSize(), 100);
+      setTimeout(() => instance.invalidateSize(), 350);
     }).catch(() => setError("Không tải được bản đồ. Vui lòng thử lại."));
-    return () => { active = false; sequence.current++; searchSequence.current++; locationSequence.current++; map.current?.remove(); map.current = null; };
+    return () => { active = false; sequence.current++; searchSequence.current++; locationSequence.current++; resizeObserver?.disconnect(); map.current?.remove(); map.current = null; };
   }, []);
 
   function clearAccuracy() {

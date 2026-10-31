@@ -46,7 +46,45 @@ describe('SystemController MapTiler satellite tiles', () => {
     expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'image/jpeg' }));
   });
 
-  test('rejects invalid tile coordinates before contacting MapTiler', async () => {
+  test('falls back to satellite imagery when MapTiler fails', async () => {
+    process.env.MAPTILER_API_KEY = 'restricted-key';
+    (controller as any).maptilerRestrictedUntil = 0;
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: false, status: 403 })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'image/jpeg' },
+        arrayBuffer: async () => new Uint8Array([4, 5, 6]).buffer,
+      });
+    const response = { set: jest.fn() } as any;
+
+    await controller.mapTile('13', '6400', '3790', response);
+
+    expect(global.fetch).toHaveBeenNthCalledWith(1,
+      'https://api.maptiler.com/tiles/satellite-v2/13/6400/3790.jpg?key=restricted-key',
+      expect.any(Object),
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(2,
+      'https://mt1.google.com/vt/lyrs=y&x=6400&y=3790&z=13',
+      expect.any(Object),
+    );
+    expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'image/jpeg' }));
+  });
+
+  test('supports zoom levels up to 22', async () => {
+    delete process.env.MAPTILER_API_KEY;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/jpeg' },
+      arrayBuffer: async () => new Uint8Array([1]).buffer,
+    });
+    const response = { set: jest.fn() } as any;
+
+    await controller.mapTile('22', '1000', '2000', response);
+    expect(global.fetch).toHaveBeenCalledWith('https://mt1.google.com/vt/lyrs=y&x=1000&y=2000&z=22', expect.any(Object));
+  });
+
+  test('rejects invalid tile coordinates before contacting tile providers', async () => {
     process.env.MAPTILER_API_KEY = 'server-key';
     global.fetch = jest.fn();
 
