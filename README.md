@@ -90,6 +90,8 @@ mysql -u thongvan -p thongvan < database/migrations/016_product_categories_cost.
 ```
 Để dùng khoảng cách đường bộ, tạo tài khoản và API key tại [OpenRouteService Dashboard](https://account.heigit.org/), sau đó đặt `ORS_API_KEY` trong `backend/.env` và khởi động lại backend. Key chỉ được dùng ở backend. Matrix API dùng `https://api.heigit.org/openrouteservice/v2/matrix/driving-car`; các yêu cầu được chia thành tối đa 3.500 cặp nguồn–đích mỗi lần. API có quota theo tài khoản; số lượng lớn điểm có thể cần nhiều request. Ma trận ORS hợp lệ được cache trong bộ nhớ 5 phút. ORS không cung cấp giao thông trực tiếp, nên thời gian và ETA không phản ánh traffic hiện tại. Khi thiếu key, hết quota (429), lỗi mạng, timeout hoặc dữ liệu không hợp lệ, toàn bộ ma trận chuyển sang Haversine × hệ số đường bộ và giao diện ghi rõ là ước tính. Sửa tuyến dùng lại ma trận đã lưu; nếu tọa độ thay đổi, cần tối ưu lại. Tuyến cũ chưa có ma trận được tính lại bằng ước tính khi sửa.
 
+Bản đồ chọn vị trí dùng ảnh vệ tinh MapTiler. Đặt `MAPTILER_API_KEY` trong `backend/.env`; khóa chỉ được backend dùng để proxy tile qua `/api/location/tiles`. `GEOAPIFY_API_KEY` vẫn dùng riêng cho tìm kiếm và tra cứu địa chỉ.
+
 Để tải ảnh sản phẩm, điền `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` và `CLOUDINARY_API_SECRET` trong `backend/.env`. API chỉ gửi chữ ký tạm thời về trình duyệt; không đặt API secret vào biến `NEXT_PUBLIC_*`.
 
 Để bật lựa chọn chuyển khoản thủ công ở checkout, điền `BANK_NAME`, `BANK_ACCOUNT_NAME` và `BANK_ACCOUNT_NUMBER`; nội dung chuyển khoản dùng `BANK_TRANSFER_CONTENT_PREFIX` cộng mã đơn. Nếu thiếu thông tin tài khoản, checkout sẽ ẩn phương thức chuyển khoản. Hệ thống chưa tạo QR hoặc tự đối soát giao dịch.

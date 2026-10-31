@@ -17,22 +17,22 @@ describe('SystemController approximate location', () => {
   });
 });
 
-describe('SystemController Geoapify map tiles', () => {
+describe('SystemController MapTiler satellite tiles', () => {
   const controller = new SystemController({} as any);
   const originalFetch = global.fetch;
-  const originalKey = process.env.GEOAPIFY_API_KEY;
+  const originalKey = process.env.MAPTILER_API_KEY;
 
   afterEach(() => {
     global.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.GEOAPIFY_API_KEY;
-    else process.env.GEOAPIFY_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.MAPTILER_API_KEY;
+    else process.env.MAPTILER_API_KEY = originalKey;
   });
 
-  test('proxies the new Geoapify map without exposing the server key', async () => {
-    process.env.GEOAPIFY_API_KEY = 'server key';
+  test('proxies MapTiler satellite tiles without exposing the server key', async () => {
+    process.env.MAPTILER_API_KEY = 'server key';
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      headers: { get: () => 'image/png' },
+      headers: { get: () => 'image/jpeg' },
       arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
     });
     const response = { set: jest.fn() } as any;
@@ -40,14 +40,14 @@ describe('SystemController Geoapify map tiles', () => {
     await controller.mapTile('13', '6400', '3790', response);
 
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://maps.geoapify.com/v1/tile/osm-bright/13/6400/3790.png?apiKey=server%20key',
+      'https://api.maptiler.com/tiles/satellite-v2/13/6400/3790.jpg?key=server%20key',
       expect.any(Object),
     );
-    expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'image/png' }));
+    expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ 'Content-Type': 'image/jpeg' }));
   });
 
-  test('rejects invalid tile coordinates before contacting Geoapify', async () => {
-    process.env.GEOAPIFY_API_KEY = 'server-key';
+  test('rejects invalid tile coordinates before contacting MapTiler', async () => {
+    process.env.MAPTILER_API_KEY = 'server-key';
     global.fetch = jest.fn();
 
     await expect(controller.mapTile('3', '8', '0', { set: jest.fn() } as any)).rejects.toThrow(BadRequestException);

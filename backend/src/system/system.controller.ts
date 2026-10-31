@@ -33,7 +33,7 @@ export class SystemController {
 
   @Get('location/tiles/:z/:x/:y')
   async mapTile(@Param('z') rawZ: string, @Param('x') rawX: string, @Param('y') rawY: string, @Res({ passthrough: true }) response: Response) {
-    const key = process.env.GEOAPIFY_API_KEY?.trim();
+    const key = process.env.MAPTILER_API_KEY?.trim();
     if (!key) throw new ServiceUnavailableException('Chưa cấu hình bản đồ');
     const z = Number(rawZ), x = Number(rawX), y = Number(rawY);
     const tileLimit = Number.isInteger(z) && z >= 0 && z <= 20 ? 2 ** z : 0;
@@ -41,10 +41,10 @@ export class SystemController {
       throw new BadRequestException('Tọa độ tile không hợp lệ');
     }
     try {
-      const tile = await fetch(`https://maps.geoapify.com/v1/tile/osm-bright/${z}/${x}/${y}.png?apiKey=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) });
+      const tile = await fetch(`https://api.maptiler.com/tiles/satellite-v2/${z}/${x}/${y}.jpg?key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) });
       if (!tile.ok) throw new Error();
       response.set({
-        'Content-Type': tile.headers.get('content-type') || 'image/png',
+        'Content-Type': tile.headers.get('content-type') || 'image/jpeg',
         'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
       });
       return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
