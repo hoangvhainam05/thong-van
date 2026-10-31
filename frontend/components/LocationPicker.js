@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui";
 import { api } from "@/lib/api";
+import { addMapTiles } from "@/lib/map-tiles";
 
 const DEFAULT = [16.0678, 108.2208];
 
@@ -41,7 +42,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       leaflet.current = L;
       const instance = L.map(element.current).setView(initialPoint || DEFAULT, initialPoint ? 17 : 13);
       map.current = instance;
-      L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Tiles: <a href="https://www.openstreetmap.de/">OSM DE</a>' }).addTo(instance);
+      addMapTiles(L, instance);
       marker.current = L.marker(initialPoint || DEFAULT, { draggable: true, icon: L.divIcon({ className: "location-pin", html: "<span></span>", iconSize: [30, 40], iconAnchor: [15, 40] }) }).addTo(instance);
       if (!initialPoint) marker.current.setOpacity(0);
       instance.on("click", (e) => { clearAccuracy(); marker.current.setOpacity(1).setLatLng(e.latlng); select(e.latlng.lat, e.latlng.lng); });
@@ -58,6 +59,18 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
     map.current?.setView([lat, lng], 17);
     marker.current?.setOpacity(1).setLatLng([lat, lng]);
     select(lat, lng);
+  }
+  function chooseResult(result) {
+    const lat = Number(result.lat), lng = Number(result.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    ++sequence.current;
+    clearAccuracy();
+    map.current?.setView([lat, lng], 17);
+    marker.current?.setOpacity(1).setLatLng([lat, lng]);
+    setPoint([lat, lng]);
+    setAddress(String(result.display_name || "").slice(0, 255));
+    setDistrict(result.address?.city_district || result.address?.district || result.address?.county || "");
+    setLoading(false); setError(""); setResults([]);
   }
   async function search(e) {
     e.preventDefault(); if (!query.trim()) return;
@@ -128,7 +141,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
   return <Modal wide title={warehouse ? "Chọn vị trí kho" : "Chọn vị trí giao hàng"} onClose={onClose} footer={<><button className="btn secondary" onClick={onClose}>Huỷ</button><button className="btn" disabled={!point || loading} onClick={() => onSelect({ lat: point[0], lng: point[1], address, district })}>Xác nhận vị trí</button></>}>
     <div className="stack-sm">
       <form className="row map-search" onSubmit={search}><input className="input grow" aria-label="Tìm địa chỉ" placeholder="Tìm số nhà, đường hoặc địa điểm" value={query} onChange={(e) => setQuery(e.target.value)} /><button className="btn secondary" type="submit">Tìm</button><button className="btn secondary" type="button" disabled={locating} onClick={locate}>{locating ? "Đang định vị…" : "Vị trí của tôi"}</button></form>
-      {results.length > 0 && <><p className="tiny muted">{houseNumberMissing ? "Không tìm thấy chính xác số nhà trong dữ liệu bản đồ. Các kết quả dưới đây là vị trí tham khảo; hãy ghim và nhập lại số nhà." : "Kết quả gần khu vực bản đồ. Kiểm tra địa chỉ và vị trí trước khi chọn."}</p><div className="map-results">{results.map((result) => <button type="button" key={result.place_id} onClick={() => { clearAccuracy(); move(Number(result.lat), Number(result.lon)); setResults([]); }}>{result.display_name}</button>)}</div></>}
+      {results.length > 0 && <><p className="tiny muted">{houseNumberMissing ? "Không tìm thấy chính xác số nhà trong dữ liệu bản đồ. Các kết quả dưới đây là vị trí tham khảo; hãy ghim và nhập lại số nhà." : "Kết quả gần khu vực bản đồ. Kiểm tra địa chỉ và vị trí trước khi chọn."}</p><div className="map-results">{results.map((result) => <button type="button" key={result.place_id} onClick={() => chooseResult(result)}>{result.display_name}</button>)}</div></>}
       <p className="small muted">Tìm kiếm ưu tiên khu vực giữa bản đồ. Nhấn vào bản đồ hoặc kéo ghim đến đúng vị trí cần chọn.</p>
       <div className="map-box"><div ref={element} className="location-map" aria-label="Bản đồ chọn vị trí" /></div>
       {error && <div className="notice warn">{error}</div>}

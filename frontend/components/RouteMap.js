@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, loadToken } from "@/lib/api";
+import { addMapTiles } from "@/lib/map-tiles";
 export const ROUTE_COLORS = ["#1b4f8c", "#7a4fd1", "#16805a", "#d0661a", "#0f8b9c", "#b03a6a"];
 const valid = (p) => p && p.lat != null && p.lng != null && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng));
 
@@ -18,7 +19,7 @@ export default function RouteMap({ depot, routes = [], loose = [], height = 460,
       if (!active || !element.current) return;
       const L = module.default || module;
       instance = L.map(element.current);
-      L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Tiles: <a href="https://www.openstreetmap.de/">OSM DE</a>' }).addTo(instance);
+      addMapTiles(L, instance);
       const points = [];
       const add = (p, text, color, type, opacity = 1) => {
         if (!valid(p)) return;
