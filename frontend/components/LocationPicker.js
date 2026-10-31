@@ -7,7 +7,7 @@ const DEFAULT = [16.0678, 108.2208];
 const service = "https://nominatim.osm.org";
 
 export default function LocationPicker({ initial, onClose, onSelect, warehouse = false }) {
-  const element = useRef(null), map = useRef(null), marker = useRef(null), sequence = useRef(0), searchSequence = useRef(0), accuracyCircle = useRef(null), leaflet = useRef(null);
+  const element = useRef(null), map = useRef(null), marker = useRef(null), sequence = useRef(0), searchSequence = useRef(0), locationSequence = useRef(0), accuracyCircle = useRef(null), leaflet = useRef(null);
   const initialPoint = initial?.lat !== "" && initial?.lng !== "" && initial?.lat != null && initial?.lng != null ? [Number(initial.lat), Number(initial.lng)] : null;
   const [point, setPoint] = useState(initialPoint);
   const [address, setAddress] = useState(initial?.address || "");
@@ -50,7 +50,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       marker.current.on("dragend", () => { clearAccuracy(); const p = marker.current.getLatLng(); select(p.lat, p.lng); });
       setTimeout(() => instance.invalidateSize(), 100);
     }).catch(() => setError("Không tải được bản đồ. Vui lòng thử lại."));
-    return () => { active = false; sequence.current++; searchSequence.current++; map.current?.remove(); map.current = null; };
+    return () => { active = false; sequence.current++; searchSequence.current++; locationSequence.current++; map.current?.remove(); map.current = null; };
   }, []);
 
   function clearAccuracy() {
@@ -87,10 +87,33 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       if (!data.length) setError("Không tìm thấy địa chỉ gần khu vực bản đồ. Hãy thử tên đường hoặc kéo bản đồ đến khu vực khác rồi tìm lại.");
     } catch { if (request === searchSequence.current) setError("Không tìm kiếm được địa chỉ. Vui lòng thử lại hoặc chọn trực tiếp trên bản đồ."); }
   }
+  async function useApproximateLocation(request, locationError) {
+    try {
+      const res = await fetch('/api/location/approximate', { cache: 'no-store' });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (request !== locationSequence.current || !Number.isFinite(data.lat) || !Number.isFinite(data.lng)) return;
+      map.current?.setView([data.lat, data.lng], 13);
+      setError(`Không lấy được GPS. Bản đồ đã chuyển đến khu vực ${data.city || 'gần bạn'} theo mạng; hãy chạm vào đúng vị trí giao hàng.`);
+    } catch {
+      if (request !== locationSequence.current) return;
+      if (locationError.code === 1) {
+        setError("Chrome chưa được hệ điều hành cho phép định vị. Hãy bật Dịch vụ định vị cho Google Chrome trong Cài đặt hệ thống, rồi thử lại.");
+      } else if (locationError.code === 3) {
+        setError("Định vị mất quá nhiều thời gian. Hãy kiểm tra Wi-Fi/Dịch vụ định vị rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
+      } else {
+        setError("Thiết bị chưa xác định được vị trí. Hãy bật Wi-Fi và Dịch vụ định vị, rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
+      }
+    } finally {
+      if (request === locationSequence.current) setLocating(false);
+    }
+  }
   function locate() {
     if (!navigator.geolocation) return setError("Trình duyệt không hỗ trợ định vị.");
+    const request = ++locationSequence.current;
     setLocating(true); setError("");
-    navigator.geolocation.getCurrentPosition((p) => {
+    const onSuccess = (p) => {
+      if (request !== locationSequence.current) return;
       setLocating(false); clearAccuracy();
       const { latitude, longitude, accuracy: meters } = p.coords;
       move(latitude, longitude);
@@ -98,18 +121,15 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
         setAccuracy(Math.ceil(meters));
         accuracyCircle.current = leaflet.current.circle([latitude, longitude], { radius: meters, color: "#1b4f8c", weight: 1, fillOpacity: 0.12, interactive: false }).addTo(map.current);
       }
-    }, (locationError) => {
-      setLocating(false);
-      if (locationError.code === 1) {
-        setError("Chrome chưa được hệ điều hành cho phép định vị. Hãy bật Dịch vụ định vị cho Google Chrome trong Cài đặt hệ thống, rồi thử lại.");
-      } else if (locationError.code === 2) {
-        setError("Thiết bị chưa xác định được vị trí. Hãy bật Wi-Fi và Dịch vụ định vị, rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
-      } else if (locationError.code === 3) {
-        setError("Định vị mất quá nhiều thời gian. Hãy kiểm tra Wi-Fi/Dịch vụ định vị rồi thử lại hoặc chọn trực tiếp trên bản đồ.");
-      } else {
-        setError("Không lấy được vị trí hiện tại. Hãy kiểm tra quyền định vị của Chrome hoặc chọn trực tiếp trên bản đồ.");
-      }
-    }, { enableHighAccuracy: false, maximumAge: 300000, timeout: 15000 });
+    };
+    navigator.geolocation.getCurrentPosition(onSuccess, (locationError) => {
+      if (request !== locationSequence.current) return;
+      if (locationError.code !== 2) return void useApproximateLocation(request, locationError);
+      setError("Thiết bị chưa trả về vị trí mạng. Đang thử GPS chính xác…");
+      navigator.geolocation.getCurrentPosition(onSuccess, (preciseError) => {
+        if (request === locationSequence.current) void useApproximateLocation(request, preciseError);
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    }, { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 });
   }
   return <Modal wide title={warehouse ? "Chọn vị trí kho" : "Chọn vị trí giao hàng"} onClose={onClose} footer={<><button className="btn secondary" onClick={onClose}>Huỷ</button><button className="btn" disabled={!point || loading} onClick={() => onSelect({ lat: point[0], lng: point[1], address, district })}>Xác nhận vị trí</button></>}>
     <div className="stack-sm">

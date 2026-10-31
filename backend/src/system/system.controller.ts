@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, Param, ParseIntPipe, Patch, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import { AuthGuard, RequirePermission } from '../auth/auth.guard';
 import { CreateDriverDto, CreateVehicleDto, UpdateDriverDto, UpdateVehicleDto, UpdateWarehouseDto } from './fleet.dto';
 import { SystemService } from './system.service';
@@ -10,6 +10,20 @@ export class SystemController {
   @Get('health')
   health() {
     return { status: 'ok' };
+  }
+
+  @Get('location/approximate')
+  @Header('Cache-Control', 'no-store')
+  approximateLocation(@Headers() headers: Record<string, string | string[] | undefined>) {
+    const lat = Number(headers['x-vercel-ip-latitude']);
+    const lng = Number(headers['x-vercel-ip-longitude']);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      throw new ServiceUnavailableException('Approximate location is unavailable');
+    }
+    const rawCity = String(headers['x-vercel-ip-city'] || '');
+    let city = rawCity;
+    try { city = decodeURIComponent(rawCity); } catch {}
+    return { lat, lng, city, approximate: true };
   }
 
   @Get('drivers')
