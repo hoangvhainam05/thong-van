@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Header, Headers, Param, ParseIntPipe, Patch, Post, Query, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Headers, Param, ParseIntPipe, Patch, Post, Query, Res, ServiceUnavailableException, StreamableFile, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthGuard, RequirePermission } from '../auth/auth.guard';
 import { CreateDriverDto, CreateVehicleDto, UpdateDriverDto, UpdateVehicleDto, UpdateWarehouseDto } from './fleet.dto';
 import { SystemService } from './system.service';
@@ -28,6 +29,28 @@ export class SystemController {
       const data = await response.json() as { results?: Array<Record<string, any>> };
       return (data.results || []).map(item => ({ place_id: item.place_id, lat: item.lat, lon: item.lon, display_name: item.formatted, address: { house_number: item.housenumber, district: item.district || item.county || '' } }));
     } catch { throw new ServiceUnavailableException('Không tìm được địa chỉ, vui lòng thử lại'); }
+  }
+
+  @Get('location/tiles/:z/:x/:y')
+  async mapTile(@Param('z') rawZ: string, @Param('x') rawX: string, @Param('y') rawY: string, @Res({ passthrough: true }) response: Response) {
+    const key = process.env.GEOAPIFY_API_KEY?.trim();
+    if (!key) throw new ServiceUnavailableException('Chưa cấu hình bản đồ');
+    const z = Number(rawZ), x = Number(rawX), y = Number(rawY);
+    const tileLimit = Number.isInteger(z) && z >= 0 && z <= 20 ? 2 ** z : 0;
+    if (!tileLimit || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= tileLimit || y >= tileLimit) {
+      throw new BadRequestException('Tọa độ tile không hợp lệ');
+    }
+    try {
+      const tile = await fetch(`https://maps.geoapify.com/v1/tile/osm-bright/${z}/${x}/${y}.png?apiKey=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) });
+      if (!tile.ok) throw new Error();
+      response.set({
+        'Content-Type': tile.headers.get('content-type') || 'image/png',
+        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+      });
+      return new StreamableFile(new Uint8Array(await tile.arrayBuffer()));
+    } catch {
+      throw new ServiceUnavailableException('Không tải được bản đồ');
+    }
   }
 
   @Get('location/approximate')

@@ -1,4 +1,4 @@
-function resolveUrl(path) {
+export function resolveUrl(path) {
   // On the server (runtime functions / SSR), use the Vercel service binding BACKEND_URL
   if (typeof window === "undefined") {
     const baseUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
