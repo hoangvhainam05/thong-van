@@ -83,6 +83,7 @@ export function buildSeed() {
         id: 1, label: "Nhà riêng",
         address: `Số ${int(1, 180)}, ${pick(streets)}, ${dname}, Hà Nội`,
         district: dname, lat: aLat, lng: aLng,
+        isDefault: true,
       }],
     });
   }
@@ -93,8 +94,8 @@ export function buildSeed() {
     phone: "0912345678",
     email: "khach@thongvan.vn",
     addresses: [
-      { id: 1, label: "Nhà riêng", address: "Số 25, ngõ 120 Xã Đàn, Đống Đa, Hà Nội", district: "Đống Đa", lat: 21.0172, lng: 105.8338 },
-      { id: 2, label: "Nhà bố mẹ", address: "Số 8, Ngọc Lâm, Long Biên, Hà Nội", district: "Long Biên", lat: 21.0452, lng: 105.8768 },
+      { id: 1, label: "Nhà riêng", address: "Số 25, ngõ 120 Xã Đàn, Đống Đa, Hà Nội", district: "Đống Đa", lat: 21.0172, lng: 105.8338, isDefault: true },
+      { id: 2, label: "Nhà bố mẹ", address: "Số 8, Ngọc Lâm, Long Biên, Hà Nội", district: "Long Biên", lat: 21.0452, lng: 105.8768, isDefault: false },
     ],
   };
 

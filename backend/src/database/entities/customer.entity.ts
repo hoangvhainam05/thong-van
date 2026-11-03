@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { CustomerAddress } from './customer-address.entity';
 import { Order } from './order.entity';
 
 @Entity('customer')
@@ -20,4 +21,7 @@ export class Customer {
 
   @OneToMany(() => Order, (order) => order.customer)
   orders!: Order[];
+
+  @OneToMany(() => CustomerAddress, (addr) => addr.customer)
+  addresses!: CustomerAddress[];
 }

@@ -87,6 +87,9 @@ mysql -u thongvan -p thongvan < database/migrations/013_audit_details.sql
 mysql -u thongvan -p thongvan < database/migrations/014_sprint6_report_index.sql
 mysql -u thongvan -p thongvan < database/migrations/015_warranty_maintenance.sql
 mysql -u thongvan -p thongvan < database/migrations/016_product_categories_cost.sql
+mysql -u thongvan -p thongvan < database/migrations/017_system_settings.sql
+mysql -u thongvan -p thongvan < database/migrations/018_product_images_otp.sql
+mysql -u thongvan -p thongvan < database/migrations/019_customer_addresses.sql
 ```
 Để dùng khoảng cách đường bộ, tạo tài khoản và API key tại [OpenRouteService Dashboard](https://account.heigit.org/), sau đó đặt `ORS_API_KEY` trong `backend/.env` và khởi động lại backend. Key chỉ được dùng ở backend. Matrix API dùng `https://api.heigit.org/openrouteservice/v2/matrix/driving-car`; các yêu cầu được chia thành tối đa 3.500 cặp nguồn–đích mỗi lần. API có quota theo tài khoản; số lượng lớn điểm có thể cần nhiều request. Ma trận ORS hợp lệ được cache trong bộ nhớ 5 phút. ORS không cung cấp giao thông trực tiếp, nên thời gian và ETA không phản ánh traffic hiện tại. Khi thiếu key, hết quota (429), lỗi mạng, timeout hoặc dữ liệu không hợp lệ, toàn bộ ma trận chuyển sang Haversine × hệ số đường bộ và giao diện ghi rõ là ước tính. Sửa tuyến dùng lại ma trận đã lưu; nếu tọa độ thay đổi, cần tối ưu lại. Tuyến cũ chưa có ma trận được tính lại bằng ước tính khi sửa.
 
@@ -197,4 +200,9 @@ Xem `CLAUDE.md` để biết agent nào dùng cho việc gì.
 
 Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_images_otp.sql` một lần trước khi cập nhật ứng dụng. Migration giữ ảnh hiện tại làm ảnh đầu tiên; cơ sở dữ liệu mới dùng `database/schema.sql`. Trang quản trị cho phép chọn tối đa 20 ảnh, mỗi ảnh tối đa 5 MB; ảnh đầu tiên là ảnh đại diện.
 
-Cấu hình `GMAIL_USER` và `GMAIL_APP_PASSWORD` trong môi trường backend (mật khẩu ứng dụng Gmail), rồi khởi động lại backend. Đăng ký yêu cầu email và mã xác nhận; người dùng có thể đặt lại mật khẩu bằng email đã đăng ký. Mã gồm 6 số, có hiệu lực 3 phút kể từ lần gửi đầu tiên; gửi lại trong thời gian này dùng cùng mã và không gia hạn. Mã được xóa khi xác nhận thành công; bản ghi hết hạn được dọn định kỳ khi backend đang chạy và khi có yêu cầu mã mới. Tài khoản không có email cần liên hệ quản trị viên để cập nhật trước khi dùng tính năng quên mật khẩu. Chức năng giới hạn yêu cầu hiện tại chạy theo từng tiến trình; khi triển khai nhiều máy chủ cần bổ sung giới hạn dùng chung.
+### Sổ địa chỉ khách hàng và lưu địa chỉ khi đặt hàng
+
+- Khách hàng có thể lưu nhiều địa chỉ nhận hàng vào sổ địa chỉ (qua trang `/account/profile` hoặc trực tiếp tại trang `/checkout`).
+- Khi đặt hàng lần đầu (chưa có địa chỉ nào lưu trước đó), hệ thống tự động lưu địa chỉ đã nhập làm địa chỉ mặc định cho các lần mua sau.
+- Khi đã có địa chỉ, trang checkout hiển thị danh sách để chọn nhanh bằng 1 click; địa chỉ mặc định (`is_default = 1`) được chọn sẵn tự động. Khách có thể đổi địa chỉ mặc định hoặc chọn "Giao đến địa chỉ khác / Thêm địa chỉ mới" và chọn có lưu lại cho lần sau hay không.
+- Schema lưu trong bảng `customer_address` với khóa ngoại tham chiếu `customer(id)`. API RESTful tại `/api/account/addresses` hỗ trợ CRUD và đặt địa chỉ mặc định.

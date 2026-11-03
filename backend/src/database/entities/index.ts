@@ -1,4 +1,5 @@
 export * from './customer.entity';
+export * from './customer-address.entity';
 export * from './delivery-stop.entity';
 export * from './driver.entity';
 export * from './enums';

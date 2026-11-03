@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, FindOptionsRelations, IsNull, Repository } from 'typeorm';
-import { Customer, DeliveryRoute, DeliveryStop, Order, OrderHistoryEvent, OrderHistoryEventType, OrderItem, OrderStatus, PaymentStatus, Product, RouteStatus, SystemSetting, Warehouse } from '../database/entities';
+import { Customer, CustomerAddress, DeliveryRoute, DeliveryStop, Order, OrderHistoryEvent, OrderHistoryEventType, OrderItem, OrderStatus, PaymentStatus, Product, RouteStatus, SystemSetting, Warehouse } from '../database/entities';
 import { CreateOrderDto, LocationUpdateDto, PaymentMethod, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
 
 const ORDER_RELATIONS: FindOptionsRelations<Order> = {
@@ -141,6 +141,32 @@ export class OrdersService {
         note: source === 'COUNTER' ? 'Nhập đơn tại quầy' : 'Khách tạo đơn trực tuyến',
         actor: source === 'COUNTER' ? 'STAFF' : 'CUSTOMER',
       });
+
+      // Lưu địa chỉ vào sổ địa chỉ nếu khách yêu cầu hoặc nếu khách chưa có địa chỉ nào
+      const addrRepo = manager.getRepository(CustomerAddress);
+      const existingAddrCount = await addrRepo.count({ where: { customerId: customer.id } });
+      const shouldSaveAddr = body.save_address === true || existingAddrCount === 0;
+
+      if (shouldSaveAddr) {
+        const isDefault = existingAddrCount === 0 || body.set_default === true;
+        if (isDefault && existingAddrCount > 0) {
+          await addrRepo.update({ customerId: customer.id }, { isDefault: false });
+        }
+        await addrRepo.save(
+          addrRepo.create({
+            customerId: customer.id,
+            label: body.address_label?.trim() || (existingAddrCount === 0 ? 'Nhà riêng' : 'Địa chỉ mới'),
+            recipientName: body.recipient_name?.trim() || body.customer_name.trim(),
+            phone: body.recipient_phone?.trim() || body.phone.trim(),
+            address: body.address.trim(),
+            district: body.district?.trim() || null,
+            lat: body.lat !== undefined && body.lat !== null ? String(body.lat) : null,
+            lng: body.lng !== undefined && body.lng !== null ? String(body.lng) : null,
+            isDefault,
+          }),
+        );
+      }
+
       return saved.id;
       });
     } catch (error) {

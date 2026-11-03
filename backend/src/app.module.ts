@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import configuration from './config/configuration';
 import {
   Customer,
+  CustomerAddress,
   Category,
   AuditEvent,
   MaintenanceRecord,
@@ -30,6 +31,7 @@ import { ProductsModule } from './products/products.module';
 import { RoutesModule } from './routes/routes.module';
 import { SystemModule } from './system/system.module';
 import { TrackingModule } from './tracking/tracking.module';
+import { CustomerAddressesModule } from './customer-addresses/customer-addresses.module';
 
 @Module({
   imports: [
@@ -45,6 +47,7 @@ import { TrackingModule } from './tracking/tracking.module';
     RoutesModule,
     TrackingModule,
     SystemModule,
+    CustomerAddressesModule,
   ],
 })
 export class AppModule {}
@@ -110,6 +113,7 @@ function databaseOptions(config: ConfigService) {
       MaintenanceRecord,
       MaintenanceReminderRead,
       Customer,
+      CustomerAddress,
       DeliveryRoute,
       DeliveryStop,
       Driver,

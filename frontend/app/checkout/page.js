@@ -20,12 +20,31 @@ const WINDOWS = [
 function Checkout() {
   const { state, user, actions, catalogStatus, shippingStatus } = useStore();
   const router = useRouter();
-  const customer = state.customers.find((c) => c.id === user.customerId);
-  const [addrId, setAddrId] = useState(customer?.addresses?.[0]?.id ?? "new");
+  const customer = state.customers.find((c) => c.id === user?.customerId || c.authUserId === user?.id) || state.customers[0];
+  const addresses = customer?.addresses || [];
+  const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
+
+  const [addrId, setAddrId] = useState(defaultAddr?.id ?? "new");
   const [newAddr, setNewAddr] = useState({ address: "", district: "", lat: "", lng: "" });
+  const [addrLabel, setAddrLabel] = useState("Nhà riêng");
+  const [saveNewAddress, setSaveNewAddress] = useState(true);
+  const [setAsDefault, setSetAsDefault] = useState(addresses.length === 0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const searchTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (addresses.length > 0) {
+      if (addrId !== "new" && !addresses.some((a) => a.id === addrId)) {
+        const def = addresses.find((a) => a.isDefault) || addresses[0];
+        if (def) setAddrId(def.id);
+      }
+    } else {
+      setAddrId("new");
+      setSaveNewAddress(true);
+      setSetAsDefault(true);
+    }
+  }, [addresses]);
 
   const onAddressChange = (val) => {
     if (!val || !val.trim()) {
@@ -98,15 +117,22 @@ function Checkout() {
     if (submitting) return;
     setError("");
     let address;
-    if (addrId === "new") {
+    const isNew = addrId === "new" || addresses.length === 0;
+    if (isNew) {
       if (newAddr.address.trim().length < 5) return setError("Vui lòng nhập địa chỉ giao hàng.");
       if (!newAddr.lat || !newAddr.lng) {
         setPickerOpen(true);
         return setError("Bắt buộc phải ghim vị trí trên bản đồ để lấy toạ độ giao hàng chính xác.");
       }
-      address = { address: newAddr.address, district: newAddr.district, lat: Number(newAddr.lat), lng: Number(newAddr.lng) };
+      address = {
+        label: addrLabel.trim() || "Nhà riêng",
+        address: newAddr.address,
+        district: newAddr.district,
+        lat: Number(newAddr.lat),
+        lng: Number(newAddr.lng),
+      };
     } else {
-      address = customer.addresses.find((a) => a.id === addrId);
+      address = addresses.find((a) => a.id === addrId);
       if (!address?.lat || !address?.lng) {
         setPickerOpen(true);
         return setError("Địa chỉ này chưa có toạ độ ghim trên bản đồ. Vui lòng ghim vị trí để tài xế giao hàng chính xác.");
@@ -116,7 +142,7 @@ function Checkout() {
     if (isGift && (!recipientName.trim() || !/^0\d{9,10}$/.test(recipientPhone))) {
       return setError("Nhập tên người nhận và số điện thoại hợp lệ cho đơn đặt hộ.");
     }
-    const deliveryNote = [addrId === "new" && addressNote.trim() ? `Chú thích địa chỉ: ${addressNote.trim()}` : "", note.trim()].filter(Boolean).join(" · ");
+    const deliveryNote = [isNew && addressNote.trim() ? `Chú thích địa chỉ: ${addressNote.trim()}` : "", note.trim()].filter(Boolean).join(" · ");
     if (deliveryNote.length > 255) return setError("Chú thích địa chỉ và ghi chú cho tài xế không được vượt quá 255 ký tự.");
     setSubmitting(true);
     requestIdRef.current ||= crypto.randomUUID();
@@ -130,6 +156,9 @@ function Checkout() {
       recipientName,
       recipientPhone,
       clientRequestId: requestIdRef.current,
+      saveAddress: isNew ? (addresses.length === 0 || saveNewAddress) : false,
+      addressLabel: addrLabel.trim() || "Nhà riêng",
+      isDefault: isNew ? (addresses.length === 0 || setAsDefault) : false,
     });
     setSubmitting(false);
     if (order) {
@@ -179,23 +208,122 @@ function Checkout() {
           <section className="panel">
             <div className="panel-head"><h3>Địa chỉ nhận hàng</h3></div>
             <div className="panel-body stack">
-              <div className="choice">
-                {customer.addresses.map((a) => (
-                  <label key={a.id}>
-                    <input type="radio" name="addr" checked={addrId === a.id} onChange={() => setAddrId(a.id)} />
-                    <span><b>{a.label}</b><br /><span className="small muted">{a.address}</span></span>
+              {addresses.length === 0 ? (
+                <div className="notice" style={{ marginBottom: 4 }}>
+                  Bạn chưa có địa chỉ nhận hàng lưu sẵn. Vui lòng nhập địa chỉ bên dưới, hệ thống sẽ tự động lưu lại làm địa chỉ mặc định cho các đơn hàng sau.
+                </div>
+              ) : (
+                <div className="choice" style={{ display: "grid", gap: 10 }}>
+                  {addresses.map((a) => (
+                    <label
+                      key={a.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 12,
+                        padding: "12px 14px",
+                        border: addrId === a.id ? "2px solid var(--road, #0052cc)" : "1px solid var(--line-soft, #e2e8f0)",
+                        borderRadius: "var(--r-sm, 6px)",
+                        background: addrId === a.id ? "rgba(0, 82, 204, 0.04)" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="addr"
+                        checked={addrId === a.id}
+                        onChange={() => setAddrId(a.id)}
+                        style={{ marginTop: 3 }}
+                      />
+                      <div className="grow stack-xs">
+                        <div className="row between" style={{ alignItems: "center" }}>
+                          <div className="row" style={{ alignItems: "center", gap: 8 }}>
+                            <b>{a.label || "Địa chỉ"}</b>
+                            {a.isDefault && (
+                              <span className="badge ok plain" style={{ fontSize: 11, padding: "2px 8px" }}>
+                                Mặc định
+                              </span>
+                            )}
+                          </div>
+                          {!a.isDefault && (
+                            <button
+                              type="button"
+                              className="btn sm secondary"
+                              style={{ fontSize: 11, padding: "2px 8px" }}
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                await actions.setDefaultAddress(a.id);
+                              }}
+                            >
+                              Đặt làm mặc định
+                            </button>
+                          )}
+                        </div>
+                        {(a.recipientName || a.phone) && (
+                          <div className="tiny muted">
+                            {[a.recipientName, a.phone].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                        <div className="small">{a.address}</div>
+                        {(!a.lat || !a.lng) && (
+                          <div className="tiny" style={{ color: "var(--stop, #e53e3e)" }}>
+                            ⚠️ Chưa ghim vị trí bản đồ — tài xế cần toạ độ để giao hàng
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "12px 14px",
+                      border: addrId === "new" ? "2px solid var(--road, #0052cc)" : "1px solid var(--line-soft, #e2e8f0)",
+                      borderRadius: "var(--r-sm, 6px)",
+                      background: addrId === "new" ? "rgba(0, 82, 204, 0.04)" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="addr"
+                      checked={addrId === "new"}
+                      onChange={() => setAddrId("new")}
+                    />
+                    <span><b>+ Giao đến địa chỉ khác / Thêm địa chỉ mới</b></span>
                   </label>
-                ))}
-                <label>
-                  <input type="radio" name="addr" checked={addrId === "new"} onChange={() => setAddrId("new")} />
-                  <span><b>Địa chỉ khác</b></span>
-                </label>
-              </div>
+                </div>
+              )}
 
-              {addrId === "new" && (
-                <div className="form-grid">
+              {(addrId === "new" || addresses.length === 0) && (
+                <div className="form-grid" style={{ marginTop: addresses.length ? 12 : 0, paddingTop: addresses.length ? 12 : 0, borderTop: addresses.length ? "1px dashed var(--line-soft)" : "none" }}>
+                  <div className="field full">
+                    <span>Tên gợi nhớ cho địa chỉ này</span>
+                    <div className="row" style={{ gap: 8, marginBottom: 6 }}>
+                      {["Nhà riêng", "Công ty", "Nhà bố mẹ"].map((lbl) => (
+                        <button
+                          key={lbl}
+                          type="button"
+                          className={`btn sm ${addrLabel === lbl ? "" : "secondary"}`}
+                          onClick={() => setAddrLabel(lbl)}
+                        >
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      className="input"
+                      value={addrLabel}
+                      onChange={(e) => setAddrLabel(e.target.value)}
+                      placeholder="Ví dụ: Nhà riêng, Văn phòng công ty, Chung cư..."
+                      maxLength={60}
+                    />
+                  </div>
+
                   <div className="field full" style={{ position: "relative" }}>
-                    <span>Địa chỉ</span>
+                    <span>Địa chỉ giao hàng</span>
                     <input
                       className="input"
                       value={newAddr.address}
@@ -227,6 +355,36 @@ function Checkout() {
                     <button type="button" className="btn secondary" onClick={() => setPickerOpen(true)}>
                       {newAddr.lat ? "Đã ghim · Chọn lại" : "Mở bản đồ chọn vị trí"}
                     </button>
+                  </div>
+
+                  <div className="full stack-xs" style={{ marginTop: 4 }}>
+                    {addresses.length === 0 ? (
+                      <label className="row small" style={{ cursor: "pointer" }}>
+                        <input type="checkbox" checked={true} disabled />
+                        <span><b>Tự động lưu làm địa chỉ mặc định</b> trong sổ địa chỉ cho các lần mua sau</span>
+                      </label>
+                    ) : (
+                      <>
+                        <label className="row small" style={{ cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={saveNewAddress}
+                            onChange={(e) => setSaveNewAddress(e.target.checked)}
+                          />
+                          <span><b>Lưu địa chỉ này vào sổ địa chỉ</b> để dùng cho các lần đặt hàng sau</span>
+                        </label>
+                        {saveNewAddress && (
+                          <label className="row small" style={{ cursor: "pointer", marginLeft: 22 }}>
+                            <input
+                              type="checkbox"
+                              checked={setAsDefault}
+                              onChange={(e) => setSetAsDefault(e.target.checked)}
+                            />
+                            <span>Đặt làm địa chỉ mặc định</span>
+                          </label>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               )}

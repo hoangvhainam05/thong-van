@@ -29,6 +29,20 @@ function load() {
   return buildSeed();
 }
 
+function normalizeAddress(a) {
+  return {
+    id: a.id,
+    label: a.label || "Nhà riêng",
+    recipientName: a.recipient_name ?? a.recipientName ?? "",
+    phone: a.phone || "",
+    address: a.address,
+    district: a.district || "",
+    lat: a.lat !== null && a.lat !== undefined ? Number(a.lat) : null,
+    lng: a.lng !== null && a.lng !== undefined ? Number(a.lng) : null,
+    isDefault: Boolean(a.is_default ?? a.isDefault),
+  };
+}
+
 // Không trộn dữ liệu khách mẫu với tài khoản MySQL có thể trùng ID.
 function prepareAccountData(d, user) {
   if (!user.permissions.includes('order.place') && !user.permissions.includes('order.track_own')) return;
@@ -138,11 +152,17 @@ export function StoreProvider({ children }) {
     initial.settings.freeShipFrom = null;
     const token = loadToken();
     if (!token) { setState(initial); return; }
-    api('/api/auth/me', { token }).then((user) => {
+    api('/api/auth/me', { token }).then(async (user) => {
       initial.users = [user];
       prepareAccountData(initial, user);
       initial.session = { userId: user.id };
       initial.roleMatrix[user.role] = user.permissions;
+      try {
+        const addresses = await api('/api/account/addresses', { token });
+        if (Array.isArray(addresses) && initial.customers[0]) {
+          initial.customers[0].addresses = addresses.map(normalizeAddress);
+        }
+      } catch {}
       setState(initial);
     }).catch(() => { saveToken(''); setState(initial); });
   }, []);
@@ -234,7 +254,20 @@ export function StoreProvider({ children }) {
         try {
           const result = await api('/api/auth/login', { method: 'POST', body: { identifier, password } });
           saveToken(result.token);
-          mutate((d) => { d.users = [result.user]; prepareAccountData(d, result.user); d.session = { userId: result.user.id }; d.roleMatrix[result.user.role] = result.user.permissions; });
+          let loadedAddresses = [];
+          try {
+            const list = await api('/api/account/addresses', { token: result.token });
+            if (Array.isArray(list)) loadedAddresses = list.map(normalizeAddress);
+          } catch {}
+          mutate((d) => {
+            d.users = [result.user];
+            prepareAccountData(d, result.user);
+            if (loadedAddresses.length && d.customers[0]) {
+              d.customers[0].addresses = loadedAddresses;
+            }
+            d.session = { userId: result.user.id };
+            d.roleMatrix[result.user.role] = result.user.permissions;
+          });
           return { ok: true, user: result.user };
         } catch (e) { return { ok: false, error: e.message }; }
       },
@@ -258,18 +291,109 @@ export function StoreProvider({ children }) {
       async changePassword(oldPw, newPw) {
         try { await api('/api/auth/change-password', { method:'POST', token:loadToken(), body:{currentPassword:oldPw,newPassword:newPw} }); toast('Đã đổi mật khẩu'); return true; } catch(e) { toast(e.message,'bad'); return false; }
       },
-      saveAddress: act((addr) =>
-        mutate((d) => {
+      async loadAddresses() {
+        const token = loadToken();
+        if (!token) return;
+        try {
+          const list = await api('/api/account/addresses', { token });
+          if (Array.isArray(list)) {
+            mutate((d) => {
+              const c = d.customers.find((x) => x.id === user?.customerId || x.authUserId === user?.id);
+              if (c) c.addresses = list.map(normalizeAddress);
+            });
+          }
+        } catch {}
+      },
+      async saveAddress(addr) {
+        try {
           need("order.place");
-          const c = d.customers.find((x) => x.id === user.customerId);
-          if (addr.id) Object.assign(c.addresses.find((a) => a.id === addr.id), addr);
-          else c.addresses.push({ ...addr, id: Math.max(0, ...c.addresses.map((a) => a.id)) + 1 });
-        }), "Đã lưu địa chỉ"),
-      removeAddress: act((id) =>
-        mutate((d) => {
-          const c = d.customers.find((x) => x.id === user.customerId);
-          c.addresses = c.addresses.filter((a) => a.id !== id);
-        })),
+          const token = loadToken();
+          let savedAddr = { ...addr };
+          if (token) {
+            const body = {
+              label: addr.label || "Nhà riêng",
+              recipient_name: addr.recipientName || undefined,
+              phone: addr.phone || undefined,
+              address: addr.address,
+              district: addr.district || undefined,
+              lat: addr.lat == null || addr.lat === "" ? undefined : Number(addr.lat),
+              lng: addr.lng == null || addr.lng === "" ? undefined : Number(addr.lng),
+              is_default: Boolean(addr.isDefault),
+            };
+            const isPersisted = typeof addr.id === "number" && addr.id > 0 && addr.id < 1000000000;
+            const res = isPersisted
+              ? await api(`/api/account/addresses/${addr.id}`, { method: "PATCH", body, token })
+              : await api("/api/account/addresses", { method: "POST", body, token });
+            savedAddr = normalizeAddress(res);
+          }
+
+          mutate((d) => {
+            const c = d.customers.find((x) => x.id === user?.customerId || x.authUserId === user?.id);
+            if (!c) return;
+            c.addresses ||= [];
+            const isDefault = savedAddr.isDefault ?? (c.addresses.length === 0);
+            if (isDefault) {
+              c.addresses.forEach((a) => { a.isDefault = false; });
+            }
+            const existingIndex = c.addresses.findIndex((a) => a.id === savedAddr.id);
+            if (existingIndex >= 0) {
+              c.addresses[existingIndex] = { ...c.addresses[existingIndex], ...savedAddr, isDefault };
+            } else {
+              const newId = savedAddr.id || (Math.max(0, ...c.addresses.map((a) => a.id || 0)) + 1);
+              c.addresses.push({ ...savedAddr, id: newId, isDefault });
+            }
+          });
+          toast("Đã lưu địa chỉ");
+          return true;
+        } catch (e) {
+          toast(e.message || "Không thể lưu địa chỉ.", "bad");
+          return false;
+        }
+      },
+      async setDefaultAddress(id) {
+        try {
+          need("order.place");
+          const token = loadToken();
+          if (token && typeof id === "number" && id > 0 && id < 1000000000) {
+            await api(`/api/account/addresses/${id}/default`, { method: "PATCH", token });
+          }
+          mutate((d) => {
+            const c = d.customers.find((x) => x.id === user?.customerId || x.authUserId === user?.id);
+            if (!c || !c.addresses) return;
+            c.addresses.forEach((a) => {
+              a.isDefault = a.id === id;
+            });
+          });
+          toast("Đã đặt làm địa chỉ mặc định");
+          return true;
+        } catch (e) {
+          toast(e.message || "Không thể đặt địa chỉ mặc định.", "bad");
+          return false;
+        }
+      },
+      async removeAddress(id) {
+        try {
+          need("order.place");
+          const token = loadToken();
+          if (token && typeof id === "number" && id > 0 && id < 1000000000) {
+            await api(`/api/account/addresses/${id}`, { method: "DELETE", token });
+          }
+          mutate((d) => {
+            const c = d.customers.find((x) => x.id === user?.customerId || x.authUserId === user?.id);
+            if (!c || !c.addresses) return;
+            const wasDefault = c.addresses.find((a) => a.id === id)?.isDefault;
+            c.addresses = c.addresses.filter((a) => a.id !== id);
+            if (wasDefault && c.addresses.length > 0) {
+              c.addresses[0].isDefault = true;
+            }
+          });
+          toast("Đã xoá địa chỉ");
+          return true;
+        } catch (e) {
+          toast(e.message || "Không thể xoá địa chỉ.", "bad");
+          return false;
+        }
+      },
 
       // ------------------------------------------------------------ giỏ hàng & đặt hàng
       addToCart: act((productId, qty = 1) =>
@@ -285,7 +409,20 @@ export function StoreProvider({ children }) {
         }),
       clearCart: () => mutate((d) => { d.cart = []; }),
 
-      async placeOrder({ address, deliveryDate, window, paymentMethod, note, isGift = false, recipientName = "", recipientPhone = "", clientRequestId }) {
+      async placeOrder({
+        address,
+        deliveryDate,
+        window,
+        paymentMethod,
+        note,
+        isGift = false,
+        recipientName = "",
+        recipientPhone = "",
+        clientRequestId,
+        saveAddress = true,
+        addressLabel = "Nhà riêng",
+        isDefault = false,
+      }) {
         try {
           need("order.place");
           const current = stateRef.current;
@@ -303,6 +440,10 @@ export function StoreProvider({ children }) {
             is_gift: isGift,
             client_request_id: requestId,
             address: address.address,
+            district: address.district || undefined,
+            save_address: Boolean(saveAddress),
+            address_label: addressLabel || "Nhà riêng",
+            set_default: Boolean(isDefault),
             lat: address.lat == null || address.lat === "" ? undefined : Number(address.lat),
             lng: address.lng == null || address.lng === "" ? undefined : Number(address.lng),
             delivery_date: deliveryDate,
@@ -321,13 +462,38 @@ export function StoreProvider({ children }) {
               d.cart = [];
               return;
             }
-            const c = d.customers.find((x) => x.id === user.customerId);
+            const c = d.customers.find((x) => x.id === user.customerId || x.authUserId === user.id);
             const id = Math.max(0, ...d.orders.map((o) => o.id)) + 1;
             created = mapServerOrder(saved, id, c.id);
             created.authUserId = user.id;
             created.district = address.district || "";
             created.note = note || "";
             d.orders.push(created);
+
+            // Cập nhật sổ địa chỉ nếu lưu địa chỉ mới
+            if (saveAddress && c) {
+              c.addresses ||= [];
+              const exists = c.addresses.some((a) => a.address === address.address);
+              if (!exists) {
+                const markDefault = isDefault || c.addresses.length === 0;
+                if (markDefault) {
+                  c.addresses.forEach((a) => { a.isDefault = false; });
+                }
+                const newId = Math.max(0, ...c.addresses.map((a) => a.id || 0)) + 1;
+                c.addresses.push({
+                  id: newId,
+                  label: addressLabel || (c.addresses.length === 0 ? "Nhà riêng" : "Địa chỉ mới"),
+                  recipientName: isGift ? recipientName : c.name,
+                  phone: isGift ? recipientPhone : c.phone,
+                  address: address.address,
+                  district: address.district || "",
+                  lat: address.lat,
+                  lng: address.lng,
+                  isDefault: markDefault,
+                });
+              }
+            }
+
             for (const item of created.items) {
               const p = d.products.find((product) => product.id === item.productId);
               if (p) p.stock = Math.max(0, p.stock - item.qty);

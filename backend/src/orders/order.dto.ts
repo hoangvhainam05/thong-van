@@ -73,6 +73,24 @@ export class CreateOrderDto {
   address!: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  district?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  save_address?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  address_label?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  set_default?: boolean;
+
+  @IsOptional()
   @IsLatitude()
   lat?: number;
 
