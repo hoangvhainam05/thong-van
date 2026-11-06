@@ -122,8 +122,30 @@ function Checkout() {
       quoteProductIds = new Set(Array.isArray(parsed) ? parsed.map(String) : []);
     } catch { quoteProductIds = new Set(); }
   }
-  const quoteItems = (state?.cart || [])
-    .filter((line) => !quoteProductIds || quoteProductIds.has(String(line.productId)))
+  const isDirectPurchase = searchParams.has("buyNow");
+  const directProductId = Number(searchParams.get("buyNow"));
+  const directQuantityValue = Number(searchParams.get("qty"));
+  const directQuantity = Number.isInteger(directQuantityValue) && directQuantityValue > 0
+    ? Math.min(directQuantityValue, 20)
+    : 1;
+  const directProduct = (state?.products || []).find((product) => product.id === directProductId);
+  const directLines = directProduct ? [{ productId: directProduct.id, qty: directQuantity, p: directProduct }] : [];
+  const cartLines = (state?.cart || [])
+    .map((line) => ({ ...line, p: state.products.find((product) => product.id === line.productId) }))
+    .filter((line) => line.p);
+  const requestedProductIds = searchParams.has("items")
+    ? (() => {
+        try {
+          const parsed = JSON.parse(searchParams.get("items"));
+          return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+        } catch {
+          return new Set();
+        }
+      })()
+    : null;
+  const selectedCartLines = cartLines.filter((line) => !requestedProductIds || requestedProductIds.has(String(line.productId)));
+  const lines = isDirectPurchase ? directLines : selectedCartLines;
+  const quoteItems = (isDirectPurchase ? directLines : selectedCartLines)
     .map((line) => ({ product_id: line.productId, quantity: line.qty }));
   const quoteAddress = addrId === "new" ? newAddr : addresses.find((address) => address.id === addrId);
   const hasQuoteCoordinates = quoteAddress?.lat != null && quoteAddress?.lat !== "" && quoteAddress?.lng != null && quoteAddress?.lng !== "";
@@ -176,19 +198,8 @@ function Checkout() {
   if (catalogStatus === 'loading' || shippingStatus === 'loading') return <Loading />;
   if (catalogStatus !== 'ready' || shippingStatus !== 'ready') return <div className="notice bad">Không tải được sản phẩm hoặc phí giao hàng. Vui lòng tải lại trang.</div>;
 
-  let requestedProductIds = null;
-  const hasExplicitSelection = searchParams.has("items");
-  if (hasExplicitSelection) {
-    try {
-      const parsed = JSON.parse(searchParams.get("items"));
-      requestedProductIds = new Set(Array.isArray(parsed) ? parsed.map(String) : []);
-    } catch {
-      requestedProductIds = new Set();
-    }
-  }
-  const cartLines = state.cart.map((l) => ({ ...l, p: state.products.find((x) => x.id === l.productId) })).filter((line) => line.p);
-  const lines = cartLines.filter((line) => !requestedProductIds || requestedProductIds.has(String(line.productId)));
-  if (!cartLines.length) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
+  if (!lines.length && isDirectPurchase) return <div className="panel"><Empty title="Sản phẩm không còn bán" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
+  if (!cartLines.length && !isDirectPurchase) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
   if (!lines.length) return <div className="panel"><Empty title="Chưa chọn sản phẩm để thanh toán" action={<Link href="/cart" className="btn">Quay lại giỏ hàng</Link>} /></div>;
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
   const bankAvailable = Boolean(bankInstructions?.configured);
@@ -248,7 +259,9 @@ function Checkout() {
       saveAddress: isNew ? (addresses.length === 0 || saveNewAddress) : false,
       addressLabel: addrLabel.trim() || "Nhà riêng",
       isDefault: isNew ? (addresses.length === 0 || setAsDefault) : false,
-      productIds: lines.map((line) => line.productId),
+      ...(isDirectPurchase
+        ? { orderItems: lines.map((line) => ({ productId: line.productId, qty: line.qty })) }
+        : { productIds: lines.map((line) => line.productId) }),
     });
     setSubmitting(false);
     if (order) {

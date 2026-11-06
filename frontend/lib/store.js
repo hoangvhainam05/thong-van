@@ -433,13 +433,17 @@ export function StoreProvider({ children }) {
         addressLabel = "Nhà riêng",
         isDefault = false,
         productIds,
+        orderItems,
       }) {
         try {
           need("order.place");
           const current = stateRef.current;
-          if (!current.cart.length) throw new Error("Giỏ hàng đang trống.");
+          const isDirectPurchase = Array.isArray(orderItems);
+          if (!isDirectPurchase && !current.cart.length) throw new Error("Giỏ hàng đang trống.");
           const selectedIdSet = productIds == null ? null : new Set(productIds.map(String));
-          const orderCart = current.cart.filter((line) => !selectedIdSet || selectedIdSet.has(String(line.productId)));
+          const orderCart = isDirectPurchase
+            ? orderItems.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty) }))
+            : current.cart.filter((line) => !selectedIdSet || selectedIdSet.has(String(line.productId)));
           if (!orderCart.length) throw new Error("Vui lòng chọn ít nhất một sản phẩm để đặt hàng.");
           const orderedQtyByProduct = new Map(orderCart.map((line) => [String(line.productId), line.qty]));
           if (deliveryDate < ymd()) throw new Error("Ngày giao không được ở quá khứ.");
@@ -475,10 +479,12 @@ export function StoreProvider({ children }) {
             const existing = d.orders.find((o) => o.serverId === saved.id);
             if (existing) {
               created = existing;
-              d.cart = d.cart.flatMap((line) => {
-                const remaining = line.qty - (orderedQtyByProduct.get(String(line.productId)) || 0);
-                return remaining > 0 ? [{ ...line, qty: remaining }] : [];
-              });
+              if (!isDirectPurchase) {
+                d.cart = d.cart.flatMap((line) => {
+                  const remaining = line.qty - (orderedQtyByProduct.get(String(line.productId)) || 0);
+                  return remaining > 0 ? [{ ...line, qty: remaining }] : [];
+                });
+              }
               return;
             }
             const c = d.customers.find((x) => x.id === user.customerId || x.authUserId === user.id);
@@ -517,10 +523,12 @@ export function StoreProvider({ children }) {
               const p = d.products.find((product) => product.id === item.productId);
               if (p) p.stock = Math.max(0, p.stock - item.qty);
             }
-            d.cart = d.cart.flatMap((line) => {
-              const remaining = line.qty - (orderedQtyByProduct.get(String(line.productId)) || 0);
-              return remaining > 0 ? [{ ...line, qty: remaining }] : [];
-            });
+            if (!isDirectPurchase) {
+              d.cart = d.cart.flatMap((line) => {
+                const remaining = line.qty - (orderedQtyByProduct.get(String(line.productId)) || 0);
+                return remaining > 0 ? [{ ...line, qty: remaining }] : [];
+              });
+            }
             notify(d, created, "Đã nhận đơn", `Thông Vân đã nhận đơn ${created.code}. Nhân viên sẽ gọi xác nhận trong ít phút.`);
           });
           toast("Đã tạo đơn hàng");
