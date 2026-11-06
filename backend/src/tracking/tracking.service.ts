@@ -52,8 +52,59 @@ export class TrackingService {
   async accountTrack(id: number, customerId: number | null) { return this.project(await this.accountOrder(id, customerId)); }
   async accountOrders(customerId: number | null) {
     if (!customerId) throw new ForbiddenException('Tài khoản chưa liên kết với khách hàng');
-    const orders = await this.orders.find({ where: { customerId }, relations: { items: { product: true } }, order: { id: 'DESC' } });
-    return orders.map(order => ({ id: order.id, code: order.code, status: order.status, total: Number(order.total), delivery_date: order.deliveryDate, time_window: `${shortTime(order.timeWindowStart)}–${shortTime(order.timeWindowEnd)}`, items: (order.items || []).map(item => ({ name: item.product.name, quantity: item.quantity })) }));
+    // Select only fields used by the order list. Loading TypeORM entities here
+    // selects every mapped order/product/item column, so this endpoint can fail
+    // when a deployment's database is still missing a newer, unrelated column.
+    const rows = await this.orders.query(
+      `SELECT o.id AS order_id, o.code, o.status, o.total,
+              o.delivery_date, o.time_window_start, o.time_window_end,
+              p.name AS product_name, oi.quantity AS item_quantity
+       FROM orders o
+       LEFT JOIN order_item oi ON oi.order_id = o.id
+       LEFT JOIN product p ON p.id = oi.product_id
+       WHERE o.customer_id = ?
+       ORDER BY o.id DESC, oi.id ASC`,
+      [customerId],
+    ) as Array<{
+      order_id: number;
+      code: string | null;
+      status: OrderStatus;
+      total: string | number;
+      delivery_date: string;
+      time_window_start: string;
+      time_window_end: string;
+      product_name: string | null;
+      item_quantity: number | null;
+    }>;
+
+    const byId = new Map<number, {
+      id: number;
+      code: string | null;
+      status: OrderStatus;
+      total: number;
+      delivery_date: string;
+      time_window: string;
+      items: Array<{ name: string; quantity: number }>;
+    }>();
+    for (const row of rows) {
+      let order = byId.get(row.order_id);
+      if (!order) {
+        order = {
+          id: row.order_id,
+          code: row.code,
+          status: row.status,
+          total: Number(row.total),
+          delivery_date: row.delivery_date,
+          time_window: `${shortTime(row.time_window_start)}–${shortTime(row.time_window_end)}`,
+          items: [],
+        };
+        byId.set(order.id, order);
+      }
+      if (row.product_name !== null && row.item_quantity !== null) {
+        order.items.push({ name: row.product_name, quantity: row.item_quantity });
+      }
+    }
+    return [...byId.values()];
   }
   async publicProof(code: string, phone: string) { return this.proofFor(await this.publicOrder(code, phone)); }
   async accountProof(id: number, customerId: number | null) { return this.proofFor(await this.accountOrder(id, customerId)); }
