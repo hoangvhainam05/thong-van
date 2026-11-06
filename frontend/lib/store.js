@@ -982,8 +982,14 @@ export function StoreProvider({ children }) {
       saveVehicle: act((x) =>
         mutate((d) => {
           need("fleet.manage");
-          if (x.id) Object.assign(d.vehicles.find((y) => y.id === x.id), x);
-          else d.vehicles.push({ ...x, id: Math.max(...d.vehicles.map((y) => y.id)) + 1, active: true });
+          const driver_ids = (x.driver_ids || []).slice(0, 2);
+          if (x.id) {
+            const v = d.vehicles.find((y) => y.id === x.id);
+            Object.assign(v, { ...x, driver_ids });
+          } else {
+            const id = Math.max(0, ...d.vehicles.map((y) => y.id)) + 1;
+            d.vehicles.push({ ...x, id, driver_ids, active: true });
+          }
           log(d, "Lưu xe", x.plate);
         }), "Đã lưu xe"),
 
@@ -993,12 +999,22 @@ export function StoreProvider({ children }) {
           need("user.manage");
           if (d.users.some((u) => u.id !== x.id && u.email.toLowerCase() === x.email.toLowerCase())) throw new Error("Email đã được dùng.");
           if (x.id === user.id && x.role !== user.role) throw new Error("Không thể tự đổi vai trò của chính mình.");
-          if (x.id) Object.assign(d.users.find((u) => u.id === x.id), x);
-          else {
-            const id = Math.max(...d.users.map((u) => u.id)) + 1;
+          if (x.id) {
+            const existing = d.users.find((u) => u.id === x.id);
+            Object.assign(existing, x);
+            if (existing.role === "DRIVER" && existing.driverId) {
+              const drv = d.drivers.find((y) => y.id === existing.driverId);
+              if (drv) {
+                if (x.name) drv.name = x.name;
+                if (x.phone) drv.phone = x.phone;
+                if (x.active !== undefined) drv.active = x.active;
+              }
+            }
+          } else {
+            const id = Math.max(0, ...d.users.map((u) => u.id)) + 1;
             const nu = { ...x, id, active: true, password: x.password || "123456" };
             if (x.role === "DRIVER") {
-              const did = Math.max(...d.drivers.map((y) => y.id)) + 1;
+              const did = Math.max(0, ...d.drivers.map((y) => y.id)) + 1;
               d.drivers.push({ id: did, name: x.name, phone: x.phone, license: "B2", active: true, userId: id });
               nu.driverId = did;
             }
@@ -1012,6 +1028,10 @@ export function StoreProvider({ children }) {
           if (id === user.id) throw new Error("Không thể tự khoá tài khoản của chính mình.");
           const u = d.users.find((x) => x.id === id);
           u.active = !u.active;
+          if (u.role === "DRIVER" && u.driverId) {
+            const drv = d.drivers.find((y) => y.id === u.driverId);
+            if (drv) drv.active = u.active;
+          }
           log(d, u.active ? "Mở khoá tài khoản" : "Khoá tài khoản", u.email);
           return u.active;
         }), (on) => (on ? "Đã mở khoá tài khoản" : "Đã khoá tài khoản")),

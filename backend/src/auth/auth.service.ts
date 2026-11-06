@@ -143,7 +143,25 @@ export class AuthService {
           const [customer] = await manager.query('SELECT id FROM customer WHERE phone=?', [input.phone]);
           customerId = customer ? customer.id : (await manager.query('INSERT INTO customer(name,phone,email) VALUES(?,?,?)', [input.name.trim(), input.phone, input.email?.trim().toLowerCase() || null])).insertId;
         }
-        const result = await manager.query('INSERT INTO `user` (name,email,phone,password_hash,role_id,customer_id,driver_id) VALUES (?,?,?,?,?,?,?)', [input.name.trim(),input.email?.trim().toLowerCase() || null,input.phone?.trim() || null,passwordHash,role.id,customerId,input.driverId || null]);
+        let driverId = input.driverId || null;
+        if (input.role === 'DRIVER') {
+          const phone = input.phone?.trim();
+          if (!phone || !/^0\d{9,10}$/.test(phone)) throw new BadRequestException('Tài khoản nhân viên giao hàng cần số điện thoại hợp lệ');
+          if (!driverId) {
+            const [existingDriver] = await manager.query(
+              'SELECT d.id FROM driver d LEFT JOIN `user` u ON u.driver_id = d.id WHERE d.phone = ? AND u.id IS NULL',
+              [phone]
+            );
+            if (existingDriver) {
+              await manager.query('UPDATE driver SET name=?, active=1 WHERE id=?', [input.name.trim(), existingDriver.id]);
+              driverId = existingDriver.id;
+            } else {
+              const driverResult = await manager.query('INSERT INTO driver (name, phone, active) VALUES (?, ?, 1)', [input.name.trim(), phone]);
+              driverId = driverResult.insertId;
+            }
+          }
+        }
+        const result = await manager.query('INSERT INTO `user` (name,email,phone,password_hash,role_id,customer_id,driver_id) VALUES (?,?,?,?,?,?,?)', [input.name.trim(),input.email?.trim().toLowerCase() || null,input.phone?.trim() || null,passwordHash,role.id,customerId,driverId]);
         return result.insertId;
       });
       return this.user(userId);
@@ -177,7 +195,32 @@ export class AuthService {
           const [customer] = await manager.query('SELECT id FROM customer WHERE phone=?', [phone]);
           customerId = customer ? customer.id : (await manager.query('INSERT INTO customer(name,phone,email) VALUES(?,?,?)', [input.name?.trim() || old.name,phone,email])).insertId;
         }
-        await manager.query('UPDATE `user` SET name=?,email=?,phone=?,role_id=?,active=?,customer_id=?,driver_id=? WHERE id=?', [input.name?.trim() || old.name,email,phone,role.id,input.active ?? old.active,customerId,input.driverId === undefined ? old.driverId : input.driverId,id]);
+
+        let driverId = input.driverId === undefined ? old.driverId : input.driverId;
+        const targetRole = input.role || old.role;
+        if (targetRole === 'DRIVER') {
+          if (!phone || !/^0\d{9,10}$/.test(phone)) throw new BadRequestException('Tài khoản nhân viên giao hàng cần số điện thoại hợp lệ');
+          const driverActive = (input.active ?? old.active) ? 1 : 0;
+          if (!driverId) {
+            const [existingDriver] = await manager.query(
+              'SELECT d.id FROM driver d LEFT JOIN `user` u ON u.driver_id = d.id WHERE d.phone = ? AND u.id IS NULL',
+              [phone]
+            );
+            if (existingDriver) {
+              await manager.query('UPDATE driver SET name=?, phone=?, active=? WHERE id=?', [input.name?.trim() || old.name, phone, driverActive, existingDriver.id]);
+              driverId = existingDriver.id;
+            } else {
+              const driverResult = await manager.query('INSERT INTO driver(name,phone,active) VALUES(?,?,?)', [input.name?.trim() || old.name, phone, driverActive]);
+              driverId = driverResult.insertId;
+            }
+          } else {
+            await manager.query('UPDATE driver SET name=?, phone=?, active=? WHERE id=?', [input.name?.trim() || old.name, phone, driverActive, driverId]);
+          }
+        } else if (input.role && input.role !== 'DRIVER' && old.role === 'DRIVER') {
+          driverId = null;
+        }
+
+        await manager.query('UPDATE `user` SET name=?,email=?,phone=?,role_id=?,active=?,customer_id=?,driver_id=? WHERE id=?', [input.name?.trim() || old.name,email,phone,role.id,input.active ?? old.active,customerId,driverId,id]);
         if ((input.role || old.role) === 'CUSTOMER' && customerId) await manager.query('UPDATE customer SET name=?,phone=?,email=? WHERE id=?', [input.name?.trim() || old.name,phone,email,customerId]);
         if (passwordHash) { await manager.query('UPDATE `user` SET password_hash=? WHERE id=?', [passwordHash,id]); await manager.query('DELETE FROM user_session WHERE user_id=?', [id]); }
       });
@@ -192,11 +235,20 @@ export class AuthService {
     if (id === actor.id) throw new ForbiddenException('Không thể tự xóa tài khoản');
     await this.db.transaction(async manager => {
       await manager.query("SELECT id FROM role WHERE code='ADMIN' FOR UPDATE");
-      const [user] = await manager.query('SELECT u.active,r.code role FROM `user` u JOIN role r ON r.id=u.role_id WHERE u.id=? FOR UPDATE', [id]);
+      const [user] = await manager.query('SELECT u.active, u.driver_id driverId, r.code role FROM `user` u JOIN role r ON r.id=u.role_id WHERE u.id=? FOR UPDATE', [id]);
       if (!user) throw new NotFoundException('Không tìm thấy tài khoản');
       if (user.role === 'ADMIN' && user.active) {
         const [count] = await manager.query("SELECT COUNT(*) count FROM `user` u JOIN role r ON r.id=u.role_id WHERE r.code='ADMIN' AND u.active=1");
         if (Number(count.count) <= 1) throw new ForbiddenException('Phải giữ lại ít nhất một quản trị viên đang hoạt động');
+      }
+      if (user.driverId) {
+        const [route] = await manager.query('SELECT COUNT(*) count FROM route WHERE driver_id=?', [user.driverId]);
+        if (Number(route.count) === 0) {
+          await manager.query('UPDATE `user` SET driver_id=NULL WHERE id=?', [id]);
+          await manager.query('DELETE FROM driver WHERE id=?', [user.driverId]);
+        } else {
+          await manager.query('UPDATE driver SET active=0 WHERE id=?', [user.driverId]);
+        }
       }
       await manager.query('DELETE FROM `user` WHERE id=?', [id]);
     });

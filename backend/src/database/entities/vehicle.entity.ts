@@ -1,5 +1,6 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, JoinTable, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { DeliveryRoute } from './route.entity';
+import { Driver } from './driver.entity';
 
 @Entity('vehicle')
 export class Vehicle {
@@ -20,4 +21,12 @@ export class Vehicle {
 
   @OneToMany(() => DeliveryRoute, (route) => route.vehicle)
   routes!: DeliveryRoute[];
+
+  @ManyToMany(() => Driver, (driver) => driver.vehicles)
+  @JoinTable({
+    name: 'vehicle_driver',
+    joinColumn: { name: 'vehicle_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'driver_id', referencedColumnName: 'id' },
+  })
+  drivers!: Driver[];
 }

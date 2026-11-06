@@ -127,12 +127,12 @@ Khi MySQL và backend đang chạy, đặt `AUTH_TEST_TOKEN` là phiên của t�
 1. Chạy MySQL, backend và frontend. Đăng nhập tài khoản quản lý ở `/login`, rồi mở `/admin/dispatch`. Nếu ngày hiện tại không có đơn, chọn ngày có đơn trong MySQL hoặc tạo đơn mới qua checkout.
 2. Ở `/admin/products`, tạo/sửa sản phẩm và tải ảnh lên Cloudinary. Kiểm tra sản phẩm ở `/products`; khi API lỗi, trang báo lỗi thay vì hiển thị sản phẩm mẫu như dữ liệu thật.
 3. Đặt đơn ở `/checkout`; vào `/admin/orders` để xác nhận, cập nhật vị trí nếu cần và chuyển sang `READY`. Đơn `READY` thiếu tọa độ vẫn xuất hiện ở hàng đợi với cảnh báo.
-4. Ở `/admin/fleet`, xem/thêm/sửa xe, tài xế và sức chứa. Vào `/admin/dispatch`, chọn ngày và xe, đánh dấu đơn gấp nếu cần, rồi bấm **Bố trí điểm giao**. Xem đơn chưa xếp được cùng lý do.
+4. Ở `/admin/fleet`, xem/thêm/sửa xe, tài xế và sức chứa; gán tối đa 2 tài xế cho mỗi xe (tài xế mới tạo chưa liên kết xe, có thể gán khi thêm hoặc sửa xe). Vào `/admin/dispatch`, chọn ngày và xe, đánh dấu đơn gấp nếu cần, rồi bấm **Bố trí điểm giao**. Tuyến tự động ưu tiên tài xế phụ trách xe.
 5. Đổi thứ tự điểm, xe hoặc tài xế trên tuyến nháp; mở chi tiết tuyến để xem thứ tự đã lưu. Chọn tài xế và bấm **Duyệt và chốt**. Chạy tối ưu lại: tuyến đã chốt giữ nguyên.
 
 ### Kiểm tra Sprint 4
 
-1. Trong Quản lý xe/tài xế, tạo tài xế. Trong Tài khoản, tạo tài khoản có vai trò DRIVER và chọn **Liên kết tài xế** tương ứng. Đặt xe, tối ưu và chốt tuyến cho tài xế đó.
+1. Trong Tài khoản, tạo tài khoản có vai trò DRIVER (hệ thống tự động tạo và liên kết hồ sơ tài xế mới). Đặt xe, tối ưu và chốt tuyến cho tài xế đó.
 2. Đăng nhập tài khoản tài xế, mở `/driver`, bắt đầu tuyến, ghi đã đến và xử lý từng điểm theo thứ tự. Với đơn COD, cần xác nhận đã thu đủ tiền trước khi giao thành công. Có thể chụp/tải ảnh bằng chứng trước khi hoàn tất; ảnh được lưu ở Cloudinary dạng authenticated và chỉ cấp liên kết xem có hạn cho tài xế được phân công.
 3. Với đơn giao thất bại, ghi lý do. Trong Điều phối, chọn ngày mới sau ngày giao cũ rồi bấm **Hẹn lại**; đơn về hàng đợi READY của ngày mới để tối ưu tiếp, còn lịch sử điểm cũ được giữ nguyên.
 4. Để kiểm thử trên database phát triển, chạy backend ở cổng 18082 rồi `cd backend && npm run test:delivery`. Nếu muốn kiểm tra tải và xóa ảnh thật, chạy `DELIVERY_TEST_CLOUDINARY=1 npm run test:delivery`. Script tạo và tự dọn dữ liệu thử; tránh chạy đồng thời với những người đang làm việc trên ngày giao thử.

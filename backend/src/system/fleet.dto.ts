@@ -1,5 +1,5 @@
 import { PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, Matches } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, Matches } from 'class-validator';
 
 export class CreateDriverDto {
   @IsString() @MinLength(2) @MaxLength(120)
@@ -26,6 +26,9 @@ export class CreateVehicleDto {
 
   @IsOptional() @IsBoolean()
   active?: boolean;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(2) @IsInt({ each: true })
+  driver_ids?: number[];
 }
 
 export class UpdateVehicleDto extends PartialType(CreateVehicleDto) {}

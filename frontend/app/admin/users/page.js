@@ -8,19 +8,19 @@ import { Field, Modal, RoleChip } from "@/components/ui";
 
 function Users() {
   const { user: me } = useStore();
-  const [users, setUsers] = useState([]), [roles, setRoles] = useState([]), [drivers, setDrivers] = useState([]), [edit, setEdit] = useState(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [users, setUsers] = useState([]), [roles, setRoles] = useState([]), [edit, setEdit] = useState(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const token = loadToken();
   async function refresh() {
     try {
-      const [list, roleList, driverList] = await Promise.all([api('/api/users', { token }), api('/api/roles/options', { token }), api('/api/users/driver-options', { token })]);
-      setUsers(list); setRoles(roleList); setDrivers(driverList); setError('');
+      const [list, roleList] = await Promise.all([api('/api/users', { token }), api('/api/roles/options', { token })]);
+      setUsers(list); setRoles(roleList); setError('');
     } catch (e) { setError(e.message); }
   }
   useEffect(() => { refresh(); }, []);
   async function save() {
     setBusy(true); setError('');
     try {
-      const body = { name: edit.name, email: edit.email || undefined, phone: edit.phone || undefined, role: edit.role, driverId: edit.driverId ? Number(edit.driverId) : null, ...(edit.password ? { password: edit.password } : {}) };
+      const body = { name: edit.name, email: edit.email || undefined, phone: edit.phone || undefined, role: edit.role, ...(edit.password ? { password: edit.password } : {}) };
       await api('/api/users' + (edit.id ? `/${edit.id}` : ''), { method: edit.id ? 'PATCH' : 'POST', body, token });
       setEdit(null); await refresh();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -39,9 +39,8 @@ function Users() {
     {edit && <Modal title={edit.id ? 'Sửa tài khoản' : 'Tạo tài khoản'} onClose={() => setEdit(null)} footer={<><button className="btn secondary" onClick={() => setEdit(null)}>Hủy</button><button className="btn" disabled={busy} onClick={save}>Lưu</button></>}>
       <div className="form-grid">{error && <div className="notice bad full">{error}</div>}<Field label="Họ tên" full><input className="input" value={edit.name} onChange={e=>setEdit({...edit,name:e.target.value})}/></Field>
       <Field label="Email"><input className="input" type="email" value={edit.email} onChange={e=>setEdit({...edit,email:e.target.value})}/></Field>
-      <Field label="Điện thoại"><input className="input" value={edit.phone} onChange={e=>setEdit({...edit,phone:e.target.value})}/></Field>
+      <Field label="Điện thoại" hint={edit.role === 'DRIVER' ? 'Bắt buộc đối với nhân viên giao hàng' : ''}><input className="input" value={edit.phone} onChange={e=>setEdit({...edit,phone:e.target.value})}/></Field>
       <Field label="Vai trò" full><select className="input" value={edit.role} disabled={edit.id===me.id} onChange={e=>setEdit({...edit,role:e.target.value})}>{roles.map(r=><option key={r.code} value={r.code}>{r.name}</option>)}</select></Field>
-      <Field label="Liên kết tài xế" hint="Cần liên kết để tài xế xem và cập nhật tuyến được giao." full><select className="input" value={edit.driverId || ''} onChange={e=>setEdit({...edit,driverId:e.target.value})}><option value="">Chưa liên kết</option>{drivers.filter(d => d.active && (!d.userId || d.userId === edit.id)).map(d=><option key={d.id} value={d.id}>{d.name} — {d.phone}</option>)}</select></Field>
       <Field label={edit.id ? 'Mật khẩu mới (để trống nếu không đổi)' : 'Mật khẩu ban đầu'} hint="Tối thiểu 8 ký tự" full><input className="input" type="password" value={edit.password} onChange={e=>setEdit({...edit,password:e.target.value})}/></Field></div>
     </Modal>}
   </>;

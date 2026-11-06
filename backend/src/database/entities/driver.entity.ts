@@ -1,5 +1,6 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { DeliveryRoute } from './route.entity';
+import { Vehicle } from './vehicle.entity';
 
 @Entity('driver')
 export class Driver {
@@ -17,4 +18,7 @@ export class Driver {
 
   @OneToMany(() => DeliveryRoute, (route) => route.driver)
   routes!: DeliveryRoute[];
+
+  @ManyToMany(() => Vehicle, (vehicle) => vehicle.drivers)
+  vehicles!: Vehicle[];
 }

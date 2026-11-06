@@ -124,17 +124,40 @@ export class RoutesService {
     const busyRoutes = await manager.getRepository(DeliveryRoute).find({ where: { routeDate } });
     const busyVehicles = new Set(busyRoutes.map((route) => route.vehicleId));
     const busyDrivers = new Set(busyRoutes.map((route) => route.driverId).filter((id): id is number => id !== null));
-    const vehicles = (await manager.getRepository(Vehicle).find({ where: { active: true }, order: { id: 'ASC' } }))
+    const vehicles = (await manager.getRepository(Vehicle).find({ where: { active: true }, relations: ['drivers'], order: { id: 'ASC' } }))
       .filter((vehicle) => !busyVehicles.has(vehicle.id) && (selectedVehicleIds === undefined || selectedVehicleIds.includes(vehicle.id)));
     const drivers = (await manager.getRepository(Driver).find({ where: { active: true }, order: { id: 'ASC' } }))
       .filter((driver) => !busyDrivers.has(driver.id));
 
-    const vehicleSpecs: VehicleSpec[] = vehicles.map((vehicle, index) => ({
-      id: vehicle.id,
-      capacityM3: Number(vehicle.capacityM3),
-      capacityKg: Number(vehicle.capacityKg),
-      driverId: drivers[index]?.id ?? null,
-    }));
+    const assignedDriverIds = new Set<number>();
+    const vehicleSpecs: VehicleSpec[] = vehicles.map((vehicle) => {
+      const assigned = (vehicle.drivers || []).find((d) => d.active && !busyDrivers.has(d.id) && !assignedDriverIds.has(d.id));
+      if (assigned) {
+        assignedDriverIds.add(assigned.id);
+        return {
+          id: vehicle.id,
+          capacityM3: Number(vehicle.capacityM3),
+          capacityKg: Number(vehicle.capacityKg),
+          driverId: assigned.id,
+        };
+      }
+      const fallback = drivers.find((d) => !assignedDriverIds.has(d.id));
+      if (fallback) {
+        assignedDriverIds.add(fallback.id);
+        return {
+          id: vehicle.id,
+          capacityM3: Number(vehicle.capacityM3),
+          capacityKg: Number(vehicle.capacityKg),
+          driverId: fallback.id,
+        };
+      }
+      return {
+        id: vehicle.id,
+        capacityM3: Number(vehicle.capacityM3),
+        capacityKg: Number(vehicle.capacityKg),
+        driverId: null,
+      };
+    });
     const stops: StopSpec[] = orders.map((order) => ({
       orderId: order.id,
       lat: Number(order.lat),

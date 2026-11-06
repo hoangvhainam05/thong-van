@@ -175,6 +175,16 @@ CREATE TABLE vehicle (
   active       TINYINT(1)   NOT NULL DEFAULT 1
 );
 
+CREATE TABLE vehicle_driver (
+  vehicle_id INT NOT NULL,
+  driver_id  INT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (vehicle_id, driver_id),
+  UNIQUE KEY uq_vehicle_driver_driver (driver_id),
+  CONSTRAINT fk_vd_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicle(id) ON DELETE CASCADE,
+  CONSTRAINT fk_vd_driver  FOREIGN KEY (driver_id)  REFERENCES driver(id)  ON DELETE CASCADE
+);
+
 -- Một nguồn trạng thái duy nhất cho đơn hàng (orders.status)
 CREATE TABLE orders (
   id                 INT AUTO_INCREMENT PRIMARY KEY,
