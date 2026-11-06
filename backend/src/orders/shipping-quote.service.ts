@@ -35,27 +35,49 @@ export class ShippingQuoteService {
     let weightKg = 0;
     let packageCount = 0;
     let hasStock = missingProducts.length === 0;
+    const packageMetrics = new Map<number, {
+      dimensions: [number, number, number] | null;
+      weightKg: number | null;
+    }>();
     for (const [id, quantity] of quantities) {
       const product = productById.get(id);
       if (!product) { packageIssues.push(`Không tìm thấy sản phẩm ${id}.`); continue; }
       rows.push({ product, quantity });
       if (product.stock < quantity) hasStock = false;
       const dimensions = [product.packageLengthCm, product.packageWidthCm, product.packageHeightCm].map((value) => value == null ? null : Number(value));
-      const unitWeight = product.packageWeightKg == null ? null : Number(product.packageWeightKg);
-      if (dimensions.some((value) => value === null || !Number.isFinite(value) || value <= 0)) packageIssues.push(`Thiếu kích thước kiện hàng (cm) của sản phẩm “${product.name}”.`);
-      if (unitWeight === null || !Number.isFinite(unitWeight) || unitWeight <= 0) packageIssues.push(`Thiếu trọng lượng kiện hàng (kg) của sản phẩm “${product.name}”.`);
-      if (dimensions.every((value): value is number => value !== null && Number.isFinite(value) && value > 0)) {
-        volumeM3 += ((dimensions[0] * dimensions[1] * dimensions[2]) / 1_000_000) * quantity;
+      const validDimensions = dimensions.every((value) => value !== null && Number.isFinite(value) && value > 0);
+      const packagedVolumeM3 = validDimensions
+        ? (dimensions[0]! * dimensions[1]! * dimensions[2]!) / 1_000_000
+        : null;
+      const catalogVolumeM3 = product.volumeM3 == null ? null : Number(product.volumeM3);
+      const unitVolumeM3 = packagedVolumeM3 ?? catalogVolumeM3;
+      const packagedWeightKg = product.packageWeightKg == null ? null : Number(product.packageWeightKg);
+      const catalogWeightKg = product.weightKg == null ? null : Number(product.weightKg);
+      const unitWeightKg = packagedWeightKg !== null && Number.isFinite(packagedWeightKg) && packagedWeightKg > 0
+        ? packagedWeightKg
+        : catalogWeightKg;
+      if (unitVolumeM3 === null || !Number.isFinite(unitVolumeM3) || unitVolumeM3 <= 0) {
+        packageIssues.push(`Thiếu thể tích sản phẩm (m³) của sản phẩm “${product.name}”.`);
+      } else {
+        volumeM3 += unitVolumeM3 * quantity;
       }
-      if (unitWeight !== null && Number.isFinite(unitWeight) && unitWeight > 0) weightKg += unitWeight * quantity;
+      if (unitWeightKg === null || !Number.isFinite(unitWeightKg) || unitWeightKg <= 0) {
+        packageIssues.push(`Thiếu trọng lượng sản phẩm (kg) của sản phẩm “${product.name}”.`);
+      } else {
+        weightKg += unitWeightKg * quantity;
+      }
+      packageMetrics.set(product.id, {
+        dimensions: validDimensions ? dimensions as [number, number, number] : null,
+        weightKg: unitWeightKg !== null && Number.isFinite(unitWeightKg) && unitWeightKg > 0 ? unitWeightKg : null,
+      });
       packageCount += quantity;
     }
     const subtotal = rows.reduce((sum, row) => sum + Number(row.product.price) * row.quantity, 0);
     const packageDetails = rows.flatMap(({ product, quantity }) => {
-      const lengthCm = Number(product.packageLengthCm), widthCm = Number(product.packageWidthCm), heightCm = Number(product.packageHeightCm), packageWeight = Number(product.packageWeightKg);
-      return Number.isFinite(lengthCm) && Number.isFinite(widthCm) && Number.isFinite(heightCm) && Number.isFinite(packageWeight)
-        ? [{ productId: product.id, lengthCm, widthCm, heightCm, weightKg: packageWeight, quantity }]
-        : [];
+      const metrics = packageMetrics.get(product.id);
+      if (!metrics?.dimensions || metrics.weightKg === null) return [];
+      const [lengthCm, widthCm, heightCm] = metrics.dimensions;
+      return [{ productId: product.id, lengthCm, widthCm, heightCm, weightKg: metrics.weightKg, quantity }];
     });
     const rules = await this.shippingRules();
     const [warehouse] = await this.warehouses.find({ order: { id: 'ASC' }, take: 1 });
@@ -107,8 +129,10 @@ export class ShippingQuoteService {
       },
       shippingRateVersion: rules.rateVersion,
       freeShippingFrom: rules.freeShipFrom,
-      packageDimensionsCm: packageCount === 1 && rows.length === 1 ? {
-        length: Number(rows[0].product.packageLengthCm), width: Number(rows[0].product.packageWidthCm), height: Number(rows[0].product.packageHeightCm),
+      packageDimensionsCm: packageCount === 1 && rows.length === 1 && packageMetrics.get(rows[0].product.id)?.dimensions ? {
+        length: packageMetrics.get(rows[0].product.id)!.dimensions![0],
+        width: packageMetrics.get(rows[0].product.id)!.dimensions![1],
+        height: packageMetrics.get(rows[0].product.id)!.dimensions![2],
       } : null,
       inventoryAvailable: hasStock,
       vehicleCapacityAvailable: hasVehicleCapacity,
