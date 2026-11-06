@@ -17,6 +17,15 @@ const WINDOWS = [
   { id: "custom", label: "Tự chọn giờ" },
 ];
 
+function formatDuration(minutes) {
+  const totalMinutes = Math.max(0, Math.trunc(Number(minutes) || 0));
+  const hours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (hours && remainingMinutes) return `${hours} giờ ${remainingMinutes} phút`;
+  if (hours) return `${hours} giờ`;
+  return `${remainingMinutes} phút`;
+}
+
 function Checkout() {
   const { state, user, actions, catalogStatus, shippingStatus } = useStore();
   const router = useRouter();
@@ -550,8 +559,7 @@ function Checkout() {
               <div className="row between"><span className="muted">Khoảng cách đường bộ</span><span>{shippingQuote.distanceKm} km</span></div>
               <div className="row between"><span className="muted">Thể tích kiện hàng</span><span>{shippingQuote.volumeM3} m³</span></div>
               <div className="row between"><span className="muted">Trọng lượng kiện hàng</span><span>{shippingQuote.weightKg} kg · {shippingQuote.packageCount} kiện</span></div>
-              <div className="row between"><span className="muted">Thời gian lắp đặt dự kiến</span><span>{shippingQuote.estimatedInstallationMinutes > 0 ? `${shippingQuote.estimatedInstallationMinutes} phút` : "Không cần lắp đặt"}</span></div>
-              <div className="row between"><span className="muted">Thời điểm giao sớm nhất (ước tính)</span><span>{new Date(shippingQuote.estimatedArrivalAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span></div>
+              <div className="row between"><span className="muted">Thời gian lắp đặt dự kiến</span><span>{shippingQuote.estimatedInstallationMinutes > 0 ? formatDuration(shippingQuote.estimatedInstallationMinutes) : "Không cần lắp đặt"}</span></div>
               <div className="divider" />
               <div className="row between"><span className="muted">Cước theo quãng đường thực tế</span><span>{vnd(shippingQuote.shippingBreakdown.distanceFee)}</span></div>
             </>}
@@ -562,7 +570,7 @@ function Checkout() {
           <button className="btn lg block" disabled={submitting || !paymentChoice || quoteLoading || !shippingQuote?.quoteAvailable || (deliveryType === "EXPRESS" && !shippingQuote?.expressEligibility?.eligible)} onClick={submit}>
             {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Tạo đơn chờ chuyển khoản"}
           </button>
-          <p className="tiny muted">Giao {date <= addDays(ymd(), 1) ? dateLabel(date).toLowerCase() : `ngày ${dateLabel(date)}`}. Giờ đến là ước tính từ thời điểm hiện tại; cửa hàng sẽ xác nhận khung giờ và vị trí trong tuyến sau khi xếp lịch.</p>
+          <p className="tiny muted">Giao {date <= addDays(ymd(), 1) ? dateLabel(date).toLowerCase() : `ngày ${dateLabel(date)}`}. Cửa hàng sẽ xác nhận khung giờ và vị trí trong tuyến sau khi xếp lịch.</p>
         </aside>
       </div>
 
