@@ -66,7 +66,7 @@ export default function ProductDetail() {
       </div>
       {related.length > 0 && (
         <>
-          <div className="section-head"><h2>Cùng danh mục</h2></div>
+          <div className="section-head"><h2>Các thiết bị bạn có thể thích</h2></div>
           <div className="product-grid">{related.map((x) => <ProductCard key={x.id} p={x} />)}</div>
         </>
       )}
