@@ -17,8 +17,8 @@ export default function HomePage() {
   const { ready, state } = useStore();
   if (!ready) return <Loading />;
   const active = state.products.filter((p) => p.active);
-  const deals = active.filter((p) => p.oldPrice).sort((a, b) => b.oldPrice - b.price - (a.oldPrice - a.price)).slice(0, 4);
-  const best = [...active].sort((a, b) => b.sold - a.sold).slice(0, 8);
+  const deals = active.filter((p) => p.oldPrice).sort((a, b) => b.oldPrice - b.price - (a.oldPrice - a.price)).slice(0, 6);
+  const best = [...active].sort((a, b) => b.sold - a.sold).slice(0, 12);
 
   return (
     <>

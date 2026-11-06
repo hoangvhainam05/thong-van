@@ -21,7 +21,7 @@
 }
 
 .shop-top-inner {
-  max-width: 1240px;
+  max-width: var(--container-max-width, 1600px);
   margin: 0 auto;
   padding: 0 24px;
   height: 68px;
@@ -57,7 +57,7 @@
 
 .shop-search {
   flex: 1;
-  max-width: 480px;
+  max-width: 520px;
   position: relative;
 }
 
@@ -139,7 +139,7 @@
 }
 
 .shop-cats-inner {
-  max-width: 1240px;
+  max-width: var(--container-max-width, 1600px);
   margin: 0 auto;
   padding: 0 24px;
   display: flex;
@@ -183,7 +183,7 @@
 }
 
 .shop-main {
-  max-width: 1240px;
+  max-width: var(--container-max-width, 1600px);
   margin: 0 auto;
   padding: 32px 24px 80px;
 }
@@ -194,7 +194,7 @@
 }
 
 .shop-foot-inner {
-  max-width: 1240px;
+  max-width: var(--container-max-width, 1600px);
   margin: 0 auto;
   padding: 48px 24px 40px;
   display: grid;
@@ -299,7 +299,7 @@
   line-height: 1.65;
   color: var(--muted);
   margin-top: 16px;
-  max-width: 48ch;
+  max-width: 58ch;
 }
 
 .hero-card {
@@ -576,6 +576,20 @@
 @media (max-width: 860px) {
   .shop-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+.product-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 480px) 1fr;
+  gap: 36px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .product-detail-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
   }
 }
 
@@ -873,12 +887,12 @@
 
 .admin-content {
   padding: 28px;
-  max-width: 1400px;
+  max-width: var(--container-max-width, 1600px);
 }
 
 .counter-orders-page {
   width: 100%;
-  max-width: 1020px;
+  max-width: 1200px;
   margin-inline: auto;
 }
 

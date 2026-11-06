@@ -30,7 +30,7 @@ export default function ProductDetail() {
       <nav className="small muted" style={{ marginBottom: 14 }}>
         <Link href="/products">Sản phẩm</Link> / <Link href={`/products?cat=${p.category}`}>{cat?.name || p.category}</Link>
       </nav>
-      <div className="two-col" style={{ gridTemplateColumns: "1fr 1fr" }}>
+      <div className="product-detail-layout">
         <div className="stack-sm"><div className="panel" style={{ aspectRatio: "1 / 1", display: "grid", placeItems: "center", color: "var(--road)", background: "linear-gradient(180deg,#f3f6fa,#e6ecf3)" }}>
           {images.length ? <img src={images[selectedImage]?.imageUrl || images[0].imageUrl} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Art category={p.category} className="detail-art" label={p.name} />}
         </div>
