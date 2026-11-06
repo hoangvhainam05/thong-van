@@ -142,7 +142,7 @@ function Dispatch() {
             {can("route.optimize") && <button className="btn lg" disabled={busy || !selected.length || !located.length} onClick={() => perform(async () => {
               const next = await api("/api/routes/optimize", { method: "POST", token, body: { date, vehicle_ids: selected } });
               setResult(next);
-            })}>{busy ? "Đang xử lý…" : "Tối ưu tuyến nháp"}</button>}
+            })}>{busy ? "Đang xử lý…" : "Bố trí điểm giao"}</button>}
             {result && <div className="notice ok stack-sm small">
               <b>{result.routes.length} tuyến · {result.total_km} km · tiết kiệm {result.saving_percent ?? "—"}%</b>
               <span>{result.distance_source === "ors" ? "Số liệu định tuyến OpenRouteService" : "Số liệu khoảng cách và thời gian là ước tính"}</span>

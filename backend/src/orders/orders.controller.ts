@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard, RequirePermission } from '../auth/auth.guard';
 import { OrderStatus } from '../database/entities';
-import { CreateOrderDto, LocationUpdateDto, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
+import { CreateOrderDto, LocationUpdateDto, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, ShippingQuoteDto, StatusUpdateDto } from './order.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('api/orders')
@@ -70,9 +70,14 @@ export class OrdersController {
     return this.orders.create(body, 'WEB');
   }
 
+  @Post('shipping-quote')
+  shippingQuote(@Body() body: ShippingQuoteDto) {
+    return this.orders.shippingQuote(body);
+  }
+
   @Post('counter')
   @UseGuards(AuthGuard)
-  @RequirePermission('order.confirm')
+  @RequirePermission('order.create_counter')
   createCounter(@Body() body: CreateOrderDto) {
     return this.orders.create(body, 'COUNTER');
   }

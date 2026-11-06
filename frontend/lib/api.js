@@ -62,18 +62,43 @@ export const today = () => {
   return d.toISOString().slice(0, 10);
 };
 
-// Token nhân viên lưu trong sessionStorage (mất khi đóng tab)
+const SESSION_TOKEN_KEY = "tv_session_token";
+
+// Keep the session across browser restarts. Migrate tokens from older builds,
+// which stored them in sessionStorage and therefore lost them when the tab closed.
 export const loadToken = () => {
   try {
-    return sessionStorage.getItem("tv_session_token") || "";
+    const persistentToken = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (persistentToken) return persistentToken;
+
+    const previousToken = sessionStorage.getItem(SESSION_TOKEN_KEY) || "";
+    if (previousToken) {
+      localStorage.setItem(SESSION_TOKEN_KEY, previousToken);
+      sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    }
+    return previousToken;
   } catch {
-    return "";
+    try {
+      return sessionStorage.getItem(SESSION_TOKEN_KEY) || "";
+    } catch {
+      return "";
+    }
   }
 };
 export const saveToken = (t) => {
-  try {
-    sessionStorage.setItem("tv_session_token", t);
-  } catch {}
+  if (t) {
+    try {
+      localStorage.setItem(SESSION_TOKEN_KEY, t);
+      try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch {}
+      return;
+    } catch {
+      // Fall back to a tab-only session when persistent storage is unavailable.
+      try { sessionStorage.setItem(SESSION_TOKEN_KEY, t); } catch {}
+      return;
+    }
+  }
+  try { localStorage.removeItem(SESSION_TOKEN_KEY); } catch {}
+  try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch {}
 };
 
 export const STATUS_LABEL = {

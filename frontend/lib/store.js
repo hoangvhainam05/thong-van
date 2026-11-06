@@ -74,6 +74,7 @@ function mapServerOrder(row, localId, customerId = 0) {
     recipientName: row.recipient_name || row.customer_name,
     recipientPhone: row.recipient_phone || row.phone,
     isGift: Boolean(row.is_gift),
+    isUrgent: Boolean(row.is_urgent),
     address: row.address,
     district: "",
     lat: row.lat == null ? null : Number(row.lat),
@@ -87,11 +88,19 @@ function mapServerOrder(row, localId, customerId = 0) {
     })),
     subtotal: Number(row.subtotal),
     shippingFee: Number(row.shipping_fee),
+    deliveryType: row.delivery_type || "STANDARD",
+    deliveryDistanceKm: row.delivery_distance_km == null ? null : Number(row.delivery_distance_km),
+    volumeM3: row.volume_m3 == null ? null : Number(row.volume_m3),
+    weightKg: row.weight_kg == null ? null : Number(row.weight_kg),
+    packageCount: row.package_count ?? null,
+    estimatedDeliveryMinutes: row.estimated_delivery_minutes ?? null,
+    estimatedArrivalAt: row.estimated_arrival_at || null,
+    shippingBreakdown: row.shipping_breakdown || null,
     total: Number(row.total),
     deliveryDate: row.delivery_date,
     window: {
       start: String(row.time_window_start || "08:00").slice(0, 5),
-      end: String(row.time_window_end || "17:00").slice(0, 5),
+      end: String(row.time_window_end || "18:00").slice(0, 5),
     },
     payment: {
       method: row.payment_method === "BANK_TRANSFER" ? "BANK" : row.payment_method === "COUNTER_CASH" ? "COUNTER_CASH" : "COD",
@@ -412,6 +421,7 @@ export function StoreProvider({ children }) {
       async placeOrder({
         address,
         deliveryDate,
+        deliveryType = "STANDARD",
         window,
         paymentMethod,
         note,
@@ -422,11 +432,16 @@ export function StoreProvider({ children }) {
         saveAddress = true,
         addressLabel = "Nhà riêng",
         isDefault = false,
+        productIds,
       }) {
         try {
           need("order.place");
           const current = stateRef.current;
           if (!current.cart.length) throw new Error("Giỏ hàng đang trống.");
+          const selectedIdSet = productIds == null ? null : new Set(productIds.map(String));
+          const orderCart = current.cart.filter((line) => !selectedIdSet || selectedIdSet.has(String(line.productId)));
+          if (!orderCart.length) throw new Error("Vui lòng chọn ít nhất một sản phẩm để đặt hàng.");
+          const orderedQtyByProduct = new Map(orderCart.map((line) => [String(line.productId), line.qty]));
           if (deliveryDate < ymd()) throw new Error("Ngày giao không được ở quá khứ.");
           if (toMin(window.end) - toMin(window.start) < 60) throw new Error("Khung giờ nhận hàng cần dài ít nhất 1 tiếng.");
           if (isGift && (!recipientName.trim() || !recipientPhone.trim())) throw new Error("Nhập tên và số điện thoại người nhận quà.");
@@ -447,11 +462,12 @@ export function StoreProvider({ children }) {
             lat: address.lat == null || address.lat === "" ? undefined : Number(address.lat),
             lng: address.lng == null || address.lng === "" ? undefined : Number(address.lng),
             delivery_date: deliveryDate,
+            delivery_type: deliveryType,
             time_window_start: window.start,
             time_window_end: window.end,
             payment_method: paymentMethod === "BANK" ? "BANK_TRANSFER" : paymentMethod,
             note: note || undefined,
-            items: current.cart.map((line) => ({ product_id: line.productId, quantity: line.qty })),
+            items: orderCart.map((line) => ({ product_id: line.productId, quantity: line.qty })),
           };
           const saved = await api("/api/orders", { method: "POST", body: payload });
           let created;
@@ -459,7 +475,10 @@ export function StoreProvider({ children }) {
             const existing = d.orders.find((o) => o.serverId === saved.id);
             if (existing) {
               created = existing;
-              d.cart = [];
+              d.cart = d.cart.flatMap((line) => {
+                const remaining = line.qty - (orderedQtyByProduct.get(String(line.productId)) || 0);
+                return remaining > 0 ? [{ ...line, qty: remaining }] : [];
+              });
               return;
             }
             const c = d.customers.find((x) => x.id === user.customerId || x.authUserId === user.id);
@@ -498,7 +517,10 @@ export function StoreProvider({ children }) {
               const p = d.products.find((product) => product.id === item.productId);
               if (p) p.stock = Math.max(0, p.stock - item.qty);
             }
-            d.cart = [];
+            d.cart = d.cart.flatMap((line) => {
+              const remaining = line.qty - (orderedQtyByProduct.get(String(line.productId)) || 0);
+              return remaining > 0 ? [{ ...line, qty: remaining }] : [];
+            });
             notify(d, created, "Đã nhận đơn", `Thông Vân đã nhận đơn ${created.code}. Nhân viên sẽ gọi xác nhận trong ít phút.`);
           });
           toast("Đã tạo đơn hàng");
@@ -723,7 +745,7 @@ export function StoreProvider({ children }) {
       },
       async createCounterOrder({ customerName, phone, address, lat, lng, deliveryDate, window, paymentMethod, note, items, clientRequestId }) {
         try {
-          need("order.confirm");
+          need("order.create_counter");
           const token = loadToken();
           if (!token) throw new Error("Vui lòng đăng nhập để tạo đơn tại quầy.");
           const saved = await api("/api/orders/counter", {

@@ -21,7 +21,7 @@ Có thể xem các màn demo bằng frontend độc lập:
 cd frontend && npm install && npm run dev     # mở http://localhost:3000
 ```
 
-**Tài khoản và phân quyền:** MySQL lưu `user`, `role`, `permission`, `role_permission` và `user_session`. Đăng nhập tại `/login`, khách có thể đăng ký tại `/register`; quản trị viên quản lý tài khoản tại `/admin/users` và vai trò tại `/admin/roles`. Mật khẩu được băm bằng scrypt, token phiên lưu dưới dạng hash ở máy chủ và hết hạn sau 12 giờ. API kiểm tra quyền hiện tại từ cơ sở dữ liệu cho mỗi yêu cầu. Không còn dùng `STAFF_TOKEN`.
+**Tài khoản và phân quyền:** MySQL lưu `user`, `role`, `permission`, `role_permission` và `user_session`. Đăng nhập tại `/login`, khách có thể đăng ký tại `/register`; quản trị viên quản lý tài khoản tại `/admin/users` và vai trò tại `/admin/roles`. Mật khẩu được băm bằng scrypt, token phiên lưu dưới dạng hash ở máy chủ và hết hạn sau 30 ngày; trình duyệt giữ trạng thái đăng nhập qua các lần mở lại trang. API kiểm tra quyền hiện tại từ cơ sở dữ liệu cho mỗi yêu cầu. Không còn dùng `STAFF_TOKEN`.
 
 Đối với cơ sở dữ liệu mới hoặc chưa có ADMIN, tạo quản trị viên đầu tiên từ terminal trong thư mục `backend` (lệnh không hoạt động nếu đã có ADMIN):
 
@@ -90,6 +90,10 @@ mysql -u thongvan -p thongvan < database/migrations/016_product_categories_cost.
 mysql -u thongvan -p thongvan < database/migrations/017_system_settings.sql
 mysql -u thongvan -p thongvan < database/migrations/018_product_images_otp.sql
 mysql -u thongvan -p thongvan < database/migrations/019_customer_addresses.sql
+mysql -u thongvan -p thongvan < database/migrations/020_counter_order_permission.sql
+mysql -u thongvan -p thongvan < database/migrations/021_shipping_pricing.sql
+mysql -u thongvan -p thongvan < database/migrations/022_express_cutoff_1600.sql
+mysql -u thongvan -p thongvan < database/migrations/023_persistent_auth_sessions.sql
 ```
 Để dùng khoảng cách đường bộ, tạo tài khoản và API key tại [OpenRouteService Dashboard](https://account.heigit.org/), sau đó đặt `ORS_API_KEY` trong `backend/.env` và khởi động lại backend. Key chỉ được dùng ở backend. Matrix API dùng `https://api.heigit.org/openrouteservice/v2/matrix/driving-car`; các yêu cầu được chia thành tối đa 3.500 cặp nguồn–đích mỗi lần. API có quota theo tài khoản; số lượng lớn điểm có thể cần nhiều request. Ma trận ORS hợp lệ được cache trong bộ nhớ 5 phút. ORS không cung cấp giao thông trực tiếp, nên thời gian và ETA không phản ánh traffic hiện tại. Khi thiếu key, hết quota (429), lỗi mạng, timeout hoặc dữ liệu không hợp lệ, toàn bộ ma trận chuyển sang Haversine × hệ số đường bộ và giao diện ghi rõ là ước tính. Sửa tuyến dùng lại ma trận đã lưu; nếu tọa độ thay đổi, cần tối ưu lại. Tuyến cũ chưa có ma trận được tính lại bằng ước tính khi sửa.
 
@@ -123,7 +127,7 @@ Khi MySQL và backend đang chạy, đặt `AUTH_TEST_TOKEN` là phiên của t�
 1. Chạy MySQL, backend và frontend. Đăng nhập tài khoản quản lý ở `/login`, rồi mở `/admin/dispatch`. Nếu ngày hiện tại không có đơn, chọn ngày có đơn trong MySQL hoặc tạo đơn mới qua checkout.
 2. Ở `/admin/products`, tạo/sửa sản phẩm và tải ảnh lên Cloudinary. Kiểm tra sản phẩm ở `/products`; khi API lỗi, trang báo lỗi thay vì hiển thị sản phẩm mẫu như dữ liệu thật.
 3. Đặt đơn ở `/checkout`; vào `/admin/orders` để xác nhận, cập nhật vị trí nếu cần và chuyển sang `READY`. Đơn `READY` thiếu tọa độ vẫn xuất hiện ở hàng đợi với cảnh báo.
-4. Ở `/admin/fleet`, xem/thêm/sửa xe, tài xế và sức chứa. Vào `/admin/dispatch`, chọn ngày và xe, đánh dấu đơn gấp nếu cần, rồi bấm **Tối ưu tuyến nháp**. Xem đơn chưa xếp được cùng lý do.
+4. Ở `/admin/fleet`, xem/thêm/sửa xe, tài xế và sức chứa. Vào `/admin/dispatch`, chọn ngày và xe, đánh dấu đơn gấp nếu cần, rồi bấm **Bố trí điểm giao**. Xem đơn chưa xếp được cùng lý do.
 5. Đổi thứ tự điểm, xe hoặc tài xế trên tuyến nháp; mở chi tiết tuyến để xem thứ tự đã lưu. Chọn tài xế và bấm **Duyệt và chốt**. Chạy tối ưu lại: tuyến đã chốt giữ nguyên.
 
 ### Kiểm tra Sprint 4
@@ -206,3 +210,15 @@ Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_ima
 - Khi đặt hàng lần đầu (chưa có địa chỉ nào lưu trước đó), hệ thống tự động lưu địa chỉ đã nhập làm địa chỉ mặc định cho các lần mua sau.
 - Khi đã có địa chỉ, trang checkout hiển thị danh sách để chọn nhanh bằng 1 click; địa chỉ mặc định (`is_default = 1`) được chọn sẵn tự động. Khách có thể đổi địa chỉ mặc định hoặc chọn "Giao đến địa chỉ khác / Thêm địa chỉ mới" và chọn có lưu lại cho lần sau hay không.
 - Schema lưu trong bảng `customer_address` với khóa ngoại tham chiếu `customer(id)`. API RESTful tại `/api/account/addresses` hỗ trợ CRUD và đặt địa chỉ mặc định.
+
+### Đơn hàng tại quầy
+
+- Tài khoản SALES và MANAGER được cấp quyền `order.create_counter` mặc định để tạo đơn tại quầy; quyền này có thể quản lý riêng trong trang Vai trò và phân quyền.
+- Với cơ sở dữ liệu đã có, chạy `database/migrations/020_counter_order_permission.sql` một lần để thêm quyền và cấp cho các vai trò hệ thống ADMIN, MANAGER, SALES.
+
+### Báo giá vận chuyển
+
+- Với cơ sở dữ liệu đã có, chạy `database/migrations/021_shipping_pricing.sql` một lần. Migration bổ sung kích thước kiện hàng, snapshot cước của đơn và bảng lịch sử phiên bản giá; các đơn cũ giữ nguyên phí đã lưu.
+- Chạy tiếp `database/migrations/022_express_cutoff_1600.sql` để chuyển giờ chốt hỏa tốc sang 16:00 và ghi phiên bản cấu hình mới khi cần.
+- Để báo giá chính xác, cấu hình `ORS_API_KEY`, tọa độ kho, và nhập dài/rộng/cao cùng trọng lượng kiện hàng thực tế cho từng sản phẩm trong Quản lý sản phẩm. Mỗi đơn vị sản phẩm được xem là một kiện; nếu thiếu dữ liệu kiện hoặc Routing API không trả được tuyến đường, checkout sẽ không đưa ra giá tạm.
+- Trọng lượng tối đa và phụ phí theo kg để trống theo mặc định. Khi thay đổi bảng giá trong Cài đặt hệ thống, phiên bản giá tăng và snapshot cấu hình được ghi vào `shipping_rate_history`.

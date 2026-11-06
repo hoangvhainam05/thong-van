@@ -20,17 +20,20 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [accuracy, setAccuracy] = useState(null);
+  const [locationNeedsManualSelection, setLocationNeedsManualSelection] = useState(false);
   const [houseNumberMissing, setHouseNumberMissing] = useState(false);
   const queryTimeout = useRef(null);
 
   async function select(lat, lng) {
     const request = ++sequence.current;
+    setLocationNeedsManualSelection(false);
     setPoint([lat, lng]); setLoading(true); setError(""); setAddress(""); setDistrict("");
     try {
       const [data] = await api(`/api/location/geocode?${new URLSearchParams({ reverse: "1", lat, lon: lng })}`);
       if (request !== sequence.current) return;
       if (!data?.display_name) throw new Error();
       setAddress(data.display_name.slice(0, 255));
+      setQuery(data.display_name.slice(0, 255));
       setDistrict(data.address?.city_district || data.address?.district || data.address?.county || "");
     } catch { if (request === sequence.current) setError("Không tìm được địa chỉ cho điểm này. Bạn có thể nhập địa chỉ sau khi xác nhận."); }
     finally { if (request === sequence.current) setLoading(false); }
@@ -91,6 +94,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
     marker.current?.setOpacity(1).setLatLng([lat, lng]);
     setPoint([lat, lng]);
     setAddress(String(result.display_name || "").slice(0, 255));
+    setLocationNeedsManualSelection(false);
     setDistrict(result.address?.city_district || result.address?.district || result.address?.county || "");
     setLoading(false); setError(""); setResults([]);
   }
@@ -157,8 +161,11 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       const res = await fetch('/api/location/approximate', { cache: 'no-store' });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      if (request !== locationSequence.current || !Number.isFinite(data.lat) || !Number.isFinite(data.lng)) return;
-      move(data.lat, data.lng);
+      if (request !== locationSequence.current || !Number.isFinite(data.lat) || !Number.isFinite(data.lng) || Math.abs(data.lat) > 90 || Math.abs(data.lng) > 180) return;
+      // IP geolocation can only identify a broad area. Center the map there,
+      // but never turn that estimate into a delivery point the user can confirm.
+      map.current?.setView([data.lat, data.lng], 13);
+      setLocationNeedsManualSelection(true);
 
       if (locationError?.code === 1) {
         let isReloadPending = false;
@@ -170,12 +177,12 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
         } catch {}
 
         if (isReloadPending) {
-          setError("Bạn vừa cấp quyền trên Chrome: Vui lòng bấm nút 'Reload' (Tải lại) ở thanh thông báo màu hồng phía trên cùng của trình duyệt để Chrome áp dụng quyền định vị.");
+          setError("Bạn vừa cấp quyền trên Chrome: hãy bấm 'Reload' (Tải lại) ở thanh thông báo phía trên rồi thử định vị lại. Vị trí hiện trên bản đồ chỉ gần đúng và chưa được chọn.");
         } else {
-          setError("Trình duyệt hoặc máy tính chưa cho phép định vị GPS. Vui lòng bấm nút 'Reload' màu hồng phía trên, hoặc bấm 'Tìm' ô địa chỉ để bay đến vị trí nhà bạn.");
+          setError("Trình duyệt hoặc máy tính chưa cho phép định vị GPS. Bản đồ chỉ hiển thị khu vực gần đúng, chưa chọn vị trí. Hãy cấp quyền rồi thử lại, hoặc tìm địa chỉ và chọn ghim trên bản đồ.");
         }
       } else {
-        setError(`Thiết bị chưa trả về GPS chính xác (máy tính thường không có chip GPS). Bản đồ đã định vị tạm thời ở ${data.city || 'khu vực của bạn'}. Bạn hãy kéo ghim hoặc bấm 'Tìm' để đến đúng nhà.`);
+        setError(`Không lấy được GPS chính xác. Bản đồ chỉ được đưa đến khu vực gần đúng${data.city ? ` (${data.city})` : ''}; vị trí này chưa được chọn. Hãy nhấn vào bản đồ, kéo ghim hoặc tìm địa chỉ để chọn đúng điểm giao hàng.`);
       }
     } catch {
       if (request !== locationSequence.current) return;
@@ -202,6 +209,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
       if (request !== locationSequence.current) return;
       setLocating(false);
       setError("");
+      setLocationNeedsManualSelection(false);
       const { latitude, longitude, accuracy: meters } = p.coords;
       move(latitude, longitude);
       if (Number.isFinite(meters) && leaflet.current && map.current) {
@@ -226,7 +234,7 @@ export default function LocationPicker({ initial, onClose, onSelect, warehouse =
     );
   }
 
-  return <Modal wide title={warehouse ? "Chọn vị trí kho" : "Chọn vị trí giao hàng"} onClose={onClose} footer={<><button className="btn secondary" onClick={onClose}>Huỷ</button><button className="btn" disabled={!point || loading} onClick={() => onSelect({ lat: point[0], lng: point[1], address, district })}>Xác nhận vị trí</button></>}>
+  return <Modal wide title={warehouse ? "Chọn vị trí kho" : "Chọn vị trí giao hàng"} onClose={onClose} footer={<><button className="btn secondary" onClick={onClose}>Huỷ</button><button className="btn" disabled={!point || loading || locationNeedsManualSelection} onClick={() => onSelect({ lat: point[0], lng: point[1], address, district })}>Xác nhận vị trí</button></>}>
     <div className="stack-sm">
       <div style={{ position: "relative" }}>
         <form className="row map-search" onSubmit={search}>

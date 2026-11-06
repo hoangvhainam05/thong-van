@@ -128,7 +128,15 @@
 .seq.here { background: var(--signal); color: var(--ink); }
 
 .map-box { background: #f4f7fa; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; position: relative; }
-.map-legend { position: absolute; left: 10px; bottom: 10px; background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
+.map-legend { position: static; max-width: none; pointer-events: none; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px; font-size: 13px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 18px; align-items: center; }
+.map-legend-heading { grid-column: 1 / -1; }
+.map-legend-route { display: grid; gap: 6px; }
+.map-legend-item { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.map-legend-item > span { overflow-wrap: anywhere; }
+.map-legend-line { display: inline-block; flex: none; width: 22px; height: 0; border-top: 4px solid; border-radius: 4px; }
+.map-legend-marker { display: inline-grid; flex: none; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #1b4f8c; color: #fff; font-size: 10px; font-style: normal; font-weight: 700; }
+.map-legend-marker.depot-marker { border-radius: 4px; background: #142236; color: #f2b100; }
+.map-legend-marker.loose-marker { background: #607287; }
 
 .matrix th.role { text-align: center; min-width: 110px; }
 .matrix td.cell { text-align: center; }
@@ -177,7 +185,6 @@
 
 .location-map { height: 360px; }
 .map-box .leaflet-container { z-index: 0; }
-.map-legend { z-index: 400; max-width: calc(100% - 20px); pointer-events: none; }
 .location-pin { background: transparent; border: 0; }
 .location-pin span { display: block; width: 26px; height: 26px; background: #e5443a; border: 3px solid white; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 2px 5px #0006; }
 .route-map-icon { background: transparent; border: 0; }

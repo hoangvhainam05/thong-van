@@ -54,7 +54,7 @@ function RouteDetail() {
     </div>
     {warehouse && <RouteMap depot={route.depot || warehouse} routes={[{ id: route.id, name: route.code, status: route.status, stops: points }]} height={330} />}
     <section className="panel" style={{ marginTop: 16 }}>
-      <div className="panel-head"><h3>Thứ tự giao đã lưu trong MySQL</h3></div>
+      <div className="panel-head"><h3>Thứ tự giao</h3></div>
       <div className="table-wrap"><table className="table">
         <thead><tr><th>#</th><th>Đơn</th><th>Địa chỉ</th><th>Khung giờ</th><th>Đến dự kiến</th><th>Trạng thái</th></tr></thead>
         <tbody>{route.stops.map((stop) => <tr key={stop.stop_id}>

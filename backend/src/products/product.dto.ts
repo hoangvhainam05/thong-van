@@ -69,6 +69,11 @@ export class CreateProductDto {
   @Min(0)
   weight!: number;
 
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.01) @Max(10000) packageLengthCm?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.01) @Max(10000) packageWidthCm?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.01) @Max(10000) packageHeightCm?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.001) @Max(99999) packageWeightKg?: number | null;
+
   @Type(() => Number)
   @IsInt()
   @Min(0)

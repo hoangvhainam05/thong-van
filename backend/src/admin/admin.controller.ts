@@ -11,5 +11,6 @@ export class AdminController {
   @Get('customers') @RequirePermission('customer.view') customers(){return this.admin.customers();}
   @Get('audit') @RequirePermission('audit.view') audit(@Query('limit') limit?:string,@Query('before') before?:string){return this.admin.audit(limit===undefined?50:Number(limit),before);}
   @Get('settings') @RequirePermission('settings.manage') settings(){return this.admin.settings();}
+  @Get('shipping-rates/history') @RequirePermission('settings.manage') shippingRateHistory(){return this.admin.shippingRateHistory();}
   @Patch('settings') @RequirePermission('settings.manage') updateSettings(@Body() body: UpdateSettingsDto){return this.admin.updateSettings(body);}
 }

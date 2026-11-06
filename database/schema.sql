@@ -62,6 +62,10 @@ CREATE TABLE product (
   old_price       DECIMAL(12,0) NULL,
   volume_m3       DECIMAL(6,3)  NOT NULL DEFAULT 0.1,
   weight_kg       DECIMAL(7,2)  NOT NULL DEFAULT 1,
+  package_length_cm DECIMAL(8,2) NULL,
+  package_width_cm DECIMAL(8,2) NULL,
+  package_height_cm DECIMAL(8,2) NULL,
+  package_weight_kg DECIMAL(8,3) NULL,
   install_minutes INT           NOT NULL DEFAULT 10,
   images          JSON NULL,
   image_url       VARCHAR(1000) NULL,
@@ -137,6 +141,7 @@ INSERT INTO permission (code, name) VALUES
 ('dashboard.view', 'Xem tổng quan'),
 ('order.view_all', 'Xem tất cả đơn hàng'),
 ('order.confirm', 'Xác nhận và chuẩn bị đơn'),
+('order.create_counter', 'Tạo đơn tại quầy'),
 ('order.edit_location', 'Sửa vị trí giao hàng'),
 ('order.cancel', 'Huỷ đơn'),
 ('customer.view', 'Xem khách hàng'),
@@ -156,9 +161,9 @@ INSERT INTO permission (code, name) VALUES
 
 INSERT INTO role_permission (role_id, permission_id)
 SELECT r.id, p.id FROM role r JOIN permission p ON
-  (r.code = 'ADMIN' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.edit_location', 'order.cancel', 'customer.view', 'product.manage', 'dispatch.view', 'route.optimize', 'route.approve', 'route.dispatch', 'fleet.manage', 'report.view', 'user.manage', 'role.manage', 'settings.manage', 'audit.view'))
-  OR (r.code = 'MANAGER' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.edit_location', 'order.cancel', 'customer.view', 'dispatch.view', 'route.optimize', 'route.approve', 'route.dispatch', 'fleet.manage', 'report.view', 'settings.manage'))
-  OR (r.code = 'SALES' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.edit_location', 'customer.view', 'product.manage', 'dispatch.view'))
+  (r.code = 'ADMIN' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.create_counter', 'order.edit_location', 'order.cancel', 'customer.view', 'product.manage', 'dispatch.view', 'route.optimize', 'route.approve', 'route.dispatch', 'fleet.manage', 'report.view', 'user.manage', 'role.manage', 'settings.manage', 'audit.view'))
+  OR (r.code = 'MANAGER' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.create_counter', 'order.edit_location', 'order.cancel', 'customer.view', 'dispatch.view', 'route.optimize', 'route.approve', 'route.dispatch', 'fleet.manage', 'report.view', 'settings.manage'))
+  OR (r.code = 'SALES' AND p.code IN ('backoffice.access', 'dashboard.view', 'order.view_all', 'order.confirm', 'order.create_counter', 'order.edit_location', 'customer.view', 'product.manage', 'dispatch.view'))
   OR (r.code = 'DRIVER' AND p.code IN ('delivery.app', 'delivery.update'))
   OR (r.code = 'CUSTOMER' AND p.code IN ('order.place', 'order.track_own', 'notification.own'));
 
@@ -184,10 +189,31 @@ CREATE TABLE orders (
   lng                DECIMAL(10,7) NULL,
   delivery_date      DATE          NOT NULL,
   time_window_start  TIME          NOT NULL DEFAULT '08:00:00',
-  time_window_end    TIME          NOT NULL DEFAULT '17:00:00',
+  time_window_end    TIME          NOT NULL DEFAULT '18:00:00',
   total              DECIMAL(14,0) NOT NULL DEFAULT 0,
   subtotal           DECIMAL(14,0) NOT NULL DEFAULT 0,
   shipping_fee       DECIMAL(12,0) NOT NULL DEFAULT 0,
+  warehouse_id       INT NULL,
+  delivery_distance_km DECIMAL(9,3) NULL,
+  delivery_type      ENUM('STANDARD','EXPRESS') NOT NULL DEFAULT 'STANDARD',
+  length_cm           DECIMAL(8,2) NULL,
+  width_cm            DECIMAL(8,2) NULL,
+  height_cm           DECIMAL(8,2) NULL,
+  volume_m3           DECIMAL(9,4) NULL,
+  weight_kg           DECIMAL(9,3) NULL,
+  package_count       INT NULL,
+  package_details     JSON NULL,
+  preparation_minutes INT NULL,
+  travel_minutes      INT NULL,
+  estimated_delivery_minutes INT NULL,
+  estimated_arrival_at DATETIME NULL,
+  distance_fee        INT NULL,
+  volume_fee          INT NULL,
+  weight_fee          INT NULL,
+  express_fee         INT NULL,
+  shipping_discount   INT NULL,
+  total_shipping_fee  DECIMAL(12,0) NULL,
+  shipping_rate_version INT NULL,
   client_request_id  VARCHAR(64)   NULL UNIQUE,
   payment_method     ENUM('COD','BANK_TRANSFER','COUNTER_CASH') NOT NULL DEFAULT 'COD',
   payment_status     ENUM('UNPAID','PENDING','PAID') NOT NULL DEFAULT 'UNPAID',
@@ -199,7 +225,8 @@ CREATE TABLE orders (
   created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES customer(id),
-  INDEX idx_orders_date_status (delivery_date, status)
+  INDEX idx_orders_date_status (delivery_date, status),
+  INDEX idx_orders_warehouse (warehouse_id)
 );
 
 CREATE TABLE order_item (
@@ -338,6 +365,23 @@ CREATE TABLE IF NOT EXISTS system_setting (
   free_ship_from INT NOT NULL DEFAULT 5000000,
   delivery_day_start VARCHAR(10) NOT NULL DEFAULT '08:00',
   delivery_day_end VARCHAR(10) NOT NULL DEFAULT '18:00',
+  express_cutoff_time VARCHAR(5) NOT NULL DEFAULT '16:00',
+  express_max_minutes INT NOT NULL DEFAULT 300,
+  express_max_distance_km DECIMAL(7,2) NOT NULL DEFAULT 10.00,
+  express_max_volume_m3 DECIMAL(7,4) NOT NULL DEFAULT 0.1000,
+  express_max_weight_kg DECIMAL(8,3) NULL,
+  shipping_base_distance_km DECIMAL(7,2) NOT NULL DEFAULT 2.00,
+  shipping_base_fee INT NOT NULL DEFAULT 15000,
+  shipping_per_km_fee INT NOT NULL DEFAULT 5000,
+  shipping_express_fee INT NOT NULL DEFAULT 10000,
+  shipping_rounding_increment INT NOT NULL DEFAULT 1000,
+  shipping_volume_tiers JSON NULL,
+  shipping_weight_fee_per_kg INT NULL,
+  shipping_additional_delay_minutes INT NOT NULL DEFAULT 0,
+  shipping_preparation_minutes INT NOT NULL DEFAULT 10,
+  shipping_handover_minutes INT NOT NULL DEFAULT 5,
+  shipping_fallback_speed_kmh DECIMAL(5,2) NOT NULL DEFAULT 25.00,
+  shipping_rate_version INT NOT NULL DEFAULT 1,
   avg_speed_kmh DECIMAL(5,2) NOT NULL DEFAULT 30.00,
   road_factor DECIMAL(4,2) NOT NULL DEFAULT 1.35,
   weight_km DECIMAL(4,2) NOT NULL DEFAULT 1.00,
@@ -353,6 +397,14 @@ CREATE TABLE IF NOT EXISTS system_setting (
 INSERT INTO system_setting (id, shipping_fee, free_ship_from, delivery_day_start, delivery_day_end, avg_speed_kmh, road_factor, weight_km, weight_time, bank_name, bank_account_name, bank_account_number, bank_transfer_prefix, warranty_contact)
 VALUES (1, 150000, 5000000, '08:00', '18:00', 30.00, 1.35, 1.00, 0.50, 'MB Bank', 'CUA HANG THONG VAN', '9999999999', 'THONGVAN', '0988 000 001 - CSKH Thông Vân')
 ON DUPLICATE KEY UPDATE id=id;
+
+CREATE TABLE shipping_rate_history (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  version INT NOT NULL,
+  snapshot JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_shipping_rate_history_version (version)
+);
 
 
 -- OTP dùng một lần, được dọn sau khi hết hạn hoặc xác nhận thành công.

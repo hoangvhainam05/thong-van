@@ -87,7 +87,7 @@ export class AuthService {
     const [user] = await this.db.query('SELECT id,password_hash,active FROM `user` WHERE email=? OR phone=? LIMIT 1', [identifier.trim(), identifier.trim()]);
     if (!user || !user.active || !(await verify(password, user.password_hash))) throw new UnauthorizedException('Email/số điện thoại hoặc mật khẩu chưa đúng');
     const token = randomBytes(32).toString('hex');
-    await this.db.query('INSERT INTO user_session(token_hash,user_id,expires_at) VALUES(?,?,DATE_ADD(NOW(), INTERVAL 12 HOUR))', [digest(token), user.id]);
+    await this.db.query('INSERT INTO user_session(token_hash,user_id,expires_at) VALUES(?,?,DATE_ADD(NOW(), INTERVAL 30 DAY))', [digest(token), user.id]);
     return { token, user: await this.principal(user.id) };
   }
   async logout(token: string) { await this.db.query('DELETE FROM user_session WHERE token_hash=?', [digest(token)]); }

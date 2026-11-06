@@ -105,6 +105,7 @@ function databaseOptions(config: ConfigService) {
     username,
     password,
     database,
+    timezone: 'Z',
     charset: 'utf8mb4',
     ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
     entities: [

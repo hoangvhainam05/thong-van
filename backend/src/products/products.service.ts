@@ -41,6 +41,10 @@ export class ProductsService {
       oldPrice: input.oldPrice == null ? null : String(input.oldPrice),
       volumeM3: String(input.volume),
       weightKg: String(input.weight),
+      packageLengthCm: input.packageLengthCm == null ? null : String(input.packageLengthCm),
+      packageWidthCm: input.packageWidthCm == null ? null : String(input.packageWidthCm),
+      packageHeightCm: input.packageHeightCm == null ? null : String(input.packageHeightCm),
+      packageWeightKg: input.packageWeightKg == null ? null : String(input.packageWeightKg),
       installMinutes: input.install,
       warrantyMonths: input.warranty ?? 12,
       maintenanceIntervalMonths: input.maintenanceIntervalMonths ?? null,
@@ -76,6 +80,10 @@ export class ProductsService {
     if (input.oldPrice !== undefined) product.oldPrice = input.oldPrice == null ? null : String(input.oldPrice);
     if (input.volume !== undefined) product.volumeM3 = String(input.volume);
     if (input.weight !== undefined) product.weightKg = String(input.weight);
+    if (input.packageLengthCm !== undefined) product.packageLengthCm = input.packageLengthCm == null ? null : String(input.packageLengthCm);
+    if (input.packageWidthCm !== undefined) product.packageWidthCm = input.packageWidthCm == null ? null : String(input.packageWidthCm);
+    if (input.packageHeightCm !== undefined) product.packageHeightCm = input.packageHeightCm == null ? null : String(input.packageHeightCm);
+    if (input.packageWeightKg !== undefined) product.packageWeightKg = input.packageWeightKg == null ? null : String(input.packageWeightKg);
     if (input.install !== undefined) product.installMinutes = input.install;
     if (input.warranty !== undefined) product.warrantyMonths = input.warranty;
     if (input.maintenanceIntervalMonths !== undefined) product.maintenanceIntervalMonths = input.maintenanceIntervalMonths;
@@ -116,6 +124,12 @@ export class ProductsService {
       oldPrice: product.oldPrice == null ? null : Number(product.oldPrice),
       volume: Number(product.volumeM3),
       weight: Number(product.weightKg),
+      ...(admin ? {
+        packageLengthCm: product.packageLengthCm == null ? null : Number(product.packageLengthCm),
+        packageWidthCm: product.packageWidthCm == null ? null : Number(product.packageWidthCm),
+        packageHeightCm: product.packageHeightCm == null ? null : Number(product.packageHeightCm),
+        packageWeightKg: product.packageWeightKg == null ? null : Number(product.packageWeightKg),
+      } : {}),
       install: product.installMinutes,
       warranty: product.warrantyMonths,
       maintenanceIntervalMonths: product.maintenanceIntervalMonths ?? null,

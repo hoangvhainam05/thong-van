@@ -12,6 +12,7 @@ export const NAV = [
   { group: "Vận hành", items: [
     { href: "/admin", label: "Tổng quan", perm: "dashboard.view", exact: true },
     { href: "/admin/orders", label: "Đơn hàng", perm: "order.view_all" },
+    { href: "/admin/counter-orders", label: "Đơn tại quầy", perm: "order.create_counter" },
     { href: "/admin/dispatch", label: "Điều phối giao hàng", perm: "dispatch.view" },
     { href: "/admin/products", label: "Sản phẩm", perm: "product.manage" },
     { href: "/admin/customers", label: "Khách hàng", perm: "customer.view" },

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { PAYMENT_METHOD, useStore } from "@/lib/store";
 import { api } from "@/lib/api";
 import { addDays, dateLabel, vnd, ymd } from "@/lib/format";
@@ -12,14 +12,15 @@ import { Empty, Field, Loading } from "@/components/ui";
 
 const WINDOWS = [
   { id: "am", label: "Buổi sáng", start: "08:00", end: "12:00" },
-  { id: "pm", label: "Buổi chiều", start: "13:00", end: "17:00" },
-  { id: "day", label: "Cả ngày", start: "08:00", end: "17:00", hint: "Linh hoạt nhất, dễ xếp tuyến" },
+  { id: "pm", label: "Buổi chiều", start: "13:00", end: "18:00" },
+  { id: "day", label: "Cả ngày", start: "08:00", end: "18:00", hint: "Linh hoạt nhất, dễ xếp tuyến" },
   { id: "custom", label: "Tự chọn giờ" },
 ];
 
 function Checkout() {
   const { state, user, actions, catalogStatus, shippingStatus } = useStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const customer = state.customers.find((c) => c.id === user?.customerId || c.authUserId === user?.id) || state.customers[0];
   const addresses = customer?.addresses || [];
   const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
@@ -82,8 +83,11 @@ function Checkout() {
   const onAddressBlur = () => {
     setTimeout(() => setSuggestions([]), 250);
   };
-  const [date, setDate] = useState(addDays(ymd(), 1));
+  const [date, setDate] = useState(ymd());
   const [win, setWin] = useState("day");
+  const [deliveryType, setDeliveryType] = useState("STANDARD");
+  const [shippingQuote, setShippingQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [custom, setCustom] = useState({ start: "09:00", end: "11:00" });
   const [pay, setPay] = useState("COD");
   const [note, setNote] = useState("");
@@ -102,13 +106,82 @@ function Checkout() {
       .catch(() => setBankInstructions({ configured: false }));
   }, []);
 
+  let quoteProductIds = null;
+  if (searchParams.has("items")) {
+    try {
+      const parsed = JSON.parse(searchParams.get("items"));
+      quoteProductIds = new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+    } catch { quoteProductIds = new Set(); }
+  }
+  const quoteItems = (state?.cart || [])
+    .filter((line) => !quoteProductIds || quoteProductIds.has(String(line.productId)))
+    .map((line) => ({ product_id: line.productId, quantity: line.qty }));
+  const quoteAddress = addrId === "new" ? newAddr : addresses.find((address) => address.id === addrId);
+  const hasQuoteCoordinates = quoteAddress?.lat != null && quoteAddress?.lat !== "" && quoteAddress?.lng != null && quoteAddress?.lng !== "";
+  const quotePayload = hasQuoteCoordinates && quoteItems.length ? {
+    lat: Number(quoteAddress.lat), lng: Number(quoteAddress.lng), delivery_type: deliveryType, items: quoteItems,
+  } : null;
+  const quoteKey = quotePayload ? JSON.stringify(quotePayload) : "";
+
+  useEffect(() => {
+    if (!quoteKey) {
+      setShippingQuote(null);
+      setQuoteLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setShippingQuote(null);
+    setQuoteLoading(true);
+    const timer = setTimeout(() => {
+      api("/api/orders/shipping-quote", { method: "POST", body: JSON.parse(quoteKey) })
+        .then((quote) => { if (!cancelled) setShippingQuote(quote); })
+        .catch((error) => { if (!cancelled) setShippingQuote({ quoteAvailable: false, reasons: [error.message] }); })
+        .finally(() => { if (!cancelled) setQuoteLoading(false); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [quoteKey]);
+
+  useEffect(() => {
+    if (deliveryType === "STANDARD" && shippingQuote?.deliveryWindowDate && date < shippingQuote.deliveryWindowDate) {
+      setDate(shippingQuote.deliveryWindowDate);
+    }
+  }, [deliveryType, shippingQuote?.deliveryWindowDate, date]);
+
+  const etaClock = shippingQuote?.estimatedArrivalAt
+    ? new Date(shippingQuote.estimatedArrivalAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    : "";
+  const expressDescription = quoteLoading
+    ? "Đang tính thời gian nhận hàng theo địa chỉ và kiện hàng…"
+    : shippingQuote?.expressEligibility?.eligible
+      ? `Nhận hàng dự kiến sau ${shippingQuote.estimatedDeliveryMinutes} phút, khoảng ${etaClock}. Nhận đơn đến trước 16:00.`
+      : shippingQuote?.expressEligibility?.reasons?.join(" ") || "Chọn địa chỉ và ghim vị trí để xem ETA hỏa tốc. Nhận đơn đến trước 16:00.";
+  const etaMinuteOfDay = etaClock ? Number(etaClock.slice(0, 2)) * 60 + Number(etaClock.slice(3, 5)) : 0;
+  const isSelectedWindowTooEarly = (window) => deliveryType === "STANDARD" && date === shippingQuote?.deliveryWindowDate && etaClock && window.end && Number(window.end.slice(0, 2)) * 60 + Number(window.end.slice(3, 5)) < etaMinuteOfDay;
+
+  useEffect(() => {
+    if (deliveryType !== "STANDARD" || date !== shippingQuote?.deliveryWindowDate || !etaClock) return;
+    const selected = win === "custom" ? custom : WINDOWS.find((window) => window.id === win);
+    if (selected && isSelectedWindowTooEarly(selected)) setWin("day");
+  }, [deliveryType, date, shippingQuote?.deliveryWindowDate, etaClock, win, custom]);
+
   if (catalogStatus === 'loading' || shippingStatus === 'loading') return <Loading />;
   if (catalogStatus !== 'ready' || shippingStatus !== 'ready') return <div className="notice bad">Không tải được sản phẩm hoặc phí giao hàng. Vui lòng tải lại trang.</div>;
 
-  const lines = state.cart.map((l) => ({ ...l, p: state.products.find((x) => x.id === l.productId) })).filter((line) => line.p);
-  if (!lines.length) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
+  let requestedProductIds = null;
+  const hasExplicitSelection = searchParams.has("items");
+  if (hasExplicitSelection) {
+    try {
+      const parsed = JSON.parse(searchParams.get("items"));
+      requestedProductIds = new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+    } catch {
+      requestedProductIds = new Set();
+    }
+  }
+  const cartLines = state.cart.map((l) => ({ ...l, p: state.products.find((x) => x.id === l.productId) })).filter((line) => line.p);
+  const lines = cartLines.filter((line) => !requestedProductIds || requestedProductIds.has(String(line.productId)));
+  if (!cartLines.length) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
+  if (!lines.length) return <div className="panel"><Empty title="Chưa chọn sản phẩm để thanh toán" action={<Link href="/cart" className="btn">Quay lại giỏ hàng</Link>} /></div>;
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
-  const ship = subtotal >= state.settings.freeShipFrom ? 0 : state.settings.shippingFee;
   const bankAvailable = Boolean(bankInstructions?.configured);
   const paymentChoice = pay === "BANK" && !bankAvailable ? "COD" : pay;
   const days = Array.from({ length: 7 }, (_, i) => addDays(ymd(), i));
@@ -138,7 +211,13 @@ function Checkout() {
         return setError("Địa chỉ này chưa có toạ độ ghim trên bản đồ. Vui lòng ghim vị trí để tài xế giao hàng chính xác.");
       }
     }
-    const w = win === "custom" ? custom : WINDOWS.find((x) => x.id === win);
+    if (!shippingQuote?.quoteAvailable || quoteLoading) {
+      return setError(shippingQuote?.reasons?.join(" ") || "Đang tính phí giao hàng. Vui lòng đợi báo giá chính xác.");
+    }
+    if (deliveryType === "EXPRESS" && !shippingQuote.expressEligibility?.eligible) {
+      return setError(shippingQuote.expressEligibility?.reasons?.join(" ") || "Đơn chưa đủ điều kiện giao hỏa tốc.");
+    }
+    const w = deliveryType === "EXPRESS" ? { start: "08:00", end: "18:00" } : win === "custom" ? custom : WINDOWS.find((x) => x.id === win);
     if (isGift && (!recipientName.trim() || !/^0\d{9,10}$/.test(recipientPhone))) {
       return setError("Nhập tên người nhận và số điện thoại hợp lệ cho đơn đặt hộ.");
     }
@@ -149,6 +228,7 @@ function Checkout() {
     const order = await actions.placeOrder({
       address,
       deliveryDate: date,
+      deliveryType,
       window: { start: w.start, end: w.end },
       paymentMethod: paymentChoice,
       note: deliveryNote,
@@ -159,6 +239,7 @@ function Checkout() {
       saveAddress: isNew ? (addresses.length === 0 || saveNewAddress) : false,
       addressLabel: addrLabel.trim() || "Nhà riêng",
       isDefault: isNew ? (addresses.length === 0 || setAsDefault) : false,
+      productIds: lines.map((line) => line.productId),
     });
     setSubmitting(false);
     if (order) {
@@ -190,6 +271,25 @@ function Checkout() {
       <h1 style={{ marginBottom: 18 }}>Đặt hàng</h1>
       <div className="two-col">
         <div className="stack">
+          <section className="panel">
+            <div className="panel-head"><h3>Phương thức giao hàng</h3></div>
+            <div className="panel-body stack-sm">
+              <div className="choice">
+                <label>
+                  <input type="radio" name="delivery-type" checked={deliveryType === "STANDARD"} onChange={() => setDeliveryType("STANDARD")} />
+                  <span><b>Giao thường</b><br /><span className="small muted">Theo lịch giao phù hợp với thời gian chuẩn bị và tuyến đường.</span></span>
+                </label>
+                <label aria-disabled={quoteLoading || !shippingQuote?.expressEligibility?.eligible} style={{ opacity: quoteLoading || !shippingQuote?.expressEligibility?.eligible ? 0.55 : 1 }}>
+                  <input type="radio" name="delivery-type" checked={deliveryType === "EXPRESS"} disabled={quoteLoading || !shippingQuote?.expressEligibility?.eligible} onChange={() => { setDeliveryType("EXPRESS"); setDate(ymd()); }} />
+                  <span><b>Giao hỏa tốc</b><br /><span className="small muted">{expressDescription}</span></span>
+                </label>
+              </div>
+              {shippingQuote?.expressEligibility?.eligible === false && <p className="tiny muted">{shippingQuote.expressEligibility.reasons?.join(" ")}</p>}
+              {!hasQuoteCoordinates ? <p className="tiny muted">Chọn hoặc ghim vị trí giao hàng để tính cước theo tuyến đường.</p> : null}
+              {shippingQuote?.quoteAvailable === false && <div className="notice warn">{shippingQuote.reasons?.join(" ") || "Chưa thể báo giá chính xác."}</div>}
+            </div>
+          </section>
+
           <section className="panel">
             <div className="panel-head"><h3>Thông tin người đặt</h3></div>
             <div className="panel-body stack-sm">
@@ -357,15 +457,15 @@ function Checkout() {
                     </button>
                   </div>
 
-                  <div className="full stack-xs" style={{ marginTop: 4 }}>
+                  <div className="full address-save-options" style={{ marginTop: 4 }}>
                     {addresses.length === 0 ? (
-                      <label className="row small" style={{ cursor: "pointer" }}>
+                      <label className="address-save-option small">
                         <input type="checkbox" checked={true} disabled />
                         <span><b>Tự động lưu làm địa chỉ mặc định</b> trong sổ địa chỉ cho các lần mua sau</span>
                       </label>
                     ) : (
                       <>
-                        <label className="row small" style={{ cursor: "pointer" }}>
+                        <label className="address-save-option small">
                           <input
                             type="checkbox"
                             checked={saveNewAddress}
@@ -374,7 +474,7 @@ function Checkout() {
                           <span><b>Lưu địa chỉ này vào sổ địa chỉ</b> để dùng cho các lần đặt hàng sau</span>
                         </label>
                         {saveNewAddress && (
-                          <label className="row small" style={{ cursor: "pointer", marginLeft: 22 }}>
+                          <label className="address-save-option small">
                             <input
                               type="checkbox"
                               checked={setAsDefault}
@@ -394,23 +494,23 @@ function Checkout() {
           <section className="panel">
             <div className="panel-head"><h3>Ngày và khung giờ nhận hàng</h3></div>
             <div className="panel-body stack">
-              <div className="row" role="radiogroup" aria-label="Ngày giao">
+              {deliveryType === "STANDARD" ? <div className="row" role="radiogroup" aria-label="Ngày giao">
                 {days.map((d) => (
                   <button key={d} type="button" role="radio" aria-checked={date === d} className={`btn sm ${date === d ? "" : "secondary"}`} onClick={() => setDate(d)}>{d <= addDays(ymd(), 1) ? dateLabel(d) : `${new Date(d + "T00:00").toLocaleDateString("vi-VN", { weekday: "short" })} ${d.slice(8)}/${d.slice(5, 7)}`}</button>
                 ))}
-              </div>
-              <div className="choice" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+              </div> : <div className="notice">Hỏa tốc giao trong ngày, theo ETA hiển thị ở phương thức giao hàng.</div>}
+              {deliveryType === "STANDARD" && <div className="choice" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
                 {WINDOWS.map((w) => (
                   <label key={w.id}>
-                    <input type="radio" name="win" checked={win === w.id} onChange={() => setWin(w.id)} />
+                    <input type="radio" name="win" checked={win === w.id} disabled={isSelectedWindowTooEarly(w)} onChange={() => setWin(w.id)} />
                     <span><b>{w.label}</b><br /><span className="small muted">{w.start ? `${w.start} – ${w.end}` : "Tối thiểu 1 tiếng"}{w.hint ? `. ${w.hint}` : ""}</span></span>
                   </label>
                 ))}
-              </div>
-              {win === "custom" && (
+              </div>}
+              {deliveryType === "STANDARD" && win === "custom" && (
                 <div className="form-grid">
-                  <Field label="Từ"><input type="time" className="input" min="08:00" max="17:00" value={custom.start} onChange={(e) => setCustom({ ...custom, start: e.target.value })} /></Field>
-                  <Field label="Đến"><input type="time" className="input" min="09:00" max="18:00" value={custom.end} onChange={(e) => setCustom({ ...custom, end: e.target.value })} /></Field>
+                  <Field label="Từ"><input type="time" className="input" min="08:00" max="18:00" value={custom.start} onChange={(e) => setCustom({ ...custom, start: e.target.value })} /></Field>
+                  <Field label="Đến"><input type="time" className="input" min={etaClock && date === shippingQuote?.deliveryWindowDate ? etaClock : "09:00"} max="18:00" value={custom.end} onChange={(e) => setCustom({ ...custom, end: e.target.value })} /></Field>
                 </div>
               )}
               <Field label="Ghi chú cho tài xế"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ví dụ: gọi trước 30 phút, nhà trong ngõ nhỏ" /></Field>
@@ -446,11 +546,24 @@ function Checkout() {
           <div className="divider" />
           <div className="stack-sm small">
             <div className="row between"><span className="muted">Tạm tính</span><span>{vnd(subtotal)}</span></div>
-            <div className="row between"><span className="muted">Phí giao hàng</span><span>{ship ? vnd(ship) : "Miễn phí"}</span></div>
+            {shippingQuote?.quoteAvailable && <>
+              <div className="row between"><span className="muted">Khoảng cách đường bộ</span><span>{shippingQuote.distanceKm} km</span></div>
+              <div className="row between"><span className="muted">Thể tích kiện hàng</span><span>{shippingQuote.volumeM3} m³</span></div>
+              <div className="row between"><span className="muted">Trọng lượng kiện hàng</span><span>{shippingQuote.weightKg} kg · {shippingQuote.packageCount} kiện</span></div>
+              <div className="row between"><span className="muted">Thời gian giao dự kiến</span><span>{shippingQuote.estimatedDeliveryMinutes} phút</span></div>
+              <div className="row between"><span className="muted">ETA sớm nhất theo thời gian hiện tại</span><span>{new Date(shippingQuote.estimatedArrivalAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span></div>
+              <div className="divider" />
+              <div className="row between"><span className="muted">Cước khoảng cách</span><span>{vnd(shippingQuote.shippingBreakdown.distanceFee)}</span></div>
+              <div className="row between"><span className="muted">Phụ phí thể tích</span><span>{vnd(shippingQuote.shippingBreakdown.volumeFee)}</span></div>
+              <div className="row between"><span className="muted">Phụ phí trọng lượng</span><span>{vnd(shippingQuote.shippingBreakdown.weightFee)}</span></div>
+              {deliveryType === "EXPRESS" && <div className="row between"><span className="muted">Phụ phí hỏa tốc</span><span>{vnd(shippingQuote.shippingBreakdown.expressFee)}</span></div>}
+              {shippingQuote.shippingBreakdown.discount > 0 && <div className="row between"><span className="muted">Ưu đãi vận chuyển</span><span>−{vnd(shippingQuote.shippingBreakdown.discount)}</span></div>}
+            </>}
+            <div className="row between"><b>Phí giao hàng</b><span>{quoteLoading ? "Đang tính…" : shippingQuote?.quoteAvailable ? vnd(shippingQuote.shippingBreakdown.totalFee) : "Chưa báo giá"}</span></div>
           </div>
-          <div className="row between"><b>Tổng cộng</b><span className="price" style={{ fontSize: 22 }}>{vnd(subtotal + ship)}</span></div>
+          <div className="row between"><b>Tổng cộng</b><span className="price" style={{ fontSize: 22 }}>{vnd(subtotal + (shippingQuote?.shippingBreakdown?.totalFee || 0))}</span></div>
           {error && <div className="notice bad">{error}</div>}
-          <button className="btn lg block" disabled={submitting || !paymentChoice} onClick={submit}>
+          <button className="btn lg block" disabled={submitting || !paymentChoice || quoteLoading || !shippingQuote?.quoteAvailable || (deliveryType === "EXPRESS" && !shippingQuote?.expressEligibility?.eligible)} onClick={submit}>
             {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Tạo đơn chờ chuyển khoản"}
           </button>
           <p className="tiny muted">Giao {date <= addDays(ymd(), 1) ? dateLabel(date).toLowerCase() : `ngày ${dateLabel(date)}`}. Bạn sẽ thấy khung giờ dự kiến và vị trí trong tuyến sau khi cửa hàng xếp lịch.</p>
@@ -462,5 +575,5 @@ function Checkout() {
 }
 
 export default function CheckoutPage() {
-  return <RequirePerm perm="order.place"><Checkout /></RequirePerm>;
+  return <Suspense fallback={<Loading />}><RequirePerm perm="order.place"><Checkout /></RequirePerm></Suspense>;
 }

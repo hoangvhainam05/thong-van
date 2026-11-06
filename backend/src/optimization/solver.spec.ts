@@ -58,3 +58,14 @@ it('chooses the next feasible stop by directed road distance from the current po
   expect(result.routes[0].stops.map((s) => s.orderId)).toEqual([2, 3, 1]);
   expect(result.routes[0].totalKm).toBe(15);
 });
+
+it('inserts a later considered stop before an existing stop when that saves distance', () => {
+  const stops = [stop(1, { twStart: 480 }), stop(2, { twStart: 500 })];
+  const matrix = {
+    km: [[0, 1, 1], [10, 0, 20], [1, 1, 0]],
+    minutes: [[0, 1, 1], [1, 0, 1], [1, 1, 0]],
+  };
+  const result = optimize(depot, stops, [vehicle], { ...options, matrix });
+  expect(result.routes[0].stops.map(s => s.orderId)).toEqual([2, 1]);
+  expect(result.routes[0].totalKm).toBe(12);
+});

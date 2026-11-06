@@ -33,6 +33,18 @@ export class Product {
   @Column({ name: 'weight_kg', type: 'decimal', precision: 7, scale: 2 })
   weightKg!: string;
 
+  @Column({ name: 'package_length_cm', type: 'decimal', precision: 8, scale: 2, nullable: true })
+  packageLengthCm!: string | null;
+
+  @Column({ name: 'package_width_cm', type: 'decimal', precision: 8, scale: 2, nullable: true })
+  packageWidthCm!: string | null;
+
+  @Column({ name: 'package_height_cm', type: 'decimal', precision: 8, scale: 2, nullable: true })
+  packageHeightCm!: string | null;
+
+  @Column({ name: 'package_weight_kg', type: 'decimal', precision: 8, scale: 3, nullable: true })
+  packageWeightKg!: string | null;
+
   @Column({ name: 'install_minutes', type: 'int' })
   installMinutes!: number;
 

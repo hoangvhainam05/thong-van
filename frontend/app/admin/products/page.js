@@ -10,7 +10,7 @@ import { PageHead } from "@/components/AdminShell";
 import Art from "@/components/Art";
 import { Field, Modal } from "@/components/ui";
 
-const EMPTY = { name: "", brand: "", category: "", costPrice: null, price: 0, oldPrice: null, volume: 0.3, weight: 20, install: 15, warranty: 12, maintenanceIntervalMonths: null, stock: 10, active: true, description: "" };
+const EMPTY = { name: "", brand: "", category: "", costPrice: null, price: 0, oldPrice: null, volume: 0.3, weight: 20, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, install: 15, warranty: 12, maintenanceIntervalMonths: null, stock: 10, active: true, description: "" };
 
 function Products() {
   const { state, actions } = useStore();
@@ -73,7 +73,7 @@ function Products() {
     setConnectionError("");
     try {
       const images = [...(edit.images || []), ...await Promise.all(imageFiles.map(uploadImage))];
-      const saved = await actions.saveProduct({ ...edit, images, price: Number(edit.price), costPrice: edit.costPrice === "" || edit.costPrice == null ? null : Number(edit.costPrice), oldPrice: edit.oldPrice ? Number(edit.oldPrice) : null, volume: Number(edit.volume), weight: Number(edit.weight), install: Number(edit.install), stock: Number(edit.stock), warranty: Number(edit.warranty), maintenanceIntervalMonths: edit.maintenanceIntervalMonths ? Number(edit.maintenanceIntervalMonths) : null });
+      const saved = await actions.saveProduct({ ...edit, images, price: Number(edit.price), costPrice: edit.costPrice === "" || edit.costPrice == null ? null : Number(edit.costPrice), oldPrice: edit.oldPrice ? Number(edit.oldPrice) : null, volume: Number(edit.volume), weight: Number(edit.weight), packageLengthCm: edit.packageLengthCm ? Number(edit.packageLengthCm) : null, packageWidthCm: edit.packageWidthCm ? Number(edit.packageWidthCm) : null, packageHeightCm: edit.packageHeightCm ? Number(edit.packageHeightCm) : null, packageWeightKg: edit.packageWeightKg ? Number(edit.packageWeightKg) : null, install: Number(edit.install), stock: Number(edit.stock), warranty: Number(edit.warranty), maintenanceIntervalMonths: edit.maintenanceIntervalMonths ? Number(edit.maintenanceIntervalMonths) : null });
       if (!saved) return;
       setEdit(null);
       setImageFiles([]);
@@ -170,8 +170,13 @@ function Products() {
             <Field label="Tồn kho"><input className="input" type="number" min="0" value={edit.stock} onChange={set("stock")} /></Field>
             <Field label="Bảo hành (tháng)"><input className="input" type="number" min="0" value={edit.warranty} onChange={set("warranty")} /></Field>
             <Field label="Chu kỳ bảo dưỡng (tháng)" hint="Để trống nếu chưa có lịch khuyến nghị"><input className="input" type="number" min="1" max="120" value={edit.maintenanceIntervalMonths ?? ""} onChange={set("maintenanceIntervalMonths")} /></Field>
-            <Field label="Thể tích đóng gói (m³)" hint="Dùng tính sức chứa xe"><input className="input" type="number" min="0" step="0.01" value={edit.volume} onChange={set("volume")} /></Field>
+            <Field label="Thể tích sản phẩm (m³)" hint="Dùng điều phối xe; không thay thế thể tích kiện hàng để tính cước"><input className="input" type="number" min="0" step="0.01" value={edit.volume} onChange={set("volume")} /></Field>
             <Field label="Thời gian lắp đặt (phút)" hint="Dùng tính giờ đến các điểm sau"><input className="input" type="number" min="0" value={edit.install} onChange={set("install")} /></Field>
+            <div className="field full"><b>Kích thước và trọng lượng kiện hàng thực tế</b><span className="tiny muted">Cần điền để hệ thống báo giá vận chuyển chính xác. Mỗi đơn vị sản phẩm được tính là một kiện riêng.</span></div>
+            <Field label="Dài kiện hàng (cm)"><input className="input" type="number" min="0" step="0.1" value={edit.packageLengthCm ?? ""} onChange={set("packageLengthCm")} /></Field>
+            <Field label="Rộng kiện hàng (cm)"><input className="input" type="number" min="0" step="0.1" value={edit.packageWidthCm ?? ""} onChange={set("packageWidthCm")} /></Field>
+            <Field label="Cao kiện hàng (cm)"><input className="input" type="number" min="0" step="0.1" value={edit.packageHeightCm ?? ""} onChange={set("packageHeightCm")} /></Field>
+            <Field label="Trọng lượng kiện hàng (kg)"><input className="input" type="number" min="0" step="0.01" value={edit.packageWeightKg ?? ""} onChange={set("packageWeightKg")} /></Field>
             <Field label="Mô tả" full><textarea className="input" rows={3} value={edit.description} onChange={set("description")} /></Field>
             <Field label="Ảnh sản phẩm" full>
               <div className="stack-sm">

@@ -4,6 +4,28 @@ import { DataSource } from 'typeorm';
 import { SystemSetting } from '../database/entities';
 import { UpdateSettingsDto } from './admin.dto';
 
+function normalizedShippingSettings(row: SystemSetting) {
+  const fallbackTiers = [
+    { max_m3: 0.02, fee: 0 }, { max_m3: 0.05, fee: 5000 }, { max_m3: 0.1, fee: 10000 }, { max_m3: 0.15, fee: 20000 },
+  ];
+  const tiers = row.shippingVolumeTiers
+    ? typeof row.shippingVolumeTiers === 'string' ? JSON.parse(row.shippingVolumeTiers) : row.shippingVolumeTiers
+    : fallbackTiers;
+  return JSON.stringify({
+    shippingFee: Number(row.shippingFee ?? 150000), freeShipFrom: Number(row.freeShipFrom ?? 5000000),
+    dayStart: row.deliveryDayStart || '08:00', dayEnd: row.deliveryDayEnd || '18:00',
+    cutoff: row.expressCutoffTime || '16:00', expressMinutes: Number(row.expressMaxMinutes ?? 300),
+    expressDistance: Number(row.expressMaxDistanceKm ?? 10), expressVolume: Number(row.expressMaxVolumeM3 ?? 0.1),
+    expressWeight: row.expressMaxWeightKg == null ? null : Number(row.expressMaxWeightKg),
+    baseDistance: Number(row.shippingBaseDistanceKm ?? 2), baseFee: Number(row.shippingBaseFee ?? 15000),
+    perKmFee: Number(row.shippingPerKmFee ?? 5000), expressFee: Number(row.shippingExpressFee ?? 10000),
+    rounding: Number(row.shippingRoundingIncrement ?? 1000), tiers,
+    weightFeePerKg: row.shippingWeightFeePerKg == null ? null : Number(row.shippingWeightFeePerKg),
+    delay: Number(row.shippingAdditionalDelayMinutes ?? 0), preparation: Number(row.shippingPreparationMinutes ?? 10),
+    handover: Number(row.shippingHandoverMinutes ?? 5), fallbackSpeed: Number(row.shippingFallbackSpeedKmh ?? 25),
+  });
+}
+
 function checkedRange(from:string,to:string) {
   const parse=(s:string)=>{ if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new BadRequestException('Ngày phải có dạng YYYY-MM-DD'); const d=new Date(`${s}T00:00:00Z`);if(Number.isNaN(d.getTime()) || d.toISOString().slice(0,10)!==s)throw new BadRequestException('Ngày không hợp lệ');return d.getTime(); };
   const a=parse(from),b=parse(to);if(a>b || b-a>366*86400000)throw new BadRequestException('Khoảng ngày không hợp lệ hoặc vượt 367 ngày');
@@ -54,6 +76,27 @@ export class AdminService {
       shipping: {
         fee: setting ? Number(setting.shipping_fee) : this.config.get<number>('shipping.fee', 150000),
         free_from: setting ? Number(setting.free_ship_from) : this.config.get<number>('shipping.freeFrom', 5000000),
+        base_distance_km: Number(setting?.shipping_base_distance_km ?? 2),
+        base_fee: Number(setting?.shipping_base_fee ?? 15000),
+        per_km_fee: Number(setting?.shipping_per_km_fee ?? 5000),
+        express_fee: Number(setting?.shipping_express_fee ?? 10000),
+        rounding_increment: Number(setting?.shipping_rounding_increment ?? 1000),
+        volume_tiers: setting?.shipping_volume_tiers ? (typeof setting.shipping_volume_tiers === 'string' ? JSON.parse(setting.shipping_volume_tiers) : setting.shipping_volume_tiers) : [
+          { max_m3: 0.02, fee: 0 }, { max_m3: 0.05, fee: 5000 }, { max_m3: 0.1, fee: 10000 }, { max_m3: 0.15, fee: 20000 },
+        ],
+        weight_fee_per_kg: setting?.shipping_weight_fee_per_kg == null ? null : Number(setting.shipping_weight_fee_per_kg),
+        preparation_minutes: Number(setting?.shipping_preparation_minutes ?? 10),
+        handover_minutes: Number(setting?.shipping_handover_minutes ?? 5),
+        additional_delay_minutes: Number(setting?.shipping_additional_delay_minutes ?? 0),
+        fallback_speed_kmh: Number(setting?.shipping_fallback_speed_kmh ?? 25),
+        rate_version: Number(setting?.shipping_rate_version ?? 1),
+      },
+      express: {
+        cutoff_time: setting?.express_cutoff_time || '16:00',
+        max_minutes: Number(setting?.express_max_minutes ?? 300),
+        max_distance_km: Number(setting?.express_max_distance_km ?? 10),
+        max_volume_m3: Number(setting?.express_max_volume_m3 ?? 0.1),
+        max_weight_kg: setting?.express_max_weight_kg == null ? null : Number(setting.express_max_weight_kg),
       },
       optimization: {
         day_start: setting?.delivery_day_start || this.config.get<string>('optimization.dayStart', '08:00'),
@@ -81,8 +124,32 @@ export class AdminService {
     if (!row) {
       row = repo.create({ id: 1 });
     }
+    const previousRate = normalizedShippingSettings(row);
     if (body.shipping_fee !== undefined) row.shippingFee = body.shipping_fee;
     if (body.free_ship_from !== undefined) row.freeShipFrom = body.free_ship_from;
+    if (body.express_cutoff_time !== undefined) row.expressCutoffTime = body.express_cutoff_time;
+    if (body.express_max_minutes !== undefined) row.expressMaxMinutes = body.express_max_minutes;
+    if (body.express_max_distance_km !== undefined) row.expressMaxDistanceKm = String(body.express_max_distance_km);
+    if (body.express_max_volume_m3 !== undefined) row.expressMaxVolumeM3 = String(body.express_max_volume_m3);
+    if (body.express_max_weight_kg !== undefined) row.expressMaxWeightKg = body.express_max_weight_kg == null ? null : String(body.express_max_weight_kg);
+    if (body.shipping_base_distance_km !== undefined) row.shippingBaseDistanceKm = String(body.shipping_base_distance_km);
+    if (body.shipping_base_fee !== undefined) row.shippingBaseFee = body.shipping_base_fee;
+    if (body.shipping_per_km_fee !== undefined) row.shippingPerKmFee = body.shipping_per_km_fee;
+    if (body.shipping_express_fee !== undefined) row.shippingExpressFee = body.shipping_express_fee;
+    if (body.shipping_rounding_increment !== undefined) row.shippingRoundingIncrement = body.shipping_rounding_increment;
+    if (body.shipping_volume_tiers !== undefined) {
+      const tiers = body.shipping_volume_tiers.map((tier) => ({ max_m3: tier.max_m3 ?? null, fee: tier.fee })).sort((a, b) => (a.max_m3 ?? Infinity) - (b.max_m3 ?? Infinity));
+      if (!tiers.length || tiers.some((tier, index) => index > 0 && tier.max_m3 !== null && tier.max_m3 <= (tiers[index - 1].max_m3 ?? -Infinity))) {
+        throw new BadRequestException('Các ngưỡng phụ phí thể tích phải tăng dần.');
+      }
+      if (tiers.some((tier) => tier.max_m3 === null) && tiers[tiers.length - 1].max_m3 !== null) throw new BadRequestException('Ngưỡng không giới hạn phải nằm cuối bảng.');
+      row.shippingVolumeTiers = tiers;
+    }
+    if (body.shipping_weight_fee_per_kg !== undefined) row.shippingWeightFeePerKg = body.shipping_weight_fee_per_kg;
+    if (body.shipping_additional_delay_minutes !== undefined) row.shippingAdditionalDelayMinutes = body.shipping_additional_delay_minutes;
+    if (body.shipping_preparation_minutes !== undefined) row.shippingPreparationMinutes = body.shipping_preparation_minutes;
+    if (body.shipping_handover_minutes !== undefined) row.shippingHandoverMinutes = body.shipping_handover_minutes;
+    if (body.shipping_fallback_speed_kmh !== undefined) row.shippingFallbackSpeedKmh = String(body.shipping_fallback_speed_kmh);
     if (body.delivery_day_start !== undefined) row.deliveryDayStart = body.delivery_day_start;
     if (body.delivery_day_end !== undefined) row.deliveryDayEnd = body.delivery_day_end;
     if (body.avg_speed_kmh !== undefined) row.avgSpeedKmh = String(body.avg_speed_kmh);
@@ -94,7 +161,22 @@ export class AdminService {
     if (body.bank_account_number !== undefined) row.bankAccountNumber = body.bank_account_number;
     if (body.bank_transfer_prefix !== undefined) row.bankTransferPrefix = body.bank_transfer_prefix;
     if (body.warranty_contact !== undefined) row.warrantyContact = body.warranty_contact;
-    await repo.save(row);
+    const rateChanged = previousRate !== normalizedShippingSettings(row);
+    if (rateChanged) row.shippingRateVersion = Number(row.shippingRateVersion ?? 0) + 1;
+    const saved = await repo.save(row);
+    if (rateChanged) {
+      const snapshot = await this.settings();
+      await this.db.query('INSERT INTO shipping_rate_history (version, snapshot) VALUES (?, ?)', [saved.shippingRateVersion, JSON.stringify({ shipping: snapshot.shipping, optimization: snapshot.optimization, express: snapshot.express })]);
+    }
     return this.settings();
+  }
+
+  async shippingRateHistory() {
+    const rows = await this.db.query('SELECT id,version,snapshot,created_at FROM shipping_rate_history ORDER BY id DESC LIMIT 50');
+    return rows.map((row: any) => ({
+      id: Number(row.id), version: Number(row.version),
+      snapshot: typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot,
+      created_at: row.created_at,
+    }));
   }
 }

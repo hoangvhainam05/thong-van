@@ -123,32 +123,56 @@ class Problem {
   }
 }
 
-function solveHeuristic(
-  problem: Problem,
-): { routes: Record<number, number[]>; unassigned: number[] } {
-  const routes: Record<number, number[]> = Object.fromEntries(problem.vehicles.map((vehicle) => [vehicle.id, []]));
-  const pending = new Set(Array.from({ length: problem.stops.length }, (_, index) => index + 1));
-  while (pending.size) {
-    let best: { node: number; vehicleId: number; distance: number; urgent: boolean } | null = null;
-    for (const vehicle of problem.vehicles) {
-      const route = routes[vehicle.id];
-      const previous = route.length ? route[route.length - 1] : 0;
-      for (const node of pending) {
-        const stop = problem.stops[node - 1];
-        if (problem.load(route) + stop.volumeM3 > vehicle.capacityM3 + 1e-9 ||
-            problem.weight(route) + stop.weightKg > vehicle.capacityKg + 1e-9 ||
-            !problem.simulate([...route, node])) continue;
-        const urgent = Boolean(stop.urgent), distance = problem.km[previous][node];
-        if (!best || (urgent && !best.urgent) || (urgent === best.urgent && distance < best.distance)) {
-          best = { node, vehicleId: vehicle.id, distance, urgent };
+function solveHeuristic(problem: Problem): { routes: Record<number, number[]>; unassigned: number[] } {
+  const routes: Record<number, number[]> = Object.fromEntries(problem.vehicles.map(v => [v.id, []]));
+  const valid = (v: VehicleSpec, r: number[]) => problem.load(r) <= v.capacityM3 + 1e-9 && problem.weight(r) <= v.capacityKg + 1e-9 && problem.simulate(r) !== null;
+  const km = (r: number[]) => r.length ? problem.simulate(r)!.km : 0;
+  const order = problem.stops.map((_, i) => i + 1).sort((a, b) => Number(Boolean(problem.stops[b-1].urgent)) - Number(Boolean(problem.stops[a-1].urgent)) || problem.stops[a-1].twStart - problem.stops[b-1].twStart || problem.km[0][b] - problem.km[0][a] || a-b);
+  const pending: number[] = [];
+  for (const node of order) {
+    let best: {id: number; route: number[]; delta: number} | undefined;
+    for (const v of problem.vehicles) {
+      const route = routes[v.id];
+      for (let i = 0; i <= route.length; i++) {
+        const candidate = [...route.slice(0,i), node, ...route.slice(i)];
+        if (!valid(v,candidate)) continue;
+        const delta = km(candidate) - km(route);
+        if (!best || delta < best.delta - 1e-9) best = {id:v.id, route:candidate, delta};
+      }
+    }
+    if (best) routes[best.id] = best.route; else pending.push(node);
+  }
+  const deadline = Date.now() + 20000;
+  let improved = true;
+  while (improved && Date.now() < deadline) {
+    improved = false;
+    outer: for (const v of problem.vehicles) for (const w of problem.vehicles) {
+      const a = routes[v.id], b = routes[w.id];
+      for (let i=0; i<a.length; i++) {
+        for (let j=0; j<=b.length; j++) {
+          if (v.id === w.id) {
+            const next = a.filter((_, k) => k !== i); next.splice(j > i ? j-1 : j, 0, a[i]);
+            if (valid(v,next) && km(next) < km(a)-1e-9) { routes[v.id]=next; improved=true; break outer; }
+          } else {
+            const x=a.filter((_,k)=>k!==i), y=[...b.slice(0,j),a[i],...b.slice(j)];
+            if (valid(v,x) && valid(w,y) && km(x)+km(y)<km(a)+km(b)-1e-9) { routes[v.id]=x; routes[w.id]=y; improved=true; break outer; }
+          }
+        }
+        for (let j=0; j<b.length; j++) {
+          if (v.id===w.id && j<=i) continue;
+          if (v.id===w.id) {
+            const swapped=[...a]; [swapped[i],swapped[j]]=[swapped[j],swapped[i]];
+            const reversed=[...a.slice(0,i),...a.slice(i,j+1).reverse(),...a.slice(j+1)];
+            for (const next of [swapped,reversed]) if (valid(v,next) && km(next)<km(a)-1e-9) { routes[v.id]=next; improved=true; break outer; }
+          } else {
+            const x=[...a], y=[...b]; [x[i],y[j]]=[y[j],x[i]];
+            if (valid(v,x) && valid(w,y) && km(x)+km(y)<km(a)+km(b)-1e-9) { routes[v.id]=x; routes[w.id]=y; improved=true; break outer; }
+          }
         }
       }
     }
-    if (!best) break;
-    routes[best.vehicleId].push(best.node);
-    pending.delete(best.node);
   }
-  return { routes, unassigned: [...pending].map((node) => problem.stops[node - 1].orderId) };
+  return {routes, unassigned:pending.map(n=>problem.stops[n-1].orderId)};
 }
 
 export function baselineKm(

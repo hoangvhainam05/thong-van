@@ -4,10 +4,12 @@ import { buildMatrices, LatLng, Matrices } from './distance';
 
 export type MatrixSource = 'ors' | 'estimate';
 export interface RoadMatrix extends Matrices { source: MatrixSource }
+export interface DrivingRoute { distanceKm: number; travelMinutes: number | null }
 
 @Injectable()
 export class RoadMatrixService {
   private readonly cache = new Map<string, { expires: number; matrix: RoadMatrix }>();
+  private readonly routeCache = new Map<string, { expires: number; route: DrivingRoute }>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -54,6 +56,33 @@ export class RoadMatrixService {
       return geometry;
     } catch {
       throw new ServiceUnavailableException('Không tải được đường đi ô tô từ OpenRouteService. Vui lòng thử lại.');
+    }
+  }
+
+  async getDrivingRoute(from: LatLng, to: LatLng): Promise<DrivingRoute> {
+    const key = this.config.get<string>('optimization.orsApiKey', '').trim();
+    if (!key) throw new ServiceUnavailableException('Chưa cấu hình Routing API để tính quãng đường giao hàng chính xác.');
+    const cacheKey = JSON.stringify([from, to]);
+    const cached = this.routeCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.route;
+    try {
+      const response = await fetch('https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson', {
+        method: 'POST', headers: { Authorization: key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinates: [[from[1], from[0]], [to[1], to[0]]], instructions: false }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) throw new Error('Routing request failed');
+      const data = await response.json() as { features?: Array<{ properties?: { summary?: { distance?: unknown; duration?: unknown } } }> };
+      const summary = data.features?.[0]?.properties?.summary;
+      const distanceMeters = typeof summary?.distance === 'number' ? summary.distance : NaN;
+      if (!Number.isFinite(distanceMeters) || distanceMeters < 0) throw new Error('Routing distance missing');
+      const durationSeconds = typeof summary?.duration === 'number' ? summary.duration : NaN;
+      const route = { distanceKm: distanceMeters / 1000, travelMinutes: Number.isFinite(durationSeconds) && durationSeconds >= 0 ? Math.ceil(durationSeconds / 60) : null };
+      if (this.routeCache.size >= 200) this.routeCache.delete(this.routeCache.keys().next().value!);
+      this.routeCache.set(cacheKey, { expires: Date.now() + 5 * 60_000, route });
+      return route;
+    } catch {
+      throw new ServiceUnavailableException('Không xác định được tuyến đường ô tô từ kho đến địa chỉ này. Vui lòng kiểm tra vị trí hoặc thử lại.');
     }
   }
 

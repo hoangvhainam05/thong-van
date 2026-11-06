@@ -1,6 +1,7 @@
 import {
   IsArray,
   ArrayMinSize,
+  ArrayMaxSize,
   IsDateString,
   IsBoolean,
   IsEnum,
@@ -27,6 +28,11 @@ export enum PaymentMethod {
   COUNTER_CASH = 'COUNTER_CASH',
 }
 
+export enum DeliveryType {
+  STANDARD = 'STANDARD',
+  EXPRESS = 'EXPRESS',
+}
+
 export class OrderItemInDto {
   @IsInt()
   @Min(1)
@@ -39,6 +45,10 @@ export class OrderItemInDto {
 }
 
 export class CreateOrderDto {
+  @IsOptional()
+  @IsEnum(DeliveryType)
+  delivery_type?: DeliveryType;
+
   @IsString()
   @MinLength(2)
   @MaxLength(120)
@@ -107,7 +117,7 @@ export class CreateOrderDto {
 
   @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/)
-  time_window_end = '17:00';
+  time_window_end = '18:00';
 
   @IsEnum(PaymentMethod)
   payment_method: PaymentMethod = PaymentMethod.COD;
@@ -118,9 +128,31 @@ export class CreateOrderDto {
   note?: string;
 
   @IsArray()
+  @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => OrderItemInDto)
   @ArrayMinSize(1)
+  items!: OrderItemInDto[];
+}
+
+export class ShippingQuoteDto {
+  @Type(() => Number)
+  @IsLatitude()
+  lat!: number;
+
+  @Type(() => Number)
+  @IsLongitude()
+  lng!: number;
+
+  @IsOptional()
+  @IsEnum(DeliveryType)
+  delivery_type?: DeliveryType;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemInDto)
   items!: OrderItemInDto[];
 }
 

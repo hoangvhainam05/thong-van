@@ -1,10 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, FindOptionsRelations, IsNull, Repository } from 'typeorm';
 import { Customer, CustomerAddress, DeliveryRoute, DeliveryStop, Order, OrderHistoryEvent, OrderHistoryEventType, OrderItem, OrderStatus, PaymentStatus, Product, RouteStatus, SystemSetting, Warehouse } from '../database/entities';
-import { CreateOrderDto, LocationUpdateDto, PaymentMethod, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, StatusUpdateDto } from './order.dto';
+import { CreateOrderDto, DeliveryType, LocationUpdateDto, PaymentMethod, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, ShippingQuoteDto, StatusUpdateDto } from './order.dto';
+import { ShippingQuoteService } from './shipping-quote.service';
+import { localParts } from './shipping-calculation';
 
 const ORDER_RELATIONS: FindOptionsRelations<Order> = {
   customer: true,
@@ -33,9 +35,43 @@ export class OrdersService {
     @InjectRepository(Product) private readonly products: Repository<Product>,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
+    @Optional() private readonly shippingQuotes?: ShippingQuoteService,
   ) {}
 
+  shippingQuote(body: ShippingQuoteDto) {
+    if (!this.shippingQuotes) throw new BadRequestException('Dịch vụ báo giá vận chuyển chưa sẵn sàng.');
+    return this.shippingQuotes.quote(body);
+  }
+
   async create(body: CreateOrderDto, source: 'WEB' | 'COUNTER' = 'WEB') {
+    if (body.client_request_id) {
+      const existing = await this.orders.findOne({ where: { clientRequestId: body.client_request_id }, relations: ORDER_RELATIONS });
+      if (existing) return this.toOut(existing);
+    }
+    const deliveryType = body.delivery_type || DeliveryType.STANDARD;
+    let quote: Awaited<ReturnType<ShippingQuoteService['quote']>> | null = null;
+    if (source === 'WEB' || deliveryType === DeliveryType.EXPRESS || (body.lat !== undefined && body.lng !== undefined)) {
+      if (body.lat === undefined || body.lng === undefined) throw new BadRequestException('Cần ghim vị trí giao hàng để tính phí theo tuyến đường.');
+      if (!this.shippingQuotes) throw new BadRequestException('Dịch vụ báo giá vận chuyển chưa sẵn sàng.');
+      quote = await this.shippingQuotes.quote({ lat: body.lat, lng: body.lng, items: body.items, delivery_type: deliveryType });
+      if (!quote.quoteAvailable) throw new BadRequestException(quote.reasons?.join(' ' ) || 'Chưa thể báo giá vận chuyển chính xác.');
+      if (deliveryType === DeliveryType.EXPRESS && !quote.expressEligibility.eligible) {
+        throw new BadRequestException(quote.expressEligibility.reasons.join(' '));
+      }
+      const localToday = localParts(new Date()).date;
+      if (deliveryType === DeliveryType.EXPRESS && body.delivery_date !== localToday) {
+        throw new BadRequestException('Đơn hỏa tốc chỉ nhận giao trong ngày đặt hàng.');
+      }
+      if (deliveryType === DeliveryType.STANDARD && quote.deliveryWindowDate && body.delivery_date < quote.deliveryWindowDate) {
+        throw new BadRequestException(`Đơn cần chọn ngày giao từ ${quote.deliveryWindowDate} trở đi theo ETA hiện tại.`);
+      }
+      if (deliveryType === DeliveryType.STANDARD && body.delivery_date === quote.deliveryWindowDate && quote.estimatedArrivalAt) {
+        const arrival = localParts(new Date(quote.estimatedArrivalAt));
+        if (toMinutes(body.time_window_end) < arrival.minutes) {
+          throw new BadRequestException(`Khung giờ giao cần kết thúc sau ${String(arrival.hour).padStart(2, '0')}:${String(arrival.minute).padStart(2, '0')} theo ETA hiện tại.`);
+        }
+      }
+    }
     let id: number;
     try {
       id = await this.dataSource.transaction(async (manager) => {
@@ -82,7 +118,13 @@ export class OrdersService {
       const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
       const freeFrom = setting ? Number(setting.freeShipFrom) : this.config.get<number>('shipping.freeFrom', 5_000_000);
       const defaultFee = setting ? Number(setting.shippingFee) : this.config.get<number>('shipping.fee', 150_000);
-      const shippingFee = subtotal >= freeFrom ? 0 : defaultFee;
+      let shippingFee = quote?.shippingBreakdown?.totalFee ?? (subtotal >= freeFrom ? 0 : defaultFee);
+      let shippingDiscount = quote?.shippingBreakdown?.discount ?? null;
+      if (quote?.shippingBreakdown && quote.freeShippingFrom !== undefined) {
+        const roundedShipping = quote.shippingBreakdown.totalFee + quote.shippingBreakdown.discount;
+        shippingFee = subtotal >= quote.freeShippingFrom ? 0 : roundedShipping;
+        shippingDiscount = Math.max(0, roundedShipping - shippingFee);
+      }
       const total = subtotal + shippingFee;
       if (body.payment_method === PaymentMethod.COUNTER_CASH && source !== 'COUNTER') {
         throw new BadRequestException('Thanh toán tiền mặt tại quầy chỉ dùng khi nhân viên nhập đơn quầy.');
@@ -99,7 +141,7 @@ export class OrdersService {
         recipientName: body.recipient_name?.trim() || body.customer_name.trim(),
         recipientPhone: body.recipient_phone?.trim() || body.phone,
         isGift: body.is_gift,
-        isUrgent: false,
+        isUrgent: deliveryType === DeliveryType.EXPRESS,
         address: body.address,
         lat: body.lat === undefined ? null : String(body.lat),
         lng: body.lng === undefined ? null : String(body.lng),
@@ -108,6 +150,27 @@ export class OrdersService {
         timeWindowEnd: normalizeTime(body.time_window_end),
         subtotal: String(subtotal),
         shippingFee: String(shippingFee),
+        totalShippingFee: String(shippingFee),
+        warehouseId: quote?.warehouseId ?? null,
+        deliveryDistanceKm: quote?.distanceKm == null ? null : String(quote.distanceKm),
+        deliveryType,
+        packageLengthCm: quote?.packageDimensionsCm ? String(quote.packageDimensionsCm.length) : null,
+        packageWidthCm: quote?.packageDimensionsCm ? String(quote.packageDimensionsCm.width) : null,
+        packageHeightCm: quote?.packageDimensionsCm ? String(quote.packageDimensionsCm.height) : null,
+        volumeM3: quote?.volumeM3 == null ? null : String(quote.volumeM3),
+        weightKg: quote?.weightKg == null ? null : String(quote.weightKg),
+        packageCount: quote?.packageCount ?? null,
+        packageDetails: quote?.packageDetails ?? null,
+        preparationMinutes: quote?.preparationMinutes ?? null,
+        travelMinutes: quote?.travelMinutes ?? null,
+        estimatedDeliveryMinutes: quote?.estimatedDeliveryMinutes ?? null,
+        estimatedArrivalAt: quote?.estimatedArrivalAt ? new Date(quote.estimatedArrivalAt) : null,
+        distanceFee: quote?.shippingBreakdown?.distanceFee ?? null,
+        volumeFee: quote?.shippingBreakdown?.volumeFee ?? null,
+        weightFee: quote?.shippingBreakdown?.weightFee ?? null,
+        expressFee: quote?.shippingBreakdown?.expressFee ?? null,
+        shippingDiscount,
+        shippingRateVersion: quote?.shippingRateVersion ?? null,
         total: String(total),
         paymentMethod: body.payment_method as PaymentMethod,
         paymentStatus: body.payment_method === PaymentMethod.BANK_TRANSFER
@@ -327,6 +390,9 @@ export class OrdersService {
       if (![OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY].includes(order.status)) {
         throw new ConflictException('Chỉ đổi mức ưu tiên trước khi xếp tuyến.');
       }
+      if (order.deliveryType === DeliveryType.EXPRESS && !body.is_urgent) {
+        throw new ConflictException('Đơn hỏa tốc luôn giữ mức ưu tiên xử lý.');
+      }
       if (order.isUrgent === body.is_urgent) return;
       const previous = order.isUrgent;
       order.isUrgent = body.is_urgent;
@@ -418,6 +484,26 @@ export class OrdersService {
       time_window_end: order.timeWindowEnd,
       subtotal: Number(order.subtotal || order.total),
       shipping_fee: Number(order.shippingFee || 0),
+      total_shipping_fee: Number(order.totalShippingFee ?? order.shippingFee ?? 0),
+      length_cm: order.packageLengthCm == null ? null : Number(order.packageLengthCm),
+      width_cm: order.packageWidthCm == null ? null : Number(order.packageWidthCm),
+      height_cm: order.packageHeightCm == null ? null : Number(order.packageHeightCm),
+      warehouse_id: order.warehouseId ?? null,
+      delivery_distance_km: order.deliveryDistanceKm == null ? null : Number(order.deliveryDistanceKm),
+      delivery_type: order.deliveryType || DeliveryType.STANDARD,
+      volume_m3: order.volumeM3 == null ? null : Number(order.volumeM3),
+      weight_kg: order.weightKg == null ? null : Number(order.weightKg),
+      package_count: order.packageCount ?? null,
+      package_details: order.packageDetails ?? null,
+      preparation_minutes: order.preparationMinutes ?? null,
+      travel_minutes: order.travelMinutes ?? null,
+      estimated_delivery_minutes: order.estimatedDeliveryMinutes ?? null,
+      estimated_arrival_at: order.estimatedArrivalAt,
+      shipping_breakdown: order.distanceFee == null ? null : {
+        distanceFee: order.distanceFee, volumeFee: order.volumeFee || 0, weightFee: order.weightFee || 0,
+        expressFee: order.expressFee || 0, discount: order.shippingDiscount || 0, totalFee: Number(order.shippingFee || 0),
+      },
+      shipping_rate_version: order.shippingRateVersion ?? null,
       total: Number(order.total),
       payment_method: order.paymentMethod,
       payment_status: order.paymentStatus || PaymentStatus.UNPAID,
@@ -460,8 +546,7 @@ function toMinutes(value: string): number {
 }
 
 function todayYmd(): string {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return localParts(new Date()).date;
 }
 
 function isDuplicateEntry(error: unknown): boolean {

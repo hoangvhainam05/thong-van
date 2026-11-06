@@ -34,6 +34,24 @@ describe('RoadMatrixService', () => {
     expect(mock).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a driving route and converts distance and duration to km and minutes', async () => {
+    const mock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [{ properties: { summary: { distance: 8000, duration: 2700 } } }] }) });
+    global.fetch = mock;
+    expect(await service().getDrivingRoute([10.8, 106.6], [10.9, 106.7])).toEqual({ distanceKm: 8, travelMinutes: 45 });
+    expect(JSON.parse(mock.mock.calls[0][1].body).coordinates).toEqual([[106.6, 10.8], [106.7, 10.9]]);
+  });
+
+  it('keeps a valid route distance when the Routing API omits ETA', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [{ properties: { summary: { distance: 8000 } } }] }) });
+    expect(await service().getDrivingRoute([10.8, 106.6], [10.9, 106.7])).toEqual({ distanceKm: 8, travelMinutes: null });
+  });
+
+  it('does not invent a road distance when the Routing API fails or lacks a route', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [{ properties: { summary: { distance: null, duration: 120 } } }] }) });
+    await expect(service().getDrivingRoute([10.8, 106.6], [10.9, 106.7])).rejects.toThrow('Không xác định được tuyến đường ô tô');
+    await expect(service('').getDrivingRoute([10.8, 106.6], [10.9, 106.7])).rejects.toThrow('Chưa cấu hình Routing API');
+  });
+
   it('splits larger matrices into requests within 3500 pairs', async () => {
     const mock = jest.fn().mockImplementation(async (_url, init) => {
       const body = JSON.parse(init.body);

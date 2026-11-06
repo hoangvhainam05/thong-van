@@ -28,6 +28,7 @@ export const PERMISSION_GROUPS = [
       ["dashboard.view", "Xem tổng quan"],
       ["order.view_all", "Xem tất cả đơn hàng"],
       ["order.confirm", "Xác nhận và chuẩn bị đơn"],
+      ["order.create_counter", "Tạo đơn tại quầy"],
       ["order.edit_location", "Sửa vị trí giao hàng"],
       ["order.cancel", "Huỷ đơn"],
       ["customer.view", "Xem khách hàng"],
@@ -67,12 +68,12 @@ export const PERMISSION_LABEL = Object.fromEntries(PERMISSION_GROUPS.flatMap((g)
 export const DEFAULT_MATRIX = {
   ADMIN: [...ALL_PERMISSIONS.filter((p) => !["order.place", "order.track_own", "notification.own", "delivery.app", "delivery.update"].includes(p))],
   MANAGER: [
-    "backoffice.access", "dashboard.view", "order.view_all", "order.confirm", "order.edit_location",
+    "backoffice.access", "dashboard.view", "order.view_all", "order.confirm", "order.create_counter", "order.edit_location",
     "order.cancel", "customer.view", "dispatch.view", "route.optimize", "route.approve",
     "route.dispatch", "fleet.manage", "report.view", "settings.manage",
   ],
   SALES: [
-    "backoffice.access", "dashboard.view", "order.view_all", "order.confirm", "order.edit_location",
+    "backoffice.access", "dashboard.view", "order.view_all", "order.confirm", "order.create_counter", "order.edit_location",
     "customer.view", "product.manage", "dispatch.view",
   ],
   DRIVER: ["delivery.app", "delivery.update"],

@@ -19,7 +19,7 @@ export function addMapTiles(L, map) {
     attribution: 'Bản đồ đường phố © Geoapify / Google / <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OSM</a>',
   });
 
-  satellite.addTo(map);
+  hybrid.addTo(map);
 
   L.control.layers(
     {
@@ -31,5 +31,5 @@ export function addMapTiles(L, map) {
     { position: "topright" }
   ).addTo(map);
 
-  return satellite;
+  return hybrid;
 }
