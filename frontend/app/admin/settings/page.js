@@ -23,14 +23,11 @@ function Settings() {
         setData(res);
         setForm({
           shipping_fee: res.shipping?.fee ?? 150000,
-          free_ship_from: res.shipping?.free_from ?? 5000000,
-          shipping_base_distance_km: res.shipping?.base_distance_km ?? 2,
-          shipping_base_fee: res.shipping?.base_fee ?? 15000,
-          shipping_per_km_fee: res.shipping?.per_km_fee ?? 5000,
-          shipping_express_fee: res.shipping?.express_fee ?? 10000,
-          shipping_rounding_increment: res.shipping?.rounding_increment ?? 1000,
-          shipping_volume_tiers_json: JSON.stringify(res.shipping?.volume_tiers ?? [{ max_m3: 0.02, fee: 0 }, { max_m3: 0.05, fee: 5000 }, { max_m3: 0.1, fee: 10000 }, { max_m3: 0.15, fee: 20000 }], null, 2),
-          shipping_weight_fee_per_kg: res.shipping?.weight_fee_per_kg ?? "",
+          shipping_free_distance_km: res.shipping?.free_distance_km ?? 20,
+          shipping_first_band_end_km: res.shipping?.first_band_end_km ?? 30,
+          shipping_first_band_fee: res.shipping?.first_band_fee ?? 150000,
+          shipping_distance_step_km: res.shipping?.distance_step_km ?? 10,
+          shipping_distance_step_fee: res.shipping?.distance_step_fee ?? 50000,
           shipping_preparation_minutes: res.shipping?.preparation_minutes ?? 10,
           shipping_handover_minutes: res.shipping?.handover_minutes ?? 5,
           shipping_additional_delay_minutes: res.shipping?.additional_delay_minutes ?? 0,
@@ -64,14 +61,11 @@ function Settings() {
     try {
       const payload = {
         shipping_fee: Number(form.shipping_fee),
-        free_ship_from: Number(form.free_ship_from),
-        shipping_base_distance_km: Number(form.shipping_base_distance_km),
-        shipping_base_fee: Number(form.shipping_base_fee),
-        shipping_per_km_fee: Number(form.shipping_per_km_fee),
-        shipping_express_fee: Number(form.shipping_express_fee),
-        shipping_rounding_increment: Number(form.shipping_rounding_increment),
-        shipping_volume_tiers: JSON.parse(form.shipping_volume_tiers_json),
-        shipping_weight_fee_per_kg: form.shipping_weight_fee_per_kg === "" ? null : Number(form.shipping_weight_fee_per_kg),
+        shipping_free_distance_km: Number(form.shipping_free_distance_km),
+        shipping_first_band_end_km: Number(form.shipping_first_band_end_km),
+        shipping_first_band_fee: Number(form.shipping_first_band_fee),
+        shipping_distance_step_km: Number(form.shipping_distance_step_km),
+        shipping_distance_step_fee: Number(form.shipping_distance_step_fee),
         shipping_preparation_minutes: Number(form.shipping_preparation_minutes),
         shipping_handover_minutes: Number(form.shipping_handover_minutes),
         shipping_additional_delay_minutes: Number(form.shipping_additional_delay_minutes),
@@ -123,46 +117,21 @@ function Settings() {
         <form onSubmit={save} className="stack-md">
           {/* Nhóm 1: Chính sách phí vận chuyển */}
           <section className="panel panel-pad stack-sm">
-            <h3 className="section-title">Cước theo quãng đường và đóng gói</h3>
-            <p className="small muted">Áp dụng cho đơn checkout có tuyến đường và kích thước kiện hàng đã cấu hình. Giá đã xác nhận được lưu theo từng đơn.</p>
+            <h3 className="section-title">Cước theo quãng đường thực tế</h3>
+            <p className="small muted">{`≤ ${form.shipping_free_distance_km} km miễn phí; trên ${form.shipping_free_distance_km}–${form.shipping_first_band_end_km} km là ${Number(form.shipping_first_band_fee || 0).toLocaleString("vi-VN")} ₫; mỗi ${form.shipping_distance_step_km} km tiếp theo cộng ${Number(form.shipping_distance_step_fee || 0).toLocaleString("vi-VN")} ₫.`}</p>
             <div className="grid-2">
-              <label className="field">
-                <span>Cước tối thiểu cho {form.shipping_base_distance_km} km đầu (₫)</span>
-                <input
-                  type="number"
-                  className="input"
-                  min="0"
-                  step="1000"
-                  required
-                  value={form.shipping_base_fee}
-                  onChange={(e) => setForm({ ...form, shipping_base_fee: e.target.value })}
-                />
-              </label>
-              <label className="field">
-                <span>Khoảng cách đã gồm trong cước đầu (km)</span>
-                <input
-                  type="number"
-                  className="input"
-                  min="0.1"
-                  step="0.1"
-                  required
-                  value={form.shipping_base_distance_km}
-                  onChange={(e) => setForm({ ...form, shipping_base_distance_km: e.target.value })}
-                />
-              </label>
-              <label className="field"><span>Phí mỗi km tiếp theo (₫)</span><input type="number" className="input" min="0" step="1000" value={form.shipping_per_km_fee} onChange={(e) => setForm({ ...form, shipping_per_km_fee: e.target.value })} /></label>
-              <label className="field"><span>Phụ phí hỏa tốc (₫)</span><input type="number" className="input" min="0" step="1000" value={form.shipping_express_fee} onChange={(e) => setForm({ ...form, shipping_express_fee: e.target.value })} /></label>
-              <label className="field"><span>Làm tròn tổng cước lên bội số (₫)</span><input type="number" className="input" min="1" step="1000" value={form.shipping_rounding_increment} onChange={(e) => setForm({ ...form, shipping_rounding_increment: e.target.value })} /></label>
-              <label className="field"><span>Miễn phí vận chuyển từ (₫)</span><input type="number" className="input" min="0" step="10000" value={form.free_ship_from} onChange={(e) => setForm({ ...form, free_ship_from: e.target.value })} /></label>
-              <label className="field"><span>Phụ phí trọng lượng mỗi kg (₫)</span><input type="number" className="input" min="0" step="1000" placeholder="Để trống nếu chưa cấu hình" value={form.shipping_weight_fee_per_kg} onChange={(e) => setForm({ ...form, shipping_weight_fee_per_kg: e.target.value })} /></label>
+              <label className="field"><span>Miễn phí đến (km)</span><input type="number" className="input" min="0" step="0.1" required value={form.shipping_free_distance_km} onChange={(e) => setForm({ ...form, shipping_free_distance_km: e.target.value })} /></label>
+              <label className="field"><span>Ngưỡng kết thúc dải cước đầu (km)</span><input type="number" className="input" min="0.1" step="0.1" required value={form.shipping_first_band_end_km} onChange={(e) => setForm({ ...form, shipping_first_band_end_km: e.target.value })} /></label>
+              <label className="field"><span>Cước từ sau ngưỡng miễn phí đến hết dải đầu (₫)</span><input type="number" className="input" min="0" step="1000" required value={form.shipping_first_band_fee} onChange={(e) => setForm({ ...form, shipping_first_band_fee: e.target.value })} /></label>
+              <label className="field"><span>Độ dài mỗi dải tiếp theo (km)</span><input type="number" className="input" min="0.1" step="0.1" required value={form.shipping_distance_step_km} onChange={(e) => setForm({ ...form, shipping_distance_step_km: e.target.value })} /></label>
+              <label className="field"><span>Phí cộng thêm mỗi dải (₫)</span><input type="number" className="input" min="0" step="1000" required value={form.shipping_distance_step_fee} onChange={(e) => setForm({ ...form, shipping_distance_step_fee: e.target.value })} /></label>
               <label className="field"><span>Tốc độ dự phòng khi API thiếu ETA (km/h)</span><input type="number" className="input" min="1" max="120" value={form.shipping_fallback_speed_kmh} onChange={(e) => setForm({ ...form, shipping_fallback_speed_kmh: e.target.value })} /></label>
               <label className="field"><span>Thời gian chuẩn bị (phút)</span><input type="number" className="input" min="0" value={form.shipping_preparation_minutes} onChange={(e) => setForm({ ...form, shipping_preparation_minutes: e.target.value })} /></label>
               <label className="field"><span>Thời gian giao nhận (phút)</span><input type="number" className="input" min="0" value={form.shipping_handover_minutes} onChange={(e) => setForm({ ...form, shipping_handover_minutes: e.target.value })} /></label>
               <label className="field"><span>Thời gian phát sinh (phút)</span><input type="number" className="input" min="0" value={form.shipping_additional_delay_minutes} onChange={(e) => setForm({ ...form, shipping_additional_delay_minutes: e.target.value })} /></label>
-              <label className="field full"><span>Bảng phụ phí thể tích (JSON; max_m3 null là ngưỡng cuối không giới hạn)</span><textarea className="input" rows={6} value={form.shipping_volume_tiers_json} onChange={(e) => setForm({ ...form, shipping_volume_tiers_json: e.target.value })} /></label>
             </div>
             <div className="grid-2">
-              <label className="field"><span>Cước mặc định đơn quầy cũ (₫)</span><input type="number" className="input" min="0" step="1000" value={form.shipping_fee} onChange={(e) => setForm({ ...form, shipping_fee: e.target.value })} /></label>
+              <label className="field"><span>Cước dự phòng cho đơn quầy chưa có vị trí (₫)</span><input type="number" className="input" min="0" step="1000" value={form.shipping_fee} onChange={(e) => setForm({ ...form, shipping_fee: e.target.value })} /></label>
             </div>
           </section>
 
@@ -268,14 +237,15 @@ function Settings() {
             <h3 className="section-title">Lịch sử phiên bản bảng giá</h3>
             <p className="small muted">Mỗi lần thay đổi cước hoặc giới hạn vận chuyển sẽ lưu snapshot cấu hình và phiên bản áp dụng.</p>
             {!history.length ? <p className="small muted">Chưa có lần thay đổi bảng giá nào được ghi nhận.</p> : <div className="table-wrap"><table className="table">
-              <thead><tr><th>Phiên bản</th><th>Thời điểm</th><th>Cước đầu</th><th>Km tiếp</th><th>Hỏa tốc</th><th>Phụ phí m³</th></tr></thead>
+              <thead><tr><th>Phiên bản</th><th>Thời điểm</th><th>Miễn phí đến (km)</th><th>Dải đầu đến (km)</th><th>Phí dải đầu</th><th>Bước tiếp (km)</th><th>Phí mỗi bước</th></tr></thead>
               <tbody>{history.map((item) => <tr key={item.id}>
                 <td>v{item.version}</td>
                 <td>{new Date(item.created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</td>
-                <td>{Number(item.snapshot?.shipping?.base_fee || 0).toLocaleString("vi-VN")} ₫</td>
-                <td>{Number(item.snapshot?.shipping?.per_km_fee || 0).toLocaleString("vi-VN")} ₫</td>
-                <td>{Number(item.snapshot?.shipping?.express_fee || 0).toLocaleString("vi-VN")} ₫</td>
-                <td>{(item.snapshot?.shipping?.volume_tiers || []).map((tier) => `${tier.max_m3 ?? "∞"}: ${Number(tier.fee).toLocaleString("vi-VN")} ₫`).join(" · ")}</td>
+                <td>{item.snapshot?.shipping?.free_distance_km ?? "—"}</td>
+                <td>{item.snapshot?.shipping?.first_band_end_km ?? "—"}</td>
+                <td>{Number(item.snapshot?.shipping?.first_band_fee || 0).toLocaleString("vi-VN")} ₫</td>
+                <td>{item.snapshot?.shipping?.distance_step_km ?? "—"}</td>
+                <td>{Number(item.snapshot?.shipping?.distance_step_fee || 0).toLocaleString("vi-VN")} ₫</td>
               </tr>)}</tbody>
             </table></div>}
           </section>

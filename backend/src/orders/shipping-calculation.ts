@@ -1,5 +1,4 @@
 export type DeliveryType = 'STANDARD' | 'EXPRESS';
-export const MAX_SHIPPING_FEE = 150_000;
 
 export interface VolumeTier { max_m3: number | null; fee: number }
 
@@ -11,6 +10,12 @@ export interface ShippingRules {
   expressMaxDistanceKm: number;
   expressMaxVolumeM3: number;
   expressMaxWeightKg: number | null;
+  freeDistanceKm?: number;
+  firstDistanceBandEndKm?: number;
+  firstDistanceBandFee?: number;
+  nextDistanceStepKm?: number;
+  nextDistanceStepFee?: number;
+  // Legacy settings remain in the type for compatibility with existing callers.
   baseDistanceKm: number;
   baseFee: number;
   perKmFee: number;
@@ -122,22 +127,25 @@ export function volumeFee(volumeM3: number, tiers: VolumeTier[]): number | null 
   return Math.max(0, Math.trunc(last.fee + steps * feeStep));
 }
 
+export function distanceShippingFee(distanceKm: number, rules: ShippingRules): number {
+  const freeDistanceKm = rules.freeDistanceKm ?? 20;
+  const firstBandEndKm = rules.firstDistanceBandEndKm ?? 30;
+  const firstBandFee = rules.firstDistanceBandFee ?? 150_000;
+  const nextStepKm = rules.nextDistanceStepKm ?? 10;
+  const nextStepFee = rules.nextDistanceStepFee ?? 50_000;
+  if (distanceKm <= freeDistanceKm) return 0;
+  if (distanceKm <= firstBandEndKm) return Math.max(0, Math.trunc(firstBandFee));
+  const additionalSteps = Math.ceil((distanceKm - firstBandEndKm) / nextStepKm);
+  return Math.max(0, Math.trunc(firstBandFee + additionalSteps * nextStepFee));
+}
+
 export function buildShippingBreakdown(input: {
   distanceKm: number; volumeM3: number; weightKg: number; subtotal: number; deliveryType: DeliveryType; rules: ShippingRules;
 }) {
-  const { distanceKm, volumeM3, weightKg, subtotal, deliveryType, rules } = input;
-  const distanceFee = Math.ceil(rules.baseFee + Math.max(0, distanceKm - rules.baseDistanceKm) * rules.perKmFee);
-  const packagingFee = volumeFee(volumeM3, rules.volumeTiers);
-  const weightFee = rules.weightFeePerKg === null ? 0 : Math.ceil(weightKg * rules.weightFeePerKg);
-  const expressFee = deliveryType === 'EXPRESS' ? rules.expressFee : 0;
-  const rawTotal = distanceFee + (packagingFee ?? 0) + weightFee + expressFee;
-  const increment = Math.max(1, rules.roundingIncrement);
-  const roundedTotal = Math.ceil(rawTotal / increment) * increment;
-  const cappedTotal = Math.min(MAX_SHIPPING_FEE, roundedTotal);
-  const capDiscount = roundedTotal - cappedTotal;
-  const discount = subtotal >= rules.freeShipFrom ? cappedTotal : 0;
+  const { distanceKm, rules } = input;
+  const distanceFee = distanceShippingFee(distanceKm, rules);
   return {
-    distanceFee, volumeFee: packagingFee, weightFee, expressFee, capDiscount, discount,
-    totalFee: Math.max(0, cappedTotal - discount),
+    distanceFee, volumeFee: 0, weightFee: 0, expressFee: 0, discount: 0,
+    totalFee: distanceFee,
   };
 }

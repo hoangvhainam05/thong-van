@@ -61,7 +61,7 @@ export default function ProductDetail() {
             <button className="btn secondary lg" disabled={!p.stock} onClick={() => actions.addToCart(p.id, qty)}>Thêm vào giỏ</button>
             <button className="btn lg" disabled={!p.stock} onClick={() => { actions.addToCart(p.id, qty); router.push("/cart"); }}>Mua ngay</button>
           </div>
-          {shippingStatus === "ready" && <p className="small muted">Miễn phí giao cho đơn từ {vnd(state.settings.freeShipFrom)}. Bạn chọn ngày và khung giờ nhận hàng ở bước thanh toán.</p>}
+          {shippingStatus === "ready" && <p className="small muted">Phí giao hàng tính theo quãng đường thực tế, hệ thống sẽ báo chính xác ở bước thanh toán.</p>}
         </div>
       </div>
       {related.length > 0 && (

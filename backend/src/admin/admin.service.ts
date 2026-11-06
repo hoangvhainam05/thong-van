@@ -13,6 +13,11 @@ function normalizedShippingSettings(row: SystemSetting) {
     : fallbackTiers;
   return JSON.stringify({
     shippingFee: Number(row.shippingFee ?? 150000), freeShipFrom: Number(row.freeShipFrom ?? 5000000),
+    freeDistanceKm: Number(row.shippingFreeDistanceKm ?? 20),
+    firstDistanceBandEndKm: Number(row.shippingFirstBandEndKm ?? 30),
+    firstDistanceBandFee: Number(row.shippingFirstBandFee ?? 150000),
+    nextDistanceStepKm: Number(row.shippingDistanceStepKm ?? 10),
+    nextDistanceStepFee: Number(row.shippingDistanceStepFee ?? 50000),
     dayStart: row.deliveryDayStart || '08:00', dayEnd: row.deliveryDayEnd || '18:00',
     cutoff: row.expressCutoffTime || '16:00', expressMinutes: Number(row.expressMaxMinutes ?? 300),
     expressDistance: Number(row.expressMaxDistanceKm ?? 10), expressVolume: Number(row.expressMaxVolumeM3 ?? 0.1),
@@ -79,6 +84,11 @@ export class AdminService {
         base_distance_km: Number(setting?.shipping_base_distance_km ?? 2),
         base_fee: Number(setting?.shipping_base_fee ?? 15000),
         per_km_fee: Number(setting?.shipping_per_km_fee ?? 5000),
+        free_distance_km: Number(setting?.shipping_free_distance_km ?? 20),
+        first_band_end_km: Number(setting?.shipping_first_band_end_km ?? 30),
+        first_band_fee: Number(setting?.shipping_first_band_fee ?? 150000),
+        distance_step_km: Number(setting?.shipping_distance_step_km ?? 10),
+        distance_step_fee: Number(setting?.shipping_distance_step_fee ?? 50000),
         express_fee: Number(setting?.shipping_express_fee ?? 10000),
         rounding_increment: Number(setting?.shipping_rounding_increment ?? 1000),
         volume_tiers: setting?.shipping_volume_tiers ? (typeof setting.shipping_volume_tiers === 'string' ? JSON.parse(setting.shipping_volume_tiers) : setting.shipping_volume_tiers) : [
@@ -125,6 +135,15 @@ export class AdminService {
       row = repo.create({ id: 1 });
     }
     const previousRate = normalizedShippingSettings(row);
+    const freeDistanceKm = Number(body.shipping_free_distance_km ?? row.shippingFreeDistanceKm ?? 20);
+    const firstBandEndKm = Number(body.shipping_first_band_end_km ?? row.shippingFirstBandEndKm ?? 30);
+    const distanceStepKm = Number(body.shipping_distance_step_km ?? row.shippingDistanceStepKm ?? 10);
+    if (firstBandEndKm <= freeDistanceKm) {
+      throw new BadRequestException('Ngưỡng kết thúc cước đầu phải lớn hơn ngưỡng miễn phí theo quãng đường.');
+    }
+    if (distanceStepKm <= 0) {
+      throw new BadRequestException('Mỗi bước quãng đường tiếp theo phải lớn hơn 0 km.');
+    }
     if (body.shipping_fee !== undefined) row.shippingFee = body.shipping_fee;
     if (body.free_ship_from !== undefined) row.freeShipFrom = body.free_ship_from;
     if (body.express_cutoff_time !== undefined) row.expressCutoffTime = body.express_cutoff_time;
@@ -135,6 +154,11 @@ export class AdminService {
     if (body.shipping_base_distance_km !== undefined) row.shippingBaseDistanceKm = String(body.shipping_base_distance_km);
     if (body.shipping_base_fee !== undefined) row.shippingBaseFee = body.shipping_base_fee;
     if (body.shipping_per_km_fee !== undefined) row.shippingPerKmFee = body.shipping_per_km_fee;
+    if (body.shipping_free_distance_km !== undefined) row.shippingFreeDistanceKm = String(body.shipping_free_distance_km);
+    if (body.shipping_first_band_end_km !== undefined) row.shippingFirstBandEndKm = String(body.shipping_first_band_end_km);
+    if (body.shipping_first_band_fee !== undefined) row.shippingFirstBandFee = body.shipping_first_band_fee;
+    if (body.shipping_distance_step_km !== undefined) row.shippingDistanceStepKm = String(body.shipping_distance_step_km);
+    if (body.shipping_distance_step_fee !== undefined) row.shippingDistanceStepFee = body.shipping_distance_step_fee;
     if (body.shipping_express_fee !== undefined) row.shippingExpressFee = body.shipping_express_fee;
     if (body.shipping_rounding_increment !== undefined) row.shippingRoundingIncrement = body.shipping_rounding_increment;
     if (body.shipping_volume_tiers !== undefined) {

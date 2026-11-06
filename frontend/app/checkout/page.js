@@ -553,12 +553,7 @@ function Checkout() {
               <div className="row between"><span className="muted">Thời gian giao dự kiến</span><span>{shippingQuote.estimatedDeliveryMinutes} phút</span></div>
               <div className="row between"><span className="muted">ETA sớm nhất theo thời gian hiện tại</span><span>{new Date(shippingQuote.estimatedArrivalAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span></div>
               <div className="divider" />
-              <div className="row between"><span className="muted">Cước khoảng cách</span><span>{vnd(shippingQuote.shippingBreakdown.distanceFee)}</span></div>
-              <div className="row between"><span className="muted">Phụ phí thể tích</span><span>{vnd(shippingQuote.shippingBreakdown.volumeFee)}</span></div>
-              <div className="row between"><span className="muted">Phụ phí trọng lượng</span><span>{vnd(shippingQuote.shippingBreakdown.weightFee)}</span></div>
-              {deliveryType === "EXPRESS" && <div className="row between"><span className="muted">Phụ phí hỏa tốc</span><span>{vnd(shippingQuote.shippingBreakdown.expressFee)}</span></div>}
-              {shippingQuote.shippingBreakdown.capDiscount > 0 && <div className="row between"><span className="muted">Giới hạn cước giao hàng</span><span>−{vnd(shippingQuote.shippingBreakdown.capDiscount)}</span></div>}
-              {shippingQuote.shippingBreakdown.discount > 0 && <div className="row between"><span className="muted">Ưu đãi vận chuyển</span><span>−{vnd(shippingQuote.shippingBreakdown.discount)}</span></div>}
+              <div className="row between"><span className="muted">Cước theo quãng đường thực tế</span><span>{vnd(shippingQuote.shippingBreakdown.distanceFee)}</span></div>
             </>}
             <div className="row between"><b>Phí giao hàng</b><span>{quoteLoading ? "Đang tính…" : shippingQuote?.quoteAvailable ? vnd(shippingQuote.shippingBreakdown.totalFee) : "Chưa báo giá"}</span></div>
           </div>

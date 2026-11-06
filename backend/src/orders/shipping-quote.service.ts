@@ -92,16 +92,13 @@ export class ShippingQuoteService {
     }
 
     if (packageIssues.length) return this.unavailable(packageIssues, deliveryType, volumeM3, weightKg, packageCount, rules, warehouse.id, route.distanceKm);
-    const volumeFee = buildShippingBreakdown({ distanceKm: route.distanceKm, volumeM3, weightKg, subtotal, deliveryType, rules }).volumeFee;
-    if (volumeFee === null) return this.unavailable(['Thể tích đóng gói vượt 0,15 m³; cần báo giá riêng.'], deliveryType, volumeM3, weightKg, packageCount, rules, warehouse.id, route.distanceKm);
 
     const eligibleVehicles = await this.vehicles.find({ where: { active: true } });
     const hasVehicleCapacity = eligibleVehicles.some((vehicle) => Number(vehicle.capacityM3) >= volumeM3 && Number(vehicle.capacityKg) >= weightKg);
     const estimatedDeliveryMinutes = etaMinutes(route.distanceKm, route.travelMinutes, rules);
     const express = expressEligibility({ acceptedAt, distanceKm: route.distanceKm, volumeM3, weightKg, durationMinutes: estimatedDeliveryMinutes, hasStock, hasVehicleCapacity, rules });
     const estimatedArrivalAt = deliveryType === 'EXPRESS' ? express.estimatedArrivalAt : standardArrivalAt(acceptedAt, estimatedDeliveryMinutes, rules);
-    const pricedDeliveryType = deliveryType === 'EXPRESS' && express.eligible ? 'EXPRESS' : 'STANDARD';
-    const breakdown = buildShippingBreakdown({ distanceKm: route.distanceKm, volumeM3, weightKg, subtotal, deliveryType: pricedDeliveryType, rules });
+    const breakdown = buildShippingBreakdown({ distanceKm: route.distanceKm, volumeM3, weightKg, subtotal, deliveryType, rules });
     const totalFee = Math.max(0, breakdown.totalFee);
     return {
       quoteAvailable: true,
@@ -128,7 +125,6 @@ export class ShippingQuoteService {
         deadlineAt: express.deadlineAt.toISOString(),
       },
       shippingRateVersion: rules.rateVersion,
-      freeShippingFrom: rules.freeShipFrom,
       packageDimensionsCm: packageCount === 1 && rows.length === 1 && packageMetrics.get(rows[0].product.id)?.dimensions ? {
         length: packageMetrics.get(rows[0].product.id)!.dimensions![0],
         width: packageMetrics.get(rows[0].product.id)!.dimensions![1],
@@ -155,6 +151,11 @@ export class ShippingQuoteService {
       expressCutoff: row?.expressCutoffTime || '16:00', expressMaxMinutes: Number(row?.expressMaxMinutes ?? 300),
       expressMaxDistanceKm: Number(row?.expressMaxDistanceKm ?? 10), expressMaxVolumeM3: Number(row?.expressMaxVolumeM3 ?? 0.1),
       expressMaxWeightKg: row?.expressMaxWeightKg == null ? null : Number(row.expressMaxWeightKg),
+      freeDistanceKm: Number(row?.shippingFreeDistanceKm ?? 20),
+      firstDistanceBandEndKm: Number(row?.shippingFirstBandEndKm ?? 30),
+      firstDistanceBandFee: Number(row?.shippingFirstBandFee ?? 150000),
+      nextDistanceStepKm: Number(row?.shippingDistanceStepKm ?? 10),
+      nextDistanceStepFee: Number(row?.shippingDistanceStepFee ?? 50000),
       baseDistanceKm: Number(row?.shippingBaseDistanceKm ?? 2), baseFee: Number(row?.shippingBaseFee ?? 15000),
       perKmFee: Number(row?.shippingPerKmFee ?? 5000), expressFee: Number(row?.shippingExpressFee ?? 10000),
       roundingIncrement: Number(row?.shippingRoundingIncrement ?? 1000), volumeTiers: parseTiers(row?.shippingVolumeTiers ?? null),
@@ -177,7 +178,6 @@ export class ShippingQuoteService {
       inventoryAvailable: false, vehicleCapacityAvailable: false,
       expressEligibility: { eligible: false, reasons, maxDeliveryMinutes: rules.expressMaxMinutes, cutoffTime: rules.expressCutoff },
       shippingRateVersion: rules.rateVersion,
-      freeShippingFrom: rules.freeShipFrom,
     };
   }
 }

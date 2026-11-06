@@ -116,15 +116,9 @@ export class OrdersService {
       }
 
       const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
-      const freeFrom = setting ? Number(setting.freeShipFrom) : this.config.get<number>('shipping.freeFrom', 5_000_000);
       const defaultFee = setting ? Number(setting.shippingFee) : this.config.get<number>('shipping.fee', 150_000);
-      let shippingFee = quote?.shippingBreakdown?.totalFee ?? (subtotal >= freeFrom ? 0 : defaultFee);
-      let shippingDiscount = quote?.shippingBreakdown?.discount ?? null;
-      if (quote?.shippingBreakdown && quote.freeShippingFrom !== undefined) {
-        const roundedShipping = quote.shippingBreakdown.totalFee + quote.shippingBreakdown.discount;
-        shippingFee = subtotal >= quote.freeShippingFrom ? 0 : roundedShipping;
-        shippingDiscount = Math.max(0, roundedShipping - shippingFee);
-      }
+      const shippingFee = quote?.shippingBreakdown?.totalFee ?? defaultFee;
+      const shippingDiscount = quote?.shippingBreakdown?.discount ?? null;
       const total = subtotal + shippingFee;
       if (body.payment_method === PaymentMethod.COUNTER_CASH && source !== 'COUNTER') {
         throw new BadRequestException('Thanh toán tiền mặt tại quầy chỉ dùng khi nhân viên nhập đơn quầy.');

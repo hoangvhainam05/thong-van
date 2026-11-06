@@ -44,6 +44,21 @@ export class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(100000000)
   shipping_per_km_fee?: number;
 
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(500)
+  shipping_free_distance_km?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.01) @Max(500)
+  shipping_first_band_end_km?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000000)
+  shipping_first_band_fee?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.01) @Max(500)
+  shipping_distance_step_km?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100000000)
+  shipping_distance_step_fee?: number;
+
   @IsOptional() @IsInt() @Min(0) @Max(100000000)
   shipping_express_fee?: number;
 

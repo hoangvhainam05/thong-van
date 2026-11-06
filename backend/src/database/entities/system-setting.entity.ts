@@ -25,6 +25,11 @@ export class SystemSetting {
   @Column({ name: 'shipping_base_distance_km', type: 'decimal', precision: 7, scale: 2, default: 2 }) shippingBaseDistanceKm!: string;
   @Column({ name: 'shipping_base_fee', type: 'int', default: 15000 }) shippingBaseFee!: number;
   @Column({ name: 'shipping_per_km_fee', type: 'int', default: 5000 }) shippingPerKmFee!: number;
+  @Column({ name: 'shipping_free_distance_km', type: 'decimal', precision: 7, scale: 2, default: 20 }) shippingFreeDistanceKm!: string;
+  @Column({ name: 'shipping_first_band_end_km', type: 'decimal', precision: 7, scale: 2, default: 30 }) shippingFirstBandEndKm!: string;
+  @Column({ name: 'shipping_first_band_fee', type: 'int', default: 150000 }) shippingFirstBandFee!: number;
+  @Column({ name: 'shipping_distance_step_km', type: 'decimal', precision: 7, scale: 2, default: 10 }) shippingDistanceStepKm!: string;
+  @Column({ name: 'shipping_distance_step_fee', type: 'int', default: 50000 }) shippingDistanceStepFee!: number;
   @Column({ name: 'shipping_express_fee', type: 'int', default: 10000 }) shippingExpressFee!: number;
   @Column({ name: 'shipping_rounding_increment', type: 'int', default: 1000 }) shippingRoundingIncrement!: number;
   @Column({ name: 'shipping_volume_tiers', type: 'json', nullable: true }) shippingVolumeTiers!: Array<{ max_m3: number | null; fee: number }> | null;
