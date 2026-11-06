@@ -1,8 +1,29 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsSelect, Repository } from 'typeorm';
 import { Product } from '../database/entities';
 import { CreateProductDto, UpdateProductDto } from './product.dto';
+
+const PUBLIC_PRODUCT_FIELDS: FindOptionsSelect<Product> = {
+  id: true,
+  sku: true,
+  name: true,
+  brand: true,
+  category: true,
+  price: true,
+  oldPrice: true,
+  volumeM3: true,
+  weightKg: true,
+  installMinutes: true,
+  images: true,
+  imageUrl: true,
+  imagePublicId: true,
+  warrantyMonths: true,
+  maintenanceIntervalMonths: true,
+  stock: true,
+  description: true,
+  active: true,
+};
 
 @Injectable()
 export class ProductsService {
@@ -10,6 +31,7 @@ export class ProductsService {
 
   async list() {
     const rows = await this.products.find({
+      select: PUBLIC_PRODUCT_FIELDS,
       where: { active: true },
       order: { category: 'ASC', name: 'ASC' },
     });
@@ -22,7 +44,7 @@ export class ProductsService {
   }
 
   async findPublic(id: number) {
-    const product = await this.products.findOne({ where: { id, active: true } });
+    const product = await this.products.findOne({ where: { id, active: true }, select: PUBLIC_PRODUCT_FIELDS });
     if (!product) throw new NotFoundException('Không tìm thấy sản phẩm đang bán.');
     return this.toView(product);
   }
