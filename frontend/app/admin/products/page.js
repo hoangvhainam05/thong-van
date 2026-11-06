@@ -34,10 +34,16 @@ function Products() {
     const savedToken = loadToken();
     if (!savedToken) return;
     setToken(savedToken);
-    actions.loadProducts(savedToken).then((ok) => {
-      setConnected(ok);
-      if (!ok) setConnectionError("Không tải được danh sách quản trị. Kiểm tra quyền tài khoản và backend.");
-      else actions.loadOrders(savedToken);
+    actions.loadProducts(savedToken).then(async (result) => {
+      setConnected(result.ok);
+      if (!result.ok) {
+        setConnectionError(result.error?.message || "Không tải được danh sách quản trị. Kiểm tra quyền tài khoản và backend.");
+        if (result.error?.status === 403) {
+          try { await actions.refreshSession(); } catch {}
+        }
+      } else {
+        actions.loadOrders(savedToken);
+      }
     });
   }, []);
 

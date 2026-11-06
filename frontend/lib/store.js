@@ -717,10 +717,10 @@ export function StoreProvider({ children }) {
           const products = await api(token ? "/api/products/admin" : "/api/products", { token });
           if (!Array.isArray(products)) throw new Error("Dữ liệu sản phẩm từ máy chủ không hợp lệ.");
           mutate((d) => { d.products = products; });
-          return true;
+          return { ok: true };
         } catch (error) {
           toast(error.message || "Không tải được sản phẩm từ máy chủ.", "bad");
-          return false;
+          return { ok: false, error };
         }
       },
       async loadOrders(token = loadToken()) {
