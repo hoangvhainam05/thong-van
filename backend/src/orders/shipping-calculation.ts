@@ -1,4 +1,5 @@
 export type DeliveryType = 'STANDARD' | 'EXPRESS';
+export const MAX_SHIPPING_FEE = 150_000;
 
 export interface VolumeTier { max_m3: number | null; fee: number }
 
@@ -103,10 +104,22 @@ export function expressEligibility(input: {
 }
 
 export function volumeFee(volumeM3: number, tiers: VolumeTier[]): number | null {
-  for (const tier of [...tiers].sort((a, b) => (a.max_m3 ?? Infinity) - (b.max_m3 ?? Infinity))) {
+  const sorted = [...tiers].sort((a, b) => (a.max_m3 ?? Infinity) - (b.max_m3 ?? Infinity));
+  for (const tier of sorted) {
     if (tier.max_m3 === null || volumeM3 <= tier.max_m3) return Math.max(0, Math.trunc(tier.fee));
   }
-  return null;
+
+  const finiteTiers = sorted.filter((tier): tier is VolumeTier & { max_m3: number } => tier.max_m3 !== null);
+  const last = finiteTiers[finiteTiers.length - 1];
+  if (!last) return null;
+  const previous = finiteTiers[finiteTiers.length - 2];
+  if (!previous || last.max_m3 <= previous.max_m3) return Math.max(0, Math.trunc(last.fee));
+
+  // Continue the last configured volume and fee step for larger packages.
+  const volumeStep = last.max_m3 - previous.max_m3;
+  const feeStep = Math.max(0, last.fee - previous.fee);
+  const steps = Math.ceil((volumeM3 - last.max_m3) / volumeStep);
+  return Math.max(0, Math.trunc(last.fee + steps * feeStep));
 }
 
 export function buildShippingBreakdown(input: {
@@ -120,9 +133,11 @@ export function buildShippingBreakdown(input: {
   const rawTotal = distanceFee + (packagingFee ?? 0) + weightFee + expressFee;
   const increment = Math.max(1, rules.roundingIncrement);
   const roundedTotal = Math.ceil(rawTotal / increment) * increment;
-  const discount = subtotal >= rules.freeShipFrom ? roundedTotal : 0;
+  const cappedTotal = Math.min(MAX_SHIPPING_FEE, roundedTotal);
+  const capDiscount = roundedTotal - cappedTotal;
+  const discount = subtotal >= rules.freeShipFrom ? cappedTotal : 0;
   return {
-    distanceFee, volumeFee: packagingFee, weightFee, expressFee, discount,
-    totalFee: Math.max(0, roundedTotal - discount),
+    distanceFee, volumeFee: packagingFee, weightFee, expressFee, capDiscount, discount,
+    totalFee: Math.max(0, cappedTotal - discount),
   };
 }

@@ -557,6 +557,7 @@ function Checkout() {
               <div className="row between"><span className="muted">Phụ phí thể tích</span><span>{vnd(shippingQuote.shippingBreakdown.volumeFee)}</span></div>
               <div className="row between"><span className="muted">Phụ phí trọng lượng</span><span>{vnd(shippingQuote.shippingBreakdown.weightFee)}</span></div>
               {deliveryType === "EXPRESS" && <div className="row between"><span className="muted">Phụ phí hỏa tốc</span><span>{vnd(shippingQuote.shippingBreakdown.expressFee)}</span></div>}
+              {shippingQuote.shippingBreakdown.capDiscount > 0 && <div className="row between"><span className="muted">Giới hạn cước giao hàng</span><span>−{vnd(shippingQuote.shippingBreakdown.capDiscount)}</span></div>}
               {shippingQuote.shippingBreakdown.discount > 0 && <div className="row between"><span className="muted">Ưu đãi vận chuyển</span><span>−{vnd(shippingQuote.shippingBreakdown.discount)}</span></div>}
             </>}
             <div className="row between"><b>Phí giao hàng</b><span>{quoteLoading ? "Đang tính…" : shippingQuote?.quoteAvailable ? vnd(shippingQuote.shippingBreakdown.totalFee) : "Chưa báo giá"}</span></div>
