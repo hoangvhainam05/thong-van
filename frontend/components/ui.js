@@ -98,14 +98,24 @@ export function Seg({ value, onChange, items }) {
   );
 }
 
-export function Loading() {
-  return <div className="loading-screen">Đang tải dữ liệu…</div>;
+export function Loading({ message = "Đang tải dữ liệu…" }) {
+  return (
+    <div className="loading-screen" role="status" aria-live="polite">
+      <div className="spinner" aria-hidden="true" />
+      <span>{message}</span>
+    </div>
+  );
 }
 
 export function Toasts({ items }) {
   return (
     <div className="toasts" role="status" aria-live="polite">
-      {items.map((t) => <div key={t.id} className={`toast ${t.tone}`}>{t.message}</div>)}
+      {items.map((t) => (
+        <div key={t.id} className={`toast ${t.tone}`}>
+          <span className="toast-icon" aria-hidden="true">{t.tone === "bad" ? "✕" : "✓"}</span>
+          <span>{t.message}</span>
+        </div>
+      ))}
     </div>
   );
 }
