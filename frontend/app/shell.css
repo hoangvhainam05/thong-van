@@ -100,6 +100,7 @@
 .admin-main { min-width: 0; }
 .admin-top { height: 60px; background: var(--paper); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; padding: 0 24px; position: sticky; top: 0; z-index: 20; }
 .admin-content { padding: 24px; max-width: 1360px; }
+.counter-orders-page { width: 100%; max-width: 980px; margin-inline: auto; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .page-head p { color: var(--muted); margin-top: 4px; font-size: 14px; }
 .menu-toggle { display: none; }

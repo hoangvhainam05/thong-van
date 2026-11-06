@@ -143,87 +143,89 @@ function CounterOrders() {
 
   return (
     <>
-      <PageHead title="Đơn tại quầy" sub="Nhập thông tin khách và sản phẩm để tạo đơn giao hàng tại quầy." />
+      <div className="counter-orders-page">
+        <PageHead title="Đơn tại quầy" sub="Nhập thông tin khách và sản phẩm để tạo đơn giao hàng tại quầy." />
 
-      {successOrder && (
-        <div className="notice ok" role="status" style={{ marginBottom: 16 }}>
-          Đã tạo đơn <Link className="strong" href={`/admin/orders/${successOrder.id}`}>{successOrder.code}</Link>.
-        </div>
-      )}
-      {catalogStatus === "error" && <div className="notice bad" role="alert" style={{ marginBottom: 16 }}>Không tải được danh sách sản phẩm. Tải lại trang trước khi tạo đơn.</div>}
-
-      <form className="panel panel-pad" style={{ maxWidth: 980 }} onSubmit={submit} noValidate>
-        {Object.keys(errors).length > 0 && (
-          <div className="notice bad" role="alert" style={{ marginBottom: 18 }}>
-            {Object.values(errors)[0]} Vui lòng sửa trường được đánh dấu bên dưới.
+        {successOrder && (
+          <div className="notice ok" role="status" style={{ marginBottom: 16 }}>
+            Đã tạo đơn <Link className="strong" href={`/admin/orders/${successOrder.id}`}>{successOrder.code}</Link>.
           </div>
         )}
+        {catalogStatus === "error" && <div className="notice bad" role="alert" style={{ marginBottom: 16 }}>Không tải được danh sách sản phẩm. Tải lại trang trước khi tạo đơn.</div>}
 
-        <div className="form-grid">
-          <Field label="Tên khách">
-            <input id={FIELD_ID.customerName} className="input" autoComplete="name" maxLength={120} value={counter.customerName} onChange={(event) => update("customerName", event.target.value)} aria-invalid={Boolean(errors.customerName)} aria-describedby={errors.customerName ? "counter-customer-name-error" : undefined} />
-            {errors.customerName && <small id="counter-customer-name-error" style={{ color: "var(--stop)" }}>{errors.customerName}</small>}
-          </Field>
-          <Field label="Số điện thoại" hint="10–11 chữ số, bắt đầu bằng 0.">
-            <input id={FIELD_ID.phone} className="input" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={counter.phone} onChange={(event) => update("phone", event.target.value)} aria-invalid={Boolean(errors.phone)} aria-describedby={errors.phone ? "counter-phone-error" : undefined} />
-            {errors.phone && <small id="counter-phone-error" style={{ color: "var(--stop)" }}>{errors.phone}</small>}
-          </Field>
-          <Field label="Địa chỉ giao" full>
-            <input id={FIELD_ID.address} className="input" autoComplete="street-address" maxLength={255} value={counter.address} onChange={(event) => update("address", event.target.value)} aria-invalid={Boolean(errors.address)} aria-describedby={errors.address ? "counter-address-error" : undefined} />
-            {errors.address && <small id="counter-address-error" style={{ color: "var(--stop)" }}>{errors.address}</small>}
-          </Field>
-          <div className="full">
-            <button type="button" className="btn secondary" onClick={() => setPickerOpen(true)}>{counter.lat != null ? "Đã ghim vị trí · Chọn lại" : "Chọn vị trí trên bản đồ (không bắt buộc)"}</button>
-          </div>
-
-          <Field label="Sản phẩm">
-            <select id={FIELD_ID.product} className="input" value={counter.productId} onChange={(event) => update("productId", event.target.value)} aria-invalid={Boolean(errors.product)} aria-describedby={errors.product ? "counter-product-error" : undefined}>
-              <option value="">Chọn sản phẩm</option>
-              {state.products.filter((item) => item.active).map((item) => <option key={item.id} value={item.id} disabled={item.stock < 1}>{item.name} · còn {item.stock}</option>)}
-            </select>
-            {errors.product && <small id="counter-product-error" style={{ color: "var(--stop)" }}>{errors.product}</small>}
-          </Field>
-          <Field label="Số lượng" hint={product ? `Tồn hiện tại: ${product.stock} · Tối đa ${Math.min(product.stock, 20)} chiếc.` : "Chọn sản phẩm để xem tồn kho."}>
-            <input id={FIELD_ID.quantity} className="input" type="number" min="1" max={product ? Math.min(product.stock, 20) : 20} step="1" value={counter.quantity} onChange={(event) => update("quantity", event.target.value)} aria-invalid={Boolean(errors.quantity || quantityOverStock)} aria-describedby={errors.quantity || (quantityOverStock && Number.isInteger(quantity)) ? "counter-quantity-error" : undefined} />
-            {(errors.quantity || (quantityOverStock && Number.isInteger(quantity))) && <small id="counter-quantity-error" style={{ color: "var(--stop)" }}>{errors.quantity || `Chỉ còn ${product.stock} sản phẩm trong kho.`}</small>}
-          </Field>
-          <Field label="Ngày giao">
-            <input id={FIELD_ID.deliveryDate} className="input" type="date" min={today} value={counter.deliveryDate} onChange={(event) => update("deliveryDate", event.target.value)} aria-invalid={Boolean(errors.deliveryDate)} aria-describedby={errors.deliveryDate ? "counter-delivery-date-error" : undefined} />
-            {errors.deliveryDate && <small id="counter-delivery-date-error" style={{ color: "var(--stop)" }}>{errors.deliveryDate}</small>}
-          </Field>
-          <div className="field">
-            <span>Khung giờ giao</span>
-            <div className="row" style={{ flexWrap: "nowrap" }}>
-              <input id={FIELD_ID.window} className="input" type="time" aria-label="Giờ bắt đầu" value={counter.start} onChange={(event) => update("start", event.target.value)} aria-invalid={Boolean(errors.window)} aria-describedby={errors.window ? "counter-window-error" : undefined} />
-              <span aria-hidden="true">đến</span>
-              <input className="input" type="time" aria-label="Giờ kết thúc" value={counter.end} onChange={(event) => update("end", event.target.value)} aria-invalid={Boolean(errors.window)} aria-describedby={errors.window ? "counter-window-error" : undefined} />
+        <form className="panel panel-pad" onSubmit={submit} noValidate>
+          {Object.keys(errors).length > 0 && (
+            <div className="notice bad" role="alert" style={{ marginBottom: 18 }}>
+              {Object.values(errors)[0]} Vui lòng sửa trường được đánh dấu bên dưới.
             </div>
-            {errors.window && <small id="counter-window-error" style={{ color: "var(--stop)" }}>{errors.window}</small>}
+          )}
+
+          <div className="form-grid">
+            <Field label="Tên khách">
+              <input id={FIELD_ID.customerName} className="input" autoComplete="name" maxLength={120} value={counter.customerName} onChange={(event) => update("customerName", event.target.value)} aria-invalid={Boolean(errors.customerName)} aria-describedby={errors.customerName ? "counter-customer-name-error" : undefined} />
+              {errors.customerName && <small id="counter-customer-name-error" style={{ color: "var(--stop)" }}>{errors.customerName}</small>}
+            </Field>
+            <Field label="Số điện thoại" hint="10–11 chữ số, bắt đầu bằng 0.">
+              <input id={FIELD_ID.phone} className="input" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={counter.phone} onChange={(event) => update("phone", event.target.value)} aria-invalid={Boolean(errors.phone)} aria-describedby={errors.phone ? "counter-phone-error" : undefined} />
+              {errors.phone && <small id="counter-phone-error" style={{ color: "var(--stop)" }}>{errors.phone}</small>}
+            </Field>
+            <Field label="Địa chỉ giao" full>
+              <input id={FIELD_ID.address} className="input" autoComplete="street-address" maxLength={255} value={counter.address} onChange={(event) => update("address", event.target.value)} aria-invalid={Boolean(errors.address)} aria-describedby={errors.address ? "counter-address-error" : undefined} />
+              {errors.address && <small id="counter-address-error" style={{ color: "var(--stop)" }}>{errors.address}</small>}
+            </Field>
+            <div className="full">
+              <button type="button" className="btn secondary" onClick={() => setPickerOpen(true)}>{counter.lat != null ? "Đã ghim vị trí · Chọn lại" : "Chọn vị trí trên bản đồ (không bắt buộc)"}</button>
+            </div>
+
+            <Field label="Sản phẩm">
+              <select id={FIELD_ID.product} className="input" value={counter.productId} onChange={(event) => update("productId", event.target.value)} aria-invalid={Boolean(errors.product)} aria-describedby={errors.product ? "counter-product-error" : undefined}>
+                <option value="">Chọn sản phẩm</option>
+                {state.products.filter((item) => item.active).map((item) => <option key={item.id} value={item.id} disabled={item.stock < 1}>{item.name} · còn {item.stock}</option>)}
+              </select>
+              {errors.product && <small id="counter-product-error" style={{ color: "var(--stop)" }}>{errors.product}</small>}
+            </Field>
+            <Field label="Số lượng" hint={product ? `Tồn hiện tại: ${product.stock} · Tối đa ${Math.min(product.stock, 20)} chiếc.` : "Chọn sản phẩm để xem tồn kho."}>
+              <input id={FIELD_ID.quantity} className="input" type="number" min="1" max={product ? Math.min(product.stock, 20) : 20} step="1" value={counter.quantity} onChange={(event) => update("quantity", event.target.value)} aria-invalid={Boolean(errors.quantity || quantityOverStock)} aria-describedby={errors.quantity || (quantityOverStock && Number.isInteger(quantity)) ? "counter-quantity-error" : undefined} />
+              {(errors.quantity || (quantityOverStock && Number.isInteger(quantity))) && <small id="counter-quantity-error" style={{ color: "var(--stop)" }}>{errors.quantity || `Chỉ còn ${product.stock} sản phẩm trong kho.`}</small>}
+            </Field>
+            <Field label="Ngày giao">
+              <input id={FIELD_ID.deliveryDate} className="input" type="date" min={today} value={counter.deliveryDate} onChange={(event) => update("deliveryDate", event.target.value)} aria-invalid={Boolean(errors.deliveryDate)} aria-describedby={errors.deliveryDate ? "counter-delivery-date-error" : undefined} />
+              {errors.deliveryDate && <small id="counter-delivery-date-error" style={{ color: "var(--stop)" }}>{errors.deliveryDate}</small>}
+            </Field>
+            <div className="field">
+              <span>Khung giờ giao</span>
+              <div className="row" style={{ flexWrap: "nowrap" }}>
+                <input id={FIELD_ID.window} className="input" type="time" aria-label="Giờ bắt đầu" value={counter.start} onChange={(event) => update("start", event.target.value)} aria-invalid={Boolean(errors.window)} aria-describedby={errors.window ? "counter-window-error" : undefined} />
+                <span aria-hidden="true">đến</span>
+                <input className="input" type="time" aria-label="Giờ kết thúc" value={counter.end} onChange={(event) => update("end", event.target.value)} aria-invalid={Boolean(errors.window)} aria-describedby={errors.window ? "counter-window-error" : undefined} />
+              </div>
+              {errors.window && <small id="counter-window-error" style={{ color: "var(--stop)" }}>{errors.window}</small>}
+            </div>
+
+            <Field label="Thanh toán">
+              <select className="input" value={counter.paymentMethod} onChange={(event) => update("paymentMethod", event.target.value)}>
+                <option value="COUNTER_CASH">Tiền mặt tại quầy</option>
+                <option value="COD">Tiền mặt khi nhận</option>
+                {bankAvailable && <option value="BANK">Chuyển khoản</option>}
+              </select>
+            </Field>
+            <Field label="Ghi chú" full>
+              <input id={FIELD_ID.note} className="input" maxLength={255} value={counter.note} onChange={(event) => update("note", event.target.value)} aria-invalid={Boolean(errors.note)} aria-describedby={errors.note ? "counter-note-error" : undefined} />
+              {errors.note && <small id="counter-note-error" style={{ color: "var(--stop)" }}>{errors.note}</small>}
+            </Field>
           </div>
 
-          <Field label="Thanh toán">
-            <select className="input" value={counter.paymentMethod} onChange={(event) => update("paymentMethod", event.target.value)}>
-              <option value="COUNTER_CASH">Tiền mặt tại quầy</option>
-              <option value="COD">Tiền mặt khi nhận</option>
-              {bankAvailable && <option value="BANK">Chuyển khoản</option>}
-            </select>
-          </Field>
-          <Field label="Ghi chú" full>
-            <input id={FIELD_ID.note} className="input" maxLength={255} value={counter.note} onChange={(event) => update("note", event.target.value)} aria-invalid={Boolean(errors.note)} aria-describedby={errors.note ? "counter-note-error" : undefined} />
-            {errors.note && <small id="counter-note-error" style={{ color: "var(--stop)" }}>{errors.note}</small>}
-          </Field>
-        </div>
-
-        <p className="small muted" style={{ marginTop: 18 }}>
-          Đơn tại quầy vẫn kiểm tra tồn kho. Đơn tiền mặt tại quầy được ghi nhận là đã thanh toán.
-          {product && <span> Tạm tính sản phẩm: <b>{vnd(product.price * Math.max(0, quantity || 0))}</b>.</span>}
-        </p>
-        <div className="row end" style={{ marginTop: 20, borderTop: "1px solid var(--line-soft)", paddingTop: 16 }}>
-          <button className="btn" type="submit" disabled={saving || catalogStatus === "loading" || catalogStatus === "error" || !state.products.some((item) => item.active && item.stock > 0)}>
-            {saving ? "Đang tạo đơn…" : "Tạo đơn tại quầy"}
-          </button>
-        </div>
-      </form>
+          <p className="small muted" style={{ marginTop: 18 }}>
+            Đơn tại quầy vẫn kiểm tra tồn kho. Đơn tiền mặt tại quầy được ghi nhận là đã thanh toán.
+            {product && <span> Tạm tính sản phẩm: <b>{vnd(product.price * Math.max(0, quantity || 0))}</b>.</span>}
+          </p>
+          <div className="row end" style={{ marginTop: 20, borderTop: "1px solid var(--line-soft)", paddingTop: 16 }}>
+            <button className="btn" type="submit" disabled={saving || catalogStatus === "loading" || catalogStatus === "error" || !state.products.some((item) => item.active && item.stock > 0)}>
+              {saving ? "Đang tạo đơn…" : "Tạo đơn tại quầy"}
+            </button>
+          </div>
+        </form>
+      </div>
 
       {pickerOpen && <LocationPicker initial={counter} onClose={() => setPickerOpen(false)} onSelect={(location) => { setCounter((current) => ({ ...current, ...location, address: location.address || current.address })); setPickerOpen(false); setSuccessOrder(null); }} />}
     </>
