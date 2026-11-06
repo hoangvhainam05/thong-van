@@ -8,6 +8,23 @@ import { vnd } from "@/lib/format";
 import Art from "@/components/Art";
 import { Empty, Loading } from "@/components/ui";
 
+function CartProductImage({ product }) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = product.images?.find((image) => image?.imageUrl)?.imageUrl || product.imageUrl;
+
+  if (!imageUrl || failed) return <Art category={product.category} className="thumb-art" />;
+  return (
+    <img
+      src={imageUrl}
+      alt={product.name}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+    />
+  );
+}
+
 export default function CartPage() {
   const { ready, state, actions, user, can, catalogStatus, shippingStatus } = useStore();
   const router = useRouter();
@@ -65,7 +82,7 @@ export default function CartPage() {
                 />
               </label>
               <div style={{ width: 72, height: 72, background: "var(--ground)", borderRadius: 8, display: "grid", placeItems: "center", color: "var(--road)", flex: "none" }}>
-                <Art category={l.p.category} className="thumb-art" />
+                <CartProductImage product={l.p} />
               </div>
               <div className="grow stack-sm">
                 <Link href={`/products/${l.p.id}`} className="strong">{l.p.name}</Link>
