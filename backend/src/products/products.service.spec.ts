@@ -46,10 +46,11 @@ describe('ProductsService', () => {
       rating: 0,
       sold: 0,
     }]);
-    expect(repository.find).toHaveBeenCalledWith({
+    expect(repository.find).toHaveBeenCalledWith(expect.objectContaining({
       where: { active: true },
       order: { category: 'ASC', name: 'ASC' },
-    });
+      select: expect.objectContaining({ id: true, volumeM3: true, weightKg: true }),
+    }));
   });
 
   it('creates a product with a stable generated SKU and supplied delivery data', async () => {

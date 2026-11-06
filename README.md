@@ -220,5 +220,6 @@ Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_ima
 
 - Với cơ sở dữ liệu đã có, chạy `database/migrations/021_shipping_pricing.sql` một lần. Migration bổ sung kích thước kiện hàng, snapshot cước của đơn và bảng lịch sử phiên bản giá; các đơn cũ giữ nguyên phí đã lưu.
 - Chạy tiếp `database/migrations/022_express_cutoff_1600.sql` để chuyển giờ chốt hỏa tốc sang 16:00 và ghi phiên bản cấu hình mới khi cần.
-- Để báo giá chính xác, cấu hình `ORS_API_KEY`, tọa độ kho, và nhập dài/rộng/cao cùng trọng lượng kiện hàng thực tế cho từng sản phẩm trong Quản lý sản phẩm. Mỗi đơn vị sản phẩm được xem là một kiện; nếu thiếu dữ liệu kiện hoặc Routing API không trả được tuyến đường, checkout sẽ không đưa ra giá tạm.
-- Trọng lượng tối đa và phụ phí theo kg để trống theo mặc định. Khi thay đổi bảng giá trong Cài đặt hệ thống, phiên bản giá tăng và snapshot cấu hình được ghi vào `shipping_rate_history`.
+- Chạy `database/migrations/023_persistent_auth_sessions.sql` nếu cơ sở dữ liệu chưa có migration này, sau đó chạy `database/migrations/024_distance_shipping_bands.sql` để thêm cấu hình cước theo quãng đường.
+- Cước checkout dùng quãng đường đường bộ: mặc định miễn phí đến 20 km, 150.000₫ đến 30 km, rồi tăng 50.000₫ mỗi 10 km. Có thể chỉnh năm ngưỡng và mức phí trong Cài đặt hệ thống; mỗi lần đổi cước sẽ tăng phiên bản và ghi snapshot vào `shipping_rate_history`.
+- Cấu hình `ORS_API_KEY` và tọa độ kho để lấy quãng đường đường bộ. Thể tích và trọng lượng sản phẩm vẫn dùng để kiểm tra sức chứa xe và điều kiện hỏa tốc; chúng không cộng vào cước giao hàng.

@@ -1,16 +1,12 @@
-import { buildShippingBreakdown, expressEligibility, ShippingRules, standardArrivalAt, volumeFee } from './shipping-calculation';
+import { buildShippingBreakdown, distanceShippingFee, expressEligibility, ShippingRules, standardArrivalAt } from './shipping-calculation';
 
 const rules: ShippingRules = {
   dayStart: '08:00', dayEnd: '18:00', expressCutoff: '16:00', expressMaxMinutes: 300,
   expressMaxDistanceKm: 10, expressMaxVolumeM3: 0.1, expressMaxWeightKg: null,
-  baseDistanceKm: 2, baseFee: 15000, perKmFee: 5000, expressFee: 10000,
-  roundingIncrement: 1000,
-  volumeTiers: [
-    { max_m3: 0.02, fee: 0 }, { max_m3: 0.05, fee: 5000 },
-    { max_m3: 0.1, fee: 10000 }, { max_m3: 0.15, fee: 20000 },
-  ],
-  weightFeePerKg: null, preparationMinutes: 10, handoverMinutes: 5,
-  additionalDelayMinutes: 0, fallbackSpeedKmh: 25, freeShipFrom: 5_000_000, rateVersion: 1,
+  freeDistanceKm: 20, firstDistanceBandEndKm: 30, firstDistanceBandFee: 150000,
+  nextDistanceStepKm: 10, nextDistanceStepFee: 50000,
+  preparationMinutes: 10, handoverMinutes: 5,
+  additionalDelayMinutes: 0, fallbackSpeedKmh: 25, rateVersion: 1,
 };
 
 function eligibleAt(acceptedAt: string, overrides: Partial<Parameters<typeof expressEligibility>[0]> = {}) {
@@ -57,24 +53,29 @@ describe('express delivery operating rules (Asia/Ho_Chi_Minh)', () => {
 });
 
 describe('shipping price and standard ETA', () => {
-  test('uses each volume fee band and requests a custom quote above 0.15 m³', () => {
-    expect(volumeFee(0.02, rules.volumeTiers)).toBe(0);
-    expect(volumeFee(0.05, rules.volumeTiers)).toBe(5000);
-    expect(volumeFee(0.1, rules.volumeTiers)).toBe(10000);
-    expect(volumeFee(0.15, rules.volumeTiers)).toBe(20000);
-    expect(volumeFee(0.1501, rules.volumeTiers)).toBeNull();
+  test('applies the configured actual-distance bands and keeps increasing above 30 km', () => {
+    expect(distanceShippingFee(20, rules)).toBe(0);
+    expect(distanceShippingFee(20.1, rules)).toBe(150000);
+    expect(distanceShippingFee(30, rules)).toBe(150000);
+    expect(distanceShippingFee(30.1, rules)).toBe(200000);
+    expect(distanceShippingFee(40, rules)).toBe(200000);
+    expect(distanceShippingFee(40.1, rules)).toBe(250000);
+    const customized = {
+      ...rules, freeDistanceKm: 5, firstDistanceBandEndKm: 8, firstDistanceBandFee: 120000,
+      nextDistanceStepKm: 5, nextDistanceStepFee: 20000,
+    };
+    expect(distanceShippingFee(8, customized)).toBe(120000);
+    expect(distanceShippingFee(9, customized)).toBe(140000);
   });
-  test('computes distance, packaging, express and configured weight charges with rounding', () => {
-    const fee = buildShippingBreakdown({ distanceKm: 8, volumeM3: 0.03, weightKg: 12, subtotal: 100000, deliveryType: 'EXPRESS', rules });
-    expect(fee).toEqual({ distanceFee: 45000, volumeFee: 5000, weightFee: 0, expressFee: 10000, discount: 0, totalFee: 60000 });
-    const weightFee = buildShippingBreakdown({ distanceKm: 2, volumeM3: 0.01, weightKg: 12, subtotal: 100000, deliveryType: 'STANDARD', rules: { ...rules, weightFeePerKg: 1000, roundingIncrement: 5000 } });
-    expect(weightFee.weightFee).toBe(12000);
-    expect(weightFee.totalFee % 5000).toBe(0);
+  test('charges only the distance band, including for express delivery', () => {
+    const fee = buildShippingBreakdown({ distanceKm: 35, rules });
+    expect(fee).toEqual({ distanceFee: 200000, totalFee: 200000 });
   });
-  test('keeps totals non-negative and applies configured free-shipping discount', () => {
-    const result = buildShippingBreakdown({ distanceKm: 2, volumeM3: 0.01, weightKg: 1, subtotal: 5_000_000, deliveryType: 'STANDARD', rules });
-    expect(result.discount).toBe(15000);
-    expect(result.totalFee).toBe(0);
+  test('uses the distance threshold for free delivery regardless of order subtotal', () => {
+    const free = buildShippingBreakdown({ distanceKm: 20, rules });
+    const paid = buildShippingBreakdown({ distanceKm: 25, rules });
+    expect(free.totalFee).toBe(0);
+    expect(paid.totalFee).toBe(150000);
   });
   test('moves an ordinary ETA after shift end to the next 08:00 shift', () => {
     const arrival = standardArrivalAt(new Date('2026-11-07T10:00:00Z'), 60, rules); // 17:00 local + 60 min

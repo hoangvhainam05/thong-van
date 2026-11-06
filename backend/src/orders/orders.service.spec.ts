@@ -84,6 +84,6 @@ test('creates a server-priced shipping snapshot and ignores a forged client ship
     items: [{ product_id: 1, quantity: 1 }], shipping_fee: 1,
   } as any, 'WEB');
 
-  expect(createdRows[0]).toMatchObject({ shippingFee: '50000', totalShippingFee: '50000', total: '150000', shippingRateVersion: 3, distanceFee: 45000, volumeFee: 5000, warehouseId: 7 });
+  expect(createdRows[0]).toMatchObject({ shippingFee: '50000', totalShippingFee: '50000', total: '150000', shippingRateVersion: 3, distanceFee: 45000, volumeFee: 0, warehouseId: 7 });
   expect(createdRows[0].shippingFee).not.toBe('1');
 });

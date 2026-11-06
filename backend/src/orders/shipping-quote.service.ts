@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Product, SystemSetting, Vehicle, Warehouse } from '../database/entities';
 import { RoadMatrixService } from '../optimization/road-matrix.service';
-import { buildShippingBreakdown, DeliveryType, etaMinutes, expressEligibility, localParts, ShippingRules, standardArrivalAt, VolumeTier } from './shipping-calculation';
+import { buildShippingBreakdown, DeliveryType, etaMinutes, expressEligibility, localParts, ShippingRules, standardArrivalAt } from './shipping-calculation';
 
 export interface ShippingQuoteInput {
   lat: number;
@@ -72,7 +72,6 @@ export class ShippingQuoteService {
       });
       packageCount += quantity;
     }
-    const subtotal = rows.reduce((sum, row) => sum + Number(row.product.price) * row.quantity, 0);
     const packageDetails = rows.flatMap(({ product, quantity }) => {
       const metrics = packageMetrics.get(product.id);
       if (!metrics?.dimensions || metrics.weightKg === null) return [];
@@ -98,7 +97,7 @@ export class ShippingQuoteService {
     const estimatedDeliveryMinutes = etaMinutes(route.distanceKm, route.travelMinutes, rules);
     const express = expressEligibility({ acceptedAt, distanceKm: route.distanceKm, volumeM3, weightKg, durationMinutes: estimatedDeliveryMinutes, hasStock, hasVehicleCapacity, rules });
     const estimatedArrivalAt = deliveryType === 'EXPRESS' ? express.estimatedArrivalAt : standardArrivalAt(acceptedAt, estimatedDeliveryMinutes, rules);
-    const breakdown = buildShippingBreakdown({ distanceKm: route.distanceKm, volumeM3, weightKg, subtotal, deliveryType, rules });
+    const breakdown = buildShippingBreakdown({ distanceKm: route.distanceKm, rules });
     const totalFee = Math.max(0, breakdown.totalFee);
     return {
       quoteAvailable: true,
@@ -137,15 +136,6 @@ export class ShippingQuoteService {
 
   async shippingRules(): Promise<ShippingRules> {
     const row = await this.settings.findOne({ where: { id: 1 } }).catch(() => null);
-    const parseTiers = (value: SystemSetting['shippingVolumeTiers']): VolumeTier[] => {
-      const fallback = [
-        { max_m3: 0.02, fee: 0 }, { max_m3: 0.05, fee: 5000 },
-        { max_m3: 0.1, fee: 10000 }, { max_m3: 0.15, fee: 20000 },
-      ];
-      if (!value) return fallback;
-      const parsed = typeof value === 'string' ? JSON.parse(value) as VolumeTier[] : value;
-      return Array.isArray(parsed) ? parsed : fallback;
-    };
     return {
       dayStart: row?.deliveryDayStart || '08:00', dayEnd: row?.deliveryDayEnd || '18:00',
       expressCutoff: row?.expressCutoffTime || '16:00', expressMaxMinutes: Number(row?.expressMaxMinutes ?? 300),
@@ -156,13 +146,9 @@ export class ShippingQuoteService {
       firstDistanceBandFee: Number(row?.shippingFirstBandFee ?? 150000),
       nextDistanceStepKm: Number(row?.shippingDistanceStepKm ?? 10),
       nextDistanceStepFee: Number(row?.shippingDistanceStepFee ?? 50000),
-      baseDistanceKm: Number(row?.shippingBaseDistanceKm ?? 2), baseFee: Number(row?.shippingBaseFee ?? 15000),
-      perKmFee: Number(row?.shippingPerKmFee ?? 5000), expressFee: Number(row?.shippingExpressFee ?? 10000),
-      roundingIncrement: Number(row?.shippingRoundingIncrement ?? 1000), volumeTiers: parseTiers(row?.shippingVolumeTiers ?? null),
-      weightFeePerKg: row?.shippingWeightFeePerKg == null ? null : Number(row.shippingWeightFeePerKg),
       preparationMinutes: Number(row?.shippingPreparationMinutes ?? 10), handoverMinutes: Number(row?.shippingHandoverMinutes ?? 5),
       additionalDelayMinutes: Number(row?.shippingAdditionalDelayMinutes ?? 0), fallbackSpeedKmh: Number(row?.shippingFallbackSpeedKmh ?? 25),
-      freeShipFrom: Number(row?.freeShipFrom ?? 5_000_000), rateVersion: Number(row?.shippingRateVersion ?? 1),
+      rateVersion: Number(row?.shippingRateVersion ?? 1),
     };
   }
 

@@ -5,6 +5,8 @@ test('increments the shipping rate version and writes a complete settings snapsh
     id: 1, shippingRateVersion: 4, shippingPerKmFee: 5000, shippingBaseDistanceKm: '2',
     shippingBaseFee: 15000, shippingExpressFee: 10000, shippingRoundingIncrement: 1000,
     shippingVolumeTiers: [{ max_m3: 0.02, fee: 0 }], shippingWeightFeePerKg: null,
+    shippingFreeDistanceKm: '20', shippingFirstBandEndKm: '30', shippingFirstBandFee: 150000,
+    shippingDistanceStepKm: '10', shippingDistanceStepFee: 50000,
     shippingPreparationMinutes: 10, shippingHandoverMinutes: 5, shippingAdditionalDelayMinutes: 0,
     shippingFallbackSpeedKmh: '25', freeShipFrom: 5000000,
     deliveryDayStart: '08:00', deliveryDayEnd: '18:00', expressCutoffTime: '16:00',
@@ -15,6 +17,11 @@ test('increments the shipping rate version and writes a complete settings snapsh
     shipping_fee: setting.shippingFee, free_ship_from: setting.freeShipFrom,
     shipping_base_distance_km: setting.shippingBaseDistanceKm, shipping_base_fee: setting.shippingBaseFee,
     shipping_per_km_fee: setting.shippingPerKmFee, shipping_express_fee: setting.shippingExpressFee,
+    shipping_free_distance_km: setting.shippingFreeDistanceKm,
+    shipping_first_band_end_km: setting.shippingFirstBandEndKm,
+    shipping_first_band_fee: setting.shippingFirstBandFee,
+    shipping_distance_step_km: setting.shippingDistanceStepKm,
+    shipping_distance_step_fee: setting.shippingDistanceStepFee,
     shipping_rounding_increment: setting.shippingRoundingIncrement, shipping_volume_tiers: setting.shippingVolumeTiers,
     shipping_weight_fee_per_kg: setting.shippingWeightFeePerKg, shipping_preparation_minutes: setting.shippingPreparationMinutes,
     shipping_handover_minutes: setting.shippingHandoverMinutes, shipping_additional_delay_minutes: setting.shippingAdditionalDelayMinutes,
@@ -39,12 +46,12 @@ test('increments the shipping rate version and writes a complete settings snapsh
     }),
   };
   const service = new AdminService(db as any, { get: (_key: string, fallback: unknown) => fallback } as any);
-  await service.updateSettings({ shipping_per_km_fee: 6500 });
-  await service.updateSettings({ shipping_per_km_fee: 6500 });
+  await service.updateSettings({ shipping_first_band_fee: 175000 });
+  await service.updateSettings({ shipping_first_band_fee: 175000 });
 
   expect(setting.shippingRateVersion).toBe(5);
   const historyInsert = db.query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO shipping_rate_history'));
   expect(historyInsert?.[1]?.[0]).toBe(5);
   expect(db.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO shipping_rate_history'))).toHaveLength(1);
-  expect(JSON.parse(String(historyInsert?.[1]?.[1])).shipping.per_km_fee).toBe(6500);
+  expect(JSON.parse(String(historyInsert?.[1]?.[1])).shipping.first_band_fee).toBe(175000);
 });

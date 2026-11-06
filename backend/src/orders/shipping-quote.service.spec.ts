@@ -3,6 +3,7 @@ import { ShippingQuoteService } from './shipping-quote.service';
 function product(overrides: Record<string, unknown> = {}) {
   return {
     id: 1, name: 'Tủ lạnh', active: true, stock: 10, price: '1000000',
+    volumeM3: '0.03', weightKg: '10',
     packageLengthCm: '30', packageWidthCm: '40', packageHeightCm: '25', packageWeightKg: '10',
     ...overrides,
   } as any;
@@ -29,7 +30,7 @@ describe('ShippingQuoteService', () => {
     expect(quote.volumeM3).toBe(0.03);
     expect(quote.weightKg).toBe(10);
     expect(quote.estimatedDeliveryMinutes).toBe(60);
-    expect(quote.shippingBreakdown).toMatchObject({ distanceFee: 45000, volumeFee: 5000, expressFee: 10000, totalFee: 60000 });
+    expect(quote.shippingBreakdown).toMatchObject({ distanceFee: 0, totalFee: 0 });
     expect(quote.expressEligibility.eligible).toBe(true);
   });
 
@@ -43,11 +44,12 @@ describe('ShippingQuoteService', () => {
     expect(quote.weightKg).toBe(14);
   });
 
-  test('refuses an exact quote when actual package measurements are missing', async () => {
-    const { service } = setup([product({ packageLengthCm: null })]);
+  test('uses stored product volume and weight when package measurements are missing', async () => {
+    const { service } = setup([product({ packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null })]);
     const quote = await service.quote(input, new Date('2026-11-07T02:00:00Z'));
-    expect(quote.quoteAvailable).toBe(false);
-    expect(quote.reasons.join(' ')).toContain('Thiếu kích thước kiện hàng');
+    expect(quote.quoteAvailable).toBe(true);
+    expect(quote.volumeM3).toBe(0.03);
+    expect(quote.weightKg).toBe(10);
   });
 
   test('returns unavailable when Routing API cannot identify a road route', async () => {
@@ -82,9 +84,9 @@ describe('ShippingQuoteService', () => {
   });
 
   test('ignores a client submitted shipping fee and applies current server rates', async () => {
-    const { service } = setup();
+    const { service } = setup([product()], { distanceKm: 25, travelMinutes: 45 });
     const quote = await service.quote({ ...input, shipping_fee: 1 } as any, new Date('2026-11-07T02:00:00Z'));
-    expect(quote.shippingBreakdown!.totalFee).toBe(60000);
+    expect(quote.shippingBreakdown!.totalFee).toBe(150000);
   });
 
   test('reflects an admin changed rate and version while an old order keeps its saved snapshot', async () => {
@@ -92,16 +94,16 @@ describe('ShippingQuoteService', () => {
     const first = await service.quote(input, new Date('2026-11-07T02:00:00Z'));
     const oldOrder = { shippingFee: first.shippingBreakdown!.totalFee, shippingRateVersion: first.shippingRateVersion };
     settingsRepo.findOne.mockResolvedValue({
-      id: 1, shippingBaseDistanceKm: '2', shippingBaseFee: 18000, shippingPerKmFee: 6000,
-      shippingExpressFee: 12000, shippingRoundingIncrement: 1000, shippingVolumeTiers: null,
+      id: 1, shippingFreeDistanceKm: '5', shippingFirstBandEndKm: '30', shippingFirstBandFee: 80000,
+      shippingDistanceStepKm: '10', shippingDistanceStepFee: 50000,
       deliveryDayStart: '08:00', deliveryDayEnd: '18:00', expressCutoffTime: '16:00',
       expressMaxMinutes: 300, expressMaxDistanceKm: '10', expressMaxVolumeM3: '0.1', expressMaxWeightKg: null,
-      shippingWeightFeePerKg: null, shippingPreparationMinutes: 10, shippingHandoverMinutes: 5,
-      shippingAdditionalDelayMinutes: 0, shippingFallbackSpeedKmh: '25', freeShipFrom: 5000000, shippingRateVersion: 2,
+      shippingPreparationMinutes: 10, shippingHandoverMinutes: 5,
+      shippingAdditionalDelayMinutes: 0, shippingFallbackSpeedKmh: '25', shippingRateVersion: 2,
     } as any);
     const second = await service.quote(input, new Date('2026-11-07T02:00:00Z'));
     expect(second.shippingRateVersion).toBe(2);
-    expect(second.shippingBreakdown!.totalFee).not.toBe(oldOrder.shippingFee);
-    expect(oldOrder).toEqual({ shippingFee: 60000, shippingRateVersion: 1 });
+    expect(second.shippingBreakdown!.totalFee).toBe(80000);
+    expect(oldOrder).toEqual({ shippingFee: 0, shippingRateVersion: 1 });
   });
 });

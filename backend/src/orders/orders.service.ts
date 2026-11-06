@@ -118,7 +118,7 @@ export class OrdersService {
       const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
       const defaultFee = setting ? Number(setting.shippingFee) : this.config.get<number>('shipping.fee', 150_000);
       const shippingFee = quote?.shippingBreakdown?.totalFee ?? defaultFee;
-      const shippingDiscount = quote?.shippingBreakdown?.discount ?? null;
+      const shippingDiscount = quote?.shippingBreakdown ? 0 : null;
       const total = subtotal + shippingFee;
       if (body.payment_method === PaymentMethod.COUNTER_CASH && source !== 'COUNTER') {
         throw new BadRequestException('Thanh toán tiền mặt tại quầy chỉ dùng khi nhân viên nhập đơn quầy.');
@@ -160,9 +160,9 @@ export class OrdersService {
         estimatedDeliveryMinutes: quote?.estimatedDeliveryMinutes ?? null,
         estimatedArrivalAt: quote?.estimatedArrivalAt ? new Date(quote.estimatedArrivalAt) : null,
         distanceFee: quote?.shippingBreakdown?.distanceFee ?? null,
-        volumeFee: quote?.shippingBreakdown?.volumeFee ?? null,
-        weightFee: quote?.shippingBreakdown?.weightFee ?? null,
-        expressFee: quote?.shippingBreakdown?.expressFee ?? null,
+        volumeFee: quote?.shippingBreakdown ? 0 : null,
+        weightFee: quote?.shippingBreakdown ? 0 : null,
+        expressFee: quote?.shippingBreakdown ? 0 : null,
         shippingDiscount,
         shippingRateVersion: quote?.shippingRateVersion ?? null,
         total: String(total),
