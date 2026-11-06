@@ -78,6 +78,10 @@ export class ShippingQuoteService {
       const [lengthCm, widthCm, heightCm] = metrics.dimensions;
       return [{ productId: product.id, lengthCm, widthCm, heightCm, weightKg: metrics.weightKg, quantity }];
     });
+    const estimatedInstallationMinutes = rows.reduce(
+      (sum, { product, quantity }) => sum + Math.max(0, Number(product.installMinutes) || 0) * quantity,
+      0,
+    );
     const rules = await this.shippingRules();
     const [warehouse] = await this.warehouses.find({ order: { id: 'ASC' }, take: 1 });
     if (!warehouse) return this.unavailable(['Chưa khai báo kho xử lý đơn hàng.'], deliveryType, volumeM3, weightKg, packageCount, rules);
@@ -109,6 +113,7 @@ export class ShippingQuoteService {
       weightKg: round(weightKg, 3),
       packageCount,
       packageDetails,
+      estimatedInstallationMinutes,
       estimatedDeliveryMinutes,
       estimatedArrivalAt: estimatedArrivalAt.toISOString(),
       deliveryWindowDate: localParts(estimatedArrivalAt).date,
@@ -157,7 +162,7 @@ export class ShippingQuoteService {
       quoteAvailable: false, acceptedAt: new Date().toISOString(), warehouseId: warehouseId ?? null,
       deliveryType, distanceKm: distanceKm == null ? null : round(distanceKm, 3),
       volumeM3: packageCount ? round(volumeM3, 4) : null, weightKg: packageCount ? round(weightKg, 3) : null,
-      packageCount, estimatedDeliveryMinutes: null, estimatedArrivalAt: null, deliveryWindowDate: null,
+      packageCount, estimatedInstallationMinutes: null, estimatedDeliveryMinutes: null, estimatedArrivalAt: null, deliveryWindowDate: null,
       packageDetails: null,
       shippingBreakdown: null, reasons,
       packageDimensionsCm: null, travelMinutes: null, preparationMinutes: null,

@@ -2,7 +2,7 @@ import { ShippingQuoteService } from './shipping-quote.service';
 
 function product(overrides: Record<string, unknown> = {}) {
   return {
-    id: 1, name: 'Tủ lạnh', active: true, stock: 10, price: '1000000',
+    id: 1, name: 'Tủ lạnh', active: true, stock: 10, price: '1000000', installMinutes: 45,
     volumeM3: '0.03', weightKg: '10',
     packageLengthCm: '30', packageWidthCm: '40', packageHeightCm: '25', packageWeightKg: '10',
     ...overrides,
@@ -29,19 +29,21 @@ describe('ShippingQuoteService', () => {
     expect(quote.distanceKm).toBe(8);
     expect(quote.volumeM3).toBe(0.03);
     expect(quote.weightKg).toBe(10);
+    expect(quote.estimatedInstallationMinutes).toBe(45);
     expect(quote.estimatedDeliveryMinutes).toBe(60);
     expect(quote.shippingBreakdown).toMatchObject({ distanceFee: 0, totalFee: 0 });
     expect(quote.expressEligibility.eligible).toBe(true);
   });
 
   test('counts packages and sums per-package volume and weight for multiple products and quantities', async () => {
-    const small = product({ id: 2, name: 'Máy lọc nước', packageLengthCm: '20', packageWidthCm: '30', packageHeightCm: '50', packageWeightKg: '4' });
-    const second = product({ id: 3, name: 'Máy lọc nước mini', packageLengthCm: '10', packageWidthCm: '10', packageHeightCm: '50', packageWeightKg: '2' });
+    const small = product({ id: 2, name: 'Máy lọc nước', installMinutes: 20, packageLengthCm: '20', packageWidthCm: '30', packageHeightCm: '50', packageWeightKg: '4' });
+    const second = product({ id: 3, name: 'Máy lọc nước mini', installMinutes: 5, packageLengthCm: '10', packageWidthCm: '10', packageHeightCm: '50', packageWeightKg: '2' });
     const { service } = setup([small, second]);
     const quote = await service.quote({ ...input, items: [{ product_id: 2, quantity: 3 }, { product_id: 3, quantity: 1 }] }, new Date('2026-11-07T02:00:00Z'));
     expect(quote.packageCount).toBe(4);
     expect(quote.volumeM3).toBe(0.095);
     expect(quote.weightKg).toBe(14);
+    expect(quote.estimatedInstallationMinutes).toBe(65);
   });
 
   test('uses stored product volume and weight when package measurements are missing', async () => {
