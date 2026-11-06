@@ -144,7 +144,7 @@ export class ShippingQuoteService {
     return {
       dayStart: row?.deliveryDayStart || '08:00', dayEnd: row?.deliveryDayEnd || '18:00',
       expressCutoff: row?.expressCutoffTime || '16:00', expressMaxMinutes: Number(row?.expressMaxMinutes ?? 300),
-      expressMaxDistanceKm: Number(row?.expressMaxDistanceKm ?? 10), expressMaxVolumeM3: Number(row?.expressMaxVolumeM3 ?? 0.1),
+      expressMaxDistanceKm: Number(row?.expressMaxDistanceKm ?? 10),
       expressMaxWeightKg: row?.expressMaxWeightKg == null ? null : Number(row.expressMaxWeightKg),
       freeDistanceKm: Number(row?.shippingFreeDistanceKm ?? 20),
       firstDistanceBandEndKm: Number(row?.shippingFirstBandEndKm ?? 30),

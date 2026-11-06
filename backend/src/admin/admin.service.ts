@@ -20,7 +20,7 @@ function normalizedShippingSettings(row: SystemSetting) {
     nextDistanceStepFee: Number(row.shippingDistanceStepFee ?? 50000),
     dayStart: row.deliveryDayStart || '08:00', dayEnd: row.deliveryDayEnd || '18:00',
     cutoff: row.expressCutoffTime || '16:00', expressMinutes: Number(row.expressMaxMinutes ?? 300),
-    expressDistance: Number(row.expressMaxDistanceKm ?? 10), expressVolume: Number(row.expressMaxVolumeM3 ?? 0.1),
+    expressDistance: Number(row.expressMaxDistanceKm ?? 10),
     expressWeight: row.expressMaxWeightKg == null ? null : Number(row.expressMaxWeightKg),
     baseDistance: Number(row.shippingBaseDistanceKm ?? 2), baseFee: Number(row.shippingBaseFee ?? 15000),
     perKmFee: Number(row.shippingPerKmFee ?? 5000), expressFee: Number(row.shippingExpressFee ?? 10000),
@@ -105,7 +105,6 @@ export class AdminService {
         cutoff_time: setting?.express_cutoff_time || '16:00',
         max_minutes: Number(setting?.express_max_minutes ?? 300),
         max_distance_km: Number(setting?.express_max_distance_km ?? 10),
-        max_volume_m3: Number(setting?.express_max_volume_m3 ?? 0.1),
         max_weight_kg: setting?.express_max_weight_kg == null ? null : Number(setting.express_max_weight_kg),
       },
       optimization: {
@@ -149,7 +148,6 @@ export class AdminService {
     if (body.express_cutoff_time !== undefined) row.expressCutoffTime = body.express_cutoff_time;
     if (body.express_max_minutes !== undefined) row.expressMaxMinutes = body.express_max_minutes;
     if (body.express_max_distance_km !== undefined) row.expressMaxDistanceKm = String(body.express_max_distance_km);
-    if (body.express_max_volume_m3 !== undefined) row.expressMaxVolumeM3 = String(body.express_max_volume_m3);
     if (body.express_max_weight_kg !== undefined) row.expressMaxWeightKg = body.express_max_weight_kg == null ? null : String(body.express_max_weight_kg);
     if (body.shipping_base_distance_km !== undefined) row.shippingBaseDistanceKm = String(body.shipping_base_distance_km);
     if (body.shipping_base_fee !== undefined) row.shippingBaseFee = body.shipping_base_fee;

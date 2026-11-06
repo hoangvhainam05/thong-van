@@ -35,7 +35,6 @@ function Settings() {
           express_cutoff_time: res.express?.cutoff_time ?? "16:00",
           express_max_minutes: res.express?.max_minutes ?? 300,
           express_max_distance_km: res.express?.max_distance_km ?? 10,
-          express_max_volume_m3: res.express?.max_volume_m3 ?? 0.1,
           express_max_weight_kg: res.express?.max_weight_kg ?? "",
           delivery_day_start: res.optimization?.day_start ?? "08:00",
           delivery_day_end: res.optimization?.day_end ?? "18:00",
@@ -73,7 +72,6 @@ function Settings() {
         express_cutoff_time: form.express_cutoff_time.trim(),
         express_max_minutes: Number(form.express_max_minutes),
         express_max_distance_km: Number(form.express_max_distance_km),
-        express_max_volume_m3: Number(form.express_max_volume_m3),
         express_max_weight_kg: form.express_max_weight_kg === "" ? null : Number(form.express_max_weight_kg),
         delivery_day_start: form.delivery_day_start.trim(),
         delivery_day_end: form.delivery_day_end.trim(),
@@ -142,7 +140,6 @@ function Settings() {
               <label className="field"><span>Ngừng nhận hỏa tốc (HH:mm, không bao gồm giờ này)</span><input type="text" className="input" pattern="^([01]\d|2[0-3]):[0-5]\d$" value={form.express_cutoff_time} onChange={(e) => setForm({ ...form, express_cutoff_time: e.target.value })} /></label>
               <label className="field"><span>Thời gian tối đa (phút)</span><input type="number" className="input" min="1" max="1440" value={form.express_max_minutes} onChange={(e) => setForm({ ...form, express_max_minutes: e.target.value })} /></label>
               <label className="field"><span>Khoảng cách tối đa (km)</span><input type="number" className="input" min="0.1" step="0.1" value={form.express_max_distance_km} onChange={(e) => setForm({ ...form, express_max_distance_km: e.target.value })} /></label>
-              <label className="field"><span>Thể tích tối đa (m³)</span><input type="number" className="input" min="0.001" step="0.001" value={form.express_max_volume_m3} onChange={(e) => setForm({ ...form, express_max_volume_m3: e.target.value })} /></label>
               <label className="field"><span>Trọng lượng tối đa (kg)</span><input type="number" className="input" min="0.001" step="0.1" placeholder="Để trống nếu chưa giới hạn" value={form.express_max_weight_kg} onChange={(e) => setForm({ ...form, express_max_weight_kg: e.target.value })} /></label>
             </div>
           </section>

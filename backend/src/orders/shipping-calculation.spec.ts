@@ -2,7 +2,7 @@ import { buildShippingBreakdown, distanceShippingFee, expressEligibility, Shippi
 
 const rules: ShippingRules = {
   dayStart: '08:00', dayEnd: '18:00', expressCutoff: '16:00', expressMaxMinutes: 300,
-  expressMaxDistanceKm: 10, expressMaxVolumeM3: 0.1, expressMaxWeightKg: null,
+  expressMaxDistanceKm: 10, expressMaxWeightKg: null,
   freeDistanceKm: 20, firstDistanceBandEndKm: 30, firstDistanceBandFee: 150000,
   nextDistanceStepKm: 10, nextDistanceStepFee: 50000,
   preparationMinutes: 10, handoverMinutes: 5,
@@ -38,9 +38,8 @@ describe('express delivery operating rules (Asia/Ho_Chi_Minh)', () => {
     expect(eligibleAt('2026-11-07T05:00:00Z', { distanceKm: 10 }).eligible).toBe(true);
     expect(eligibleAt('2026-11-07T05:00:00Z', { distanceKm: 10.001 }).eligible).toBe(false);
   });
-  test('accepts 0.10 m³ and rejects volume above the configured limit', () => {
-    expect(eligibleAt('2026-11-07T05:00:00Z', { volumeM3: 0.1 }).eligible).toBe(true);
-    expect(eligibleAt('2026-11-07T05:00:00Z', { volumeM3: 0.1001 }).eligible).toBe(false);
+  test('volume does not impose an express delivery limit when a suitable vehicle is available', () => {
+    expect(eligibleAt('2026-11-07T05:00:00Z', { volumeM3: 10 }).eligible).toBe(true);
   });
   test('enforces configured weight limits only when an admin sets one', () => {
     expect(eligibleAt('2026-11-07T05:00:00Z', { weightKg: 500 }).eligible).toBe(true);

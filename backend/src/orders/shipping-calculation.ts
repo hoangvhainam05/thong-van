@@ -6,7 +6,6 @@ export interface ShippingRules {
   expressCutoff: string;
   expressMaxMinutes: number;
   expressMaxDistanceKm: number;
-  expressMaxVolumeM3: number;
   expressMaxWeightKg: number | null;
   freeDistanceKm: number;
   firstDistanceBandEndKm: number;
@@ -77,7 +76,7 @@ export function expressEligibility(input: {
   hasVehicleCapacity: boolean;
   rules: ShippingRules;
 }): { eligible: boolean; reasons: string[]; deadlineAt: Date; estimatedArrivalAt: Date } {
-  const { acceptedAt, distanceKm, volumeM3, weightKg, durationMinutes, hasStock, hasVehicleCapacity, rules } = input;
+  const { acceptedAt, distanceKm, weightKg, durationMinutes, hasStock, hasVehicleCapacity, rules } = input;
   const local = localParts(acceptedAt);
   const todayEnd = localDateTimeUtc(local.date, rules.dayEnd);
   const expressDeadline = new Date(Math.min(acceptedAt.getTime() + rules.expressMaxMinutes * 60_000, todayEnd.getTime()));
@@ -88,7 +87,6 @@ export function expressEligibility(input: {
   const reasons: string[] = [];
   if (local.minutes < start || local.minutes >= cutoff) reasons.push(`Nhận hỏa tốc từ ${rules.dayStart} đến trước ${rules.expressCutoff}.`);
   if (distanceKm > rules.expressMaxDistanceKm) reasons.push(`Khoảng cách vượt giới hạn ${rules.expressMaxDistanceKm} km.`);
-  if (volumeM3 > rules.expressMaxVolumeM3) reasons.push(`Thể tích vượt giới hạn ${rules.expressMaxVolumeM3} m³.`);
   if (rules.expressMaxWeightKg !== null && weightKg > rules.expressMaxWeightKg) reasons.push(`Trọng lượng vượt giới hạn ${rules.expressMaxWeightKg} kg.`);
   if (durationMinutes > rules.expressMaxMinutes) reasons.push(`Thời gian giao dự kiến vượt ${rules.expressMaxMinutes} phút.`);
   if (localParts(estimatedArrivalAt).minutes > end || estimatedArrivalAt.getTime() > expressDeadline.getTime()) reasons.push(`Thời điểm giao dự kiến vượt ca ${rules.dayStart}–${rules.dayEnd} hoặc thời hạn hỏa tốc.`);

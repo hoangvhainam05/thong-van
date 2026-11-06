@@ -29,9 +29,6 @@ export class UpdateSettingsDto {
   @IsOptional() @IsNumber() @Min(0.1) @Max(500)
   express_max_distance_km?: number;
 
-  @IsOptional() @IsNumber() @Min(0.001) @Max(1000)
-  express_max_volume_m3?: number;
-
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0.001) @Max(999999)
   express_max_weight_kg?: number | null;
 
