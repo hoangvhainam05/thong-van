@@ -39,7 +39,8 @@ export class PayosService {
       const repo = manager.getRepository(Order);
       const order = await repo.findOne({ where: { id, customerId }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn hàng.');
-      if (order.paymentMethod !== 'PAYOS' || order.status === OrderStatus.CANCELLED || order.paymentStatus === PaymentStatus.PAID) throw new ConflictException('Đơn hàng không thể thanh toán qua PayOS.');
+      if (!['PAYOS', 'BANK_TRANSFER'].includes(order.paymentMethod) || order.source !== 'WEB' || order.status === OrderStatus.CANCELLED || order.paymentStatus === PaymentStatus.PAID) throw new ConflictException('Đơn hàng không thể thanh toán qua PayOS.');
+      if (order.paymentMethod === 'BANK_TRANSFER') { order.paymentMethod = 'PAYOS'; await repo.save(order); }
       if (!order.payosOrderCode) { order.payosOrderCode = String(randomInt(100000000000, 999999999999)); await repo.save(order); }
     });
     return this.db.transaction(async manager => {
@@ -47,7 +48,7 @@ export class PayosService {
       const order = await repo.findOne({ where: { id, customerId }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn hàng.');
       if (order.paymentMethod !== 'PAYOS' || order.status === OrderStatus.CANCELLED || order.paymentStatus === PaymentStatus.PAID) throw new ConflictException('Đơn hàng không thể thanh toán qua PayOS.');
-      if (order.payosCheckoutUrl) return { checkoutUrl: order.payosCheckoutUrl };
+      if (order.payosCheckoutUrl) return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null };
       const origin = this.credentials.origin.replace(/\/$/, '');
       const returnUrl = `${origin}/account/orders/${order.id}?payos=return`;
       const cancelUrl = `${origin}/account/orders/${order.id}?payos=cancel`;
@@ -60,10 +61,11 @@ export class PayosService {
         catch { throw error; }
       }
       if (Number(link.orderCode) !== data.orderCode || Number(link.amount) !== data.amount || !/^[a-zA-Z0-9]+$/.test(link.paymentLinkId || '') || !/^https:\/\/pay\.payos\.vn\//.test(link.checkoutUrl || '')) throw new ServiceUnavailableException('Thông tin liên kết PayOS không hợp lệ.');
+      order.payosQrCode = typeof link.qrCode === 'string' && link.qrCode.length <= 4096 ? link.qrCode : null;
       order.payosLinkId = link.paymentLinkId;
       order.payosCheckoutUrl = link.checkoutUrl;
       await repo.save(order);
-      return { checkoutUrl: order.payosCheckoutUrl };
+      return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null };
     });
   }
   async webhook(payload: any) {

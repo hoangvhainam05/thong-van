@@ -228,6 +228,7 @@ CREATE TABLE orders (
   payment_method     ENUM('COD','BANK_TRANSFER','COUNTER_CASH','PAYOS') NOT NULL DEFAULT 'COD',
   payos_order_code   VARCHAR(20) NULL UNIQUE,
   payos_link_id      VARCHAR(100) NULL,
+  payos_qr_code      TEXT NULL,
   payos_checkout_url VARCHAR(500) NULL,
   payment_status     ENUM('UNPAID','PENDING','PAID') NOT NULL DEFAULT 'UNPAID',
   source             ENUM('WEB','COUNTER') NOT NULL DEFAULT 'WEB',

@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { api, vnd } from "@/lib/api";
 import { dateLabel, dateTime } from "@/lib/format";
 import { OrderBadge } from "@/components/ui";
@@ -9,8 +10,9 @@ import { playTap } from "@/lib/audio-juice";
 
 export default function RemoteTracking({ tracking, proofRequest, paymentRequest }) {
   const [proof,setProof]=useState(null), [error,setError]=useState(''), [busy,setBusy]=useState(false);
-  const [paymentBusy, setPaymentBusy] = useState(false), [paymentError, setPaymentError] = useState('');
-  async function payOnline() { setPaymentBusy(true); setPaymentError(''); try { const result = await api(paymentRequest.path, paymentRequest.options); window.location.assign(result.checkoutUrl); } catch (e) { setPaymentError(e.message); setPaymentBusy(false); } }
+  const [paymentBusy, setPaymentBusy] = useState(false), [paymentError, setPaymentError] = useState(''), [paymentLink, setPaymentLink] = useState(null);
+  async function loadPayment() { setPaymentBusy(true); setPaymentError(''); try { const result = await api(paymentRequest.path, paymentRequest.options); setPaymentLink(result); } catch (e) { setPaymentError(e.message); } finally { setPaymentBusy(false); } }
+  useEffect(() => { if (paymentRequest && tracking.payment_method === 'PAYOS' && tracking.payment_status !== 'PAID' && tracking.status !== 'CANCELLED') loadPayment(); }, [tracking.code, tracking.payment_method, tracking.payment_status, tracking.status]);
   const [view3D, setView3D]=useState(false);
   const time = value => value ? new Date(value).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '—';
   const instructions=tracking.payment_instructions;
@@ -48,7 +50,7 @@ export default function RemoteTracking({ tracking, proofRequest, paymentRequest 
     <section className="panel panel-pad stack-sm"><h3>Lịch sử cập nhật</h3>{tracking.history?.length ? tracking.history.map(event=><div key={event.id} className="small"><b>{event.label}</b> · {dateTime(event.at)}{event.note && <div className="muted">{event.note}</div>}</div>) : <p className="small muted">Chưa có lịch sử cập nhật.</p>}</section>
   </div><aside className="stack">{tracking.status==='DELIVERED' && <section className="panel panel-pad stack-sm small"><h3>Liên hệ bảo hành</h3><div>{tracking.warranty_contact || 'Liên hệ cửa hàng để được hỗ trợ bảo hành.'}</div></section>}<section className="panel panel-pad stack-sm small"><h3>Giao tới</h3><b>{tracking.recipient_name}</b><div>{tracking.address}</div></section>
     <section className="panel panel-pad stack-sm small"><h3>Thanh toán</h3><div>{tracking.payment_method==='PAYOS'?'PayOS':tracking.payment_method==='BANK_TRANSFER'?'Chuyển khoản':tracking.payment_method==='COUNTER_CASH'?'Tiền mặt tại quầy':'Tiền mặt khi nhận'} · {tracking.payment_status==='PAID'?'Đã thanh toán':tracking.payment_status==='PENDING'?'Chờ thanh toán':'Chưa thanh toán'}</div></section>
-    {paymentRequest && tracking.payment_method==='PAYOS' && tracking.payment_status!=='PAID' && tracking.status!=='CANCELLED' && <section className="panel panel-pad stack-sm"><button className="btn" disabled={paymentBusy} onClick={payOnline}>{paymentBusy ? 'Đang mở PayOS…' : 'Thanh toán qua PayOS'}</button>{paymentError && <div className="notice bad">{paymentError}</div>}</section>}
-    {tracking.payment_method==='BANK_TRANSFER' && tracking.payment_status==='PENDING' && <section className="panel panel-pad stack-sm small"><h3>Hướng dẫn chuyển khoản</h3>{instructions?.configured ? <><div>Ngân hàng: <b>{instructions.bank_name}</b></div><div>Tên tài khoản: <b>{instructions.account_name}</b></div><div>Số tài khoản: <b>{instructions.account_number}</b></div><div>Số tiền: <b>{vnd(instructions.amount)}</b></div><div>Nội dung: <b>{instructions.transfer_content}</b></div></> : <div className="notice warn">Cửa hàng chưa cấu hình thông tin nhận chuyển khoản.</div>}</section>}
+    {paymentRequest && ['PAYOS','BANK_TRANSFER'].includes(tracking.payment_method) && tracking.payment_status!=='PAID' && tracking.status!=='CANCELLED' && <section className="panel panel-pad stack-sm"><h3>Thanh toán qua PayOS</h3>{tracking.payment_method==='BANK_TRANSFER' && !paymentLink && <><p className="small muted">Nếu đã chuyển khoản theo hướng dẫn cũ, liên hệ cửa hàng để đối soát trước khi tạo mã mới.</p><button className="btn" disabled={paymentBusy} onClick={loadPayment}>Tạo mã QR thanh toán</button></>}{paymentBusy && <p className="small muted">Đang tạo mã thanh toán…</p>}{paymentLink?.qrCode && <><p className="small muted">Quét mã bằng ứng dụng ngân hàng để thanh toán {vnd(tracking.total)}.</p><div style={{background:'#fff',padding:12,alignSelf:'center'}}><QRCodeSVG value={paymentLink.qrCode} size={200} title="Mã QR thanh toán PayOS" /></div></>}{paymentLink?.checkoutUrl && <a className="btn secondary" href={paymentLink.checkoutUrl} target="_blank" rel="noreferrer">Mở trang thanh toán PayOS</a>}{paymentError && <><div className="notice bad">{paymentError}</div><button className="btn secondary" disabled={paymentBusy} onClick={loadPayment}>Thử lại</button></>}</section>}
+    {tracking.payment_method==='BANK_TRANSFER' && !paymentLink && tracking.payment_status==='PENDING' && <section className="panel panel-pad stack-sm small"><h3>Hướng dẫn chuyển khoản</h3>{instructions?.configured ? <><div>Ngân hàng: <b>{instructions.bank_name}</b></div><div>Tên tài khoản: <b>{instructions.account_name}</b></div><div>Số tài khoản: <b>{instructions.account_number}</b></div><div>Số tiền: <b>{vnd(instructions.amount)}</b></div><div>Nội dung: <b>{instructions.transfer_content}</b></div></> : <div className="notice warn">Cửa hàng chưa cấu hình thông tin nhận chuyển khoản.</div>}</section>}
   </aside></div>;
 }

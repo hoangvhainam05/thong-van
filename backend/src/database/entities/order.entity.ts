@@ -103,6 +103,7 @@ export class Order {
 
   @Column({ name: 'payos_order_code', type: 'varchar', length: 20, nullable: true, unique: true }) payosOrderCode!: string | null;
   @Column({ name: 'payos_link_id', type: 'varchar', length: 100, nullable: true }) payosLinkId!: string | null;
+  @Column({ name: 'payos_qr_code', type: 'text', nullable: true }) payosQrCode!: string | null;
   @Column({ name: 'payos_checkout_url', type: 'varchar', length: 500, nullable: true }) payosCheckoutUrl!: string | null;
 
   @Column({ name: 'payment_status', type: 'enum', enum: PaymentStatus, default: PaymentStatus.UNPAID })

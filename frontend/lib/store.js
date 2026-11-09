@@ -141,7 +141,7 @@ export const ROUTE_STATUS = {
   DONE: { label: "Hoàn tất", tone: "ok", hint: "Đã giao hết các điểm" },
 };
 
-export const PAYMENT_METHOD = { PAYOS: "Thanh toán online qua PayOS", COD: "Tiền mặt khi nhận", COUNTER_CASH: "Tiền mặt tại quầy", BANK: "Chuyển khoản", EWALLET: "Ví điện tử" };
+export const PAYMENT_METHOD = { PAYOS: "Chuyển khoản qua mã QR", COD: "Tiền mặt khi nhận", COUNTER_CASH: "Tiền mặt tại quầy", BANK: "Chuyển khoản", EWALLET: "Ví điện tử" };
 
 class PermissionError extends Error {}
 

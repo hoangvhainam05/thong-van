@@ -512,10 +512,10 @@ function Checkout() {
             <div className="panel-head"><h3>Thanh toán</h3></div>
             <div className="panel-body">
               <div className="choice">
-                {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && (k !== "BANK" || bankAvailable) && (k !== "PAYOS" || payosAvailable)).map(([k, label]) => (
+                {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && (k !== "BANK" || (bankAvailable && !payosAvailable)) && (k !== "PAYOS" || payosAvailable)).map(([k, label]) => (
                   <label key={k}>
                     <input type="radio" name="pay" checked={paymentChoice === k} onChange={() => setPay(k)} />
-                    <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? "Trả cho tài xế khi nhận và kiểm tra hàng" : "Tạo đơn chờ chuyển khoản; nhân viên xác nhận sau khi đối soát"}</span></span>
+                    <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? "Trả cho tài xế khi nhận và kiểm tra hàng" : k === "PAYOS" ? "Quét mã QR để thanh toán sau khi đặt hàng" : "Tạo đơn chờ chuyển khoản; nhân viên xác nhận sau khi đối soát"}</span></span>
                   </label>
                 ))}
               </div>
