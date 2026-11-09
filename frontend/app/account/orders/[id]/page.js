@@ -10,7 +10,22 @@ import { playSuccess } from '@/lib/audio-juice';
 
 function Detail() {
   const { id } = useParams(), params = useSearchParams();
-  const [tracking, setTracking] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
+  const [tracking, setTracking] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true), [cancelBusy, setCancelBusy] = useState(false);
+
+  async function cancelOrder() {
+    if (cancelBusy || !window.confirm(`Bạn muốn huỷ đơn ${tracking.code}?`)) return;
+    setCancelBusy(true);
+    try {
+      await api(`/api/orders/${encodeURIComponent(id)}/cancel`, { method: 'POST', token: loadToken(), body: { reason: 'Khách tự huỷ đơn' } });
+      const updated = await api(`/api/account/orders/${encodeURIComponent(id)}`, { token: loadToken() });
+      setTracking(updated);
+      setError('');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCancelBusy(false);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -71,6 +86,7 @@ function Detail() {
             paymentRequest={{ path: `/api/orders/${id}/payos`, options: { method: "POST", token: loadToken() } }}
             proofRequest={{ path: `/api/account/orders/${id}/proof`, options: { token: loadToken() } }}
           />
+          {['PENDING', 'CONFIRMED', 'READY', 'SCHEDULED'].includes(tracking.status) && <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn danger" disabled={cancelBusy} onClick={cancelOrder}>{cancelBusy ? 'Đang huỷ đơn…' : 'Huỷ đơn hàng'}</button></div>}
         </>
       )}
     </div>

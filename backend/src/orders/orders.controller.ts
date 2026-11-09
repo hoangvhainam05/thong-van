@@ -60,6 +60,13 @@ export class OrdersController {
   @RequirePermission('order.track_own')
   checkout(@Param('orderId', ParseIntPipe) id: number, @Req() req: AuthRequest) { return this.payos.checkout(id, req.user.customerId); }
 
+  @Post(':orderId/cancel')
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.track_own')
+  cancelOwn(@Param('orderId', ParseIntPipe) id: number, @Req() req: AuthRequest, @Body('reason') reason?: string) {
+    return this.orders.cancelOwn(id, req.user.customerId, reason || 'Khách tự huỷ đơn');
+  }
+
   @Patch(':orderId/status')
   @UseGuards(AuthGuard)
   @RequirePermission('order.status')

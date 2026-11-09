@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { PAYMENT_METHOD, useStore } from "@/lib/store";
-import { api } from "@/lib/api";
+import { api, loadToken } from "@/lib/api";
 import { addDays, dateLabel, vnd, ymd } from "@/lib/format";
 import { RequirePerm } from "@/components/Guard";
 import LocationPicker from "@/components/LocationPicker";
 import { Empty, Field, Loading, Modal } from "@/components/ui";
+import { QRCodeSVG } from "qrcode.react";
 
 const WINDOWS = [
   { id: "am", label: "Buổi sáng", start: "08:00", end: "12:00" },
@@ -112,7 +113,17 @@ function Checkout() {
   const [recipientPhone, setRecipientPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [paymentModal, setPaymentModal] = useState(null);
+  const [paymentSeconds, setPaymentSeconds] = useState(0);
   const requestIdRef = useRef(null);
+
+  useEffect(() => {
+    if (!paymentModal?.expiresAt) return undefined;
+    const tick = () => setPaymentSeconds(Math.max(0, Math.ceil((new Date(paymentModal.expiresAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [paymentModal?.expiresAt]);
 
   let quoteProductIds = null;
   if (searchParams.has("items")) {
@@ -197,9 +208,9 @@ function Checkout() {
   if (catalogStatus === 'loading' || shippingStatus === 'loading') return <Loading />;
   if (catalogStatus !== 'ready' || shippingStatus !== 'ready') return <div className="notice bad">Không tải được sản phẩm hoặc phí giao hàng. Vui lòng tải lại trang.</div>;
 
-  if (!lines.length && isDirectPurchase) return <div className="panel"><Empty title="Sản phẩm không còn bán" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
-  if (!cartLines.length && !isDirectPurchase) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
-  if (!lines.length) return <div className="panel"><Empty title="Chưa chọn sản phẩm để thanh toán" action={<Link href="/cart" className="btn">Quay lại giỏ hàng</Link>} /></div>;
+  if (!paymentModal && !lines.length && isDirectPurchase) return <div className="panel"><Empty title="Sản phẩm không còn bán" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
+  if (!paymentModal && !cartLines.length && !isDirectPurchase) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
+  if (!paymentModal && !lines.length) return <div className="panel"><Empty title="Chưa chọn sản phẩm để thanh toán" action={<Link href="/cart" className="btn">Quay lại giỏ hàng</Link>} /></div>;
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
   const paymentChoice = pay === "BANK" ? (payosAvailable ? "PAYOS" : "COD") : pay;
   const days = Array.from({ length: 7 }, (_, i) => addDays(ymd(), i));
@@ -264,12 +275,30 @@ function Checkout() {
     setSubmitting(false);
     if (order) {
       requestIdRef.current = null;
-      router.push(`/account/orders/${order.serverId}?new=1`);
+      if (paymentChoice === "PAYOS") {
+        try {
+          const result = await api(`/api/orders/${order.serverId}/payos`, { method: "POST", token: loadToken() });
+          setPaymentModal({ ...result, orderId: order.serverId, code: order.code, total: subtotal + (shippingQuote?.shippingBreakdown?.totalFee || 0), expiresAt: result.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString() });
+        } catch (e) {
+          setError(`Đơn ${order.code || "hàng"} đã được tạo, nhưng chưa tạo được mã thanh toán: ${e.message}. Bạn có thể thanh toán trong chi tiết đơn.`);
+        }
+      } else {
+        router.push(`/account/orders/${order.serverId}?new=1`);
+      }
     }
   };
 
   return (
     <>
+      {paymentModal && <Modal title="Thông tin thanh toán" onClose={() => { setPaymentModal(null); router.push(`/account/orders/${paymentModal.orderId}?new=1`); }} footer={<><button className="btn secondary" onClick={() => { setPaymentModal(null); router.push(`/account/orders/${paymentModal.orderId}?new=1`); }}>Xem chi tiết đơn</button>{paymentModal.checkoutUrl && <a className="btn" href={paymentModal.checkoutUrl} target="_blank" rel="noreferrer">Mở PayOS</a>}</>}>
+        <div className="stack" style={{ alignItems: "center", textAlign: "center" }}>
+          <b>Đơn {paymentModal.code} đang chờ thanh toán · {vnd(paymentModal.total)}</b>
+          {paymentModal.qrCode && <div style={{ background: "#fff", padding: 12 }}><QRCodeSVG value={paymentModal.qrCode} size={220} title="Mã QR thanh toán PayOS" /></div>}
+          {paymentModal.details && <div className="stack-sm small" style={{ textAlign: "left", width: "100%" }}><div>Ngân hàng: <b>{paymentModal.details.bankCode}</b></div><div>Số tài khoản: <b>{paymentModal.details.accountNumber}</b></div>{paymentModal.accountName && <div>Chủ tài khoản: <b>{paymentModal.accountName}</b></div>}<div>Nội dung: <b>{paymentModal.details.transferContent}</b></div></div>}
+          <div className={paymentSeconds ? "notice warn" : "notice bad"}>{paymentSeconds ? `Mã QR còn hiệu lực ${Math.floor(paymentSeconds / 60)}:${String(paymentSeconds % 60).padStart(2, "0")}` : "Mã QR đã hết hạn. Mở chi tiết đơn để tạo mã mới."}</div>
+          <p className="small muted">Đơn chỉ được xác nhận thanh toán sau khi PayOS báo đã nhận tiền.</p>
+        </div>
+      </Modal>}
       {addressModalOpen && <Modal title={deleteAddress ? "Xóa địa chỉ" : "Chọn địa chỉ nhận hàng"} onClose={() => { if (!addressBusy) { setDeleteAddress(null); setAddressModalOpen(false); } }} footer={deleteAddress ? <>
         <button className="btn secondary" disabled={addressBusy} onClick={() => setDeleteAddress(null)}>Quay lại</button>
         <button className="btn danger" disabled={addressBusy} onClick={async () => {

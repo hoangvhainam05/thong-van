@@ -248,7 +248,7 @@ export class OrdersService {
     return rows.map((order) => this.toOutSync(order, instructions));
   }
 
-  async updateStatus(id: number, body: StatusUpdateDto) {
+  async updateStatus(id: number, body: StatusUpdateDto, actor = 'STAFF') {
     await this.dataSource.transaction(async (manager) => {
       const cancelling = body.status === OrderStatus.CANCELLED;
       if (cancelling && !body.reason?.trim()) throw new BadRequestException('Vui lòng nhập lý do huỷ đơn.');
@@ -262,6 +262,9 @@ export class OrdersService {
       const orderRepo = manager.getRepository(Order);
       const order = await orderRepo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn');
+      if (actor === 'CUSTOMER' && ![OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY, OrderStatus.SCHEDULED].includes(order.status)) {
+        throw new ConflictException('Chỉ có thể huỷ đơn trước khi đơn bắt đầu vận chuyển.');
+      }
       if (!ALLOWED[order.status].includes(body.status)) {
         throw new ConflictException(`Không thể chuyển ${order.status} → ${body.status}`);
       }
@@ -300,10 +303,19 @@ export class OrdersService {
         fromValue: previousStatus,
         toValue: body.status,
         note: body.reason?.trim() || null,
-        actor: 'STAFF',
+        actor,
       });
     });
     return this.toOut(await this.findOne(id));
+  }
+
+  async cancelOwn(id: number, customerId: number, reason: string) {
+    const order = await this.findOne(id);
+    if (order.customerId !== customerId) throw new NotFoundException('Không tìm thấy đơn hàng.');
+    if (![OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY, OrderStatus.SCHEDULED].includes(order.status)) {
+      throw new ConflictException('Chỉ có thể huỷ đơn trước khi đơn bắt đầu vận chuyển.');
+    }
+    return this.updateStatus(id, { status: OrderStatus.CANCELLED, reason: reason?.trim() || 'Khách tự huỷ đơn' }, 'CUSTOMER');
   }
 
   async updatePayment(id: number, body: PaymentUpdateDto) {
