@@ -34,6 +34,8 @@ function Checkout() {
   const addresses = customer?.addresses || [];
   const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
 
+  const [payosAvailable, setPayosAvailable] = useState(false);
+  useEffect(() => { api("/api/orders/payos/available").then(data => setPayosAvailable(data.available)).catch(() => {}); }, []);
   const [addrId, setAddrId] = useState(defaultAddr?.id ?? "new");
   const [newAddr, setNewAddr] = useState({ address: "", district: "", lat: "", lng: "" });
   const [addrLabel, setAddrLabel] = useState("Nhà riêng");
@@ -510,7 +512,7 @@ function Checkout() {
             <div className="panel-head"><h3>Thanh toán</h3></div>
             <div className="panel-body">
               <div className="choice">
-                {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && (k !== "BANK" || bankAvailable)).map(([k, label]) => (
+                {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && (k !== "BANK" || bankAvailable) && (k !== "PAYOS" || payosAvailable)).map(([k, label]) => (
                   <label key={k}>
                     <input type="radio" name="pay" checked={paymentChoice === k} onChange={() => setPay(k)} />
                     <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? "Trả cho tài xế khi nhận và kiểm tra hàng" : "Tạo đơn chờ chuyển khoản; nhân viên xác nhận sau khi đối soát"}</span></span>
@@ -518,7 +520,7 @@ function Checkout() {
                 ))}
               </div>
               {paymentChoice === "BANK" && bankInstructions?.configured && <div className="notice" style={{ marginTop: 12 }}>Chuyển khoản tới <b>{bankInstructions.bank_name}</b> · {bankInstructions.account_name} · {bankInstructions.account_number}. Mã đơn và nội dung chuyển khoản sẽ hiện sau khi tạo đơn. Nhân viên sẽ đối soát thủ công.</div>}
-              {bankAvailable && <p className="tiny muted" style={{ marginTop: 10 }}>Website chưa tích hợp QR hoặc tự động đối soát. Vui lòng chuyển khoản đúng nội dung mã đơn.</p>}
+              {paymentChoice === "PAYOS" && <p className="tiny muted" style={{ marginTop: 10 }}>Sau khi đặt hàng, bạn có thể thanh toán qua PayOS.</p>}
             </div>
           </section>
         </div>
@@ -547,7 +549,7 @@ function Checkout() {
           <div className="row between"><b>Tổng cộng</b><span className="price" style={{ fontSize: 22 }}>{vnd(subtotal + (shippingQuote?.shippingBreakdown?.totalFee || 0))}</span></div>
           {error && <div className="notice bad">{error}</div>}
           <button className="btn lg block" disabled={submitting || !paymentChoice || quoteLoading || !shippingQuote?.quoteAvailable || (deliveryType === "EXPRESS" && !shippingQuote?.expressEligibility?.eligible)} onClick={submit}>
-            {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Tạo đơn chờ chuyển khoản"}
+            {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Tạo đơn và thanh toán"}
           </button>
         </aside>
       </div>

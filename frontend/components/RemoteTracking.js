@@ -7,8 +7,10 @@ import RouteStrip from "@/components/RouteStrip";
 import Logistics3DSimulation from "./Logistics3DSimulation";
 import { playTap } from "@/lib/audio-juice";
 
-export default function RemoteTracking({ tracking, proofRequest }) {
+export default function RemoteTracking({ tracking, proofRequest, paymentRequest }) {
   const [proof,setProof]=useState(null), [error,setError]=useState(''), [busy,setBusy]=useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false), [paymentError, setPaymentError] = useState('');
+  async function payOnline() { setPaymentBusy(true); setPaymentError(''); try { const result = await api(paymentRequest.path, paymentRequest.options); window.location.assign(result.checkoutUrl); } catch (e) { setPaymentError(e.message); setPaymentBusy(false); } }
   const [view3D, setView3D]=useState(false);
   const time = value => value ? new Date(value).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '—';
   const instructions=tracking.payment_instructions;
@@ -45,7 +47,8 @@ export default function RemoteTracking({ tracking, proofRequest }) {
     <section className="panel panel-pad"><h3 style={{marginBottom:14}}>Tiến trình đơn</h3><ul className="timeline">{tracking.timeline.map(item=><li key={item.status} className={item.state}><span className="dot"/><div className="t-title">{item.label}</div></li>)}</ul></section>
     <section className="panel panel-pad stack-sm"><h3>Lịch sử cập nhật</h3>{tracking.history?.length ? tracking.history.map(event=><div key={event.id} className="small"><b>{event.label}</b> · {dateTime(event.at)}{event.note && <div className="muted">{event.note}</div>}</div>) : <p className="small muted">Chưa có lịch sử cập nhật.</p>}</section>
   </div><aside className="stack">{tracking.status==='DELIVERED' && <section className="panel panel-pad stack-sm small"><h3>Liên hệ bảo hành</h3><div>{tracking.warranty_contact || 'Liên hệ cửa hàng để được hỗ trợ bảo hành.'}</div></section>}<section className="panel panel-pad stack-sm small"><h3>Giao tới</h3><b>{tracking.recipient_name}</b><div>{tracking.address}</div></section>
-    <section className="panel panel-pad stack-sm small"><h3>Thanh toán</h3><div>{tracking.payment_method==='BANK_TRANSFER'?'Chuyển khoản':tracking.payment_method==='COUNTER_CASH'?'Tiền mặt tại quầy':'Tiền mặt khi nhận'} · {tracking.payment_status==='PAID'?'Đã thanh toán':tracking.payment_status==='PENDING'?'Chờ chuyển khoản':'Chưa thanh toán'}</div></section>
+    <section className="panel panel-pad stack-sm small"><h3>Thanh toán</h3><div>{tracking.payment_method==='PAYOS'?'PayOS':tracking.payment_method==='BANK_TRANSFER'?'Chuyển khoản':tracking.payment_method==='COUNTER_CASH'?'Tiền mặt tại quầy':'Tiền mặt khi nhận'} · {tracking.payment_status==='PAID'?'Đã thanh toán':tracking.payment_status==='PENDING'?'Chờ thanh toán':'Chưa thanh toán'}</div></section>
+    {paymentRequest && tracking.payment_method==='PAYOS' && tracking.payment_status!=='PAID' && tracking.status!=='CANCELLED' && <section className="panel panel-pad stack-sm"><button className="btn" disabled={paymentBusy} onClick={payOnline}>{paymentBusy ? 'Đang mở PayOS…' : 'Thanh toán qua PayOS'}</button>{paymentError && <div className="notice bad">{paymentError}</div>}</section>}
     {tracking.payment_method==='BANK_TRANSFER' && tracking.payment_status==='PENDING' && <section className="panel panel-pad stack-sm small"><h3>Hướng dẫn chuyển khoản</h3>{instructions?.configured ? <><div>Ngân hàng: <b>{instructions.bank_name}</b></div><div>Tên tài khoản: <b>{instructions.account_name}</b></div><div>Số tài khoản: <b>{instructions.account_number}</b></div><div>Số tiền: <b>{vnd(instructions.amount)}</b></div><div>Nội dung: <b>{instructions.transfer_content}</b></div></> : <div className="notice warn">Cửa hàng chưa cấu hình thông tin nhận chuyển khoản.</div>}</section>}
   </aside></div>;
 }

@@ -7,16 +7,31 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  HttpCode,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard, RequirePermission } from '../auth/auth.guard';
+import { AuthGuard, AuthRequest, RequirePermission } from '../auth/auth.guard';
 import { OrderStatus } from '../database/entities';
 import { CreateOrderDto, LocationUpdateDto, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, ShippingQuoteDto, StatusUpdateDto } from './order.dto';
+import { PayosService } from './payos.service';
 import { OrdersService } from './orders.service';
 
 @Controller('api/orders')
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(private readonly orders: OrdersService, private readonly payos: PayosService) {}
+
+  @Get('payos/available')
+  payosAvailable() { return { available: this.payos.available() }; }
+
+  @Post('payos/webhook')
+  @HttpCode(200)
+  webhook(@Body() body: any) { return this.payos.webhook(body); }
+
+  @Post(':orderId/payos')
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.track_own')
+  checkout(@Param('orderId', ParseIntPipe) id: number, @Req() req: AuthRequest) { return this.payos.checkout(id, req.user.customerId); }
 
   @Patch(':orderId/status')
   @UseGuards(AuthGuard)

@@ -15,7 +15,9 @@ export default function OrderTracking({ order, actions: extra }) {
   const [view3D, setView3D] = useState(false);
   const q = queueInfo(state, order);
   const headline = trackingHeadline(order, q);
-  const paymentLabel = order.payment.method === "BANK"
+  const paymentLabel = order.payment.method === "PAYOS"
+    ? (order.payment.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán PayOS")
+    : order.payment.method === "BANK"
     ? (order.payment.status === "PAID" ? "Đã nhận chuyển khoản" : "Chờ chuyển khoản")
     : order.payment.method === "COUNTER_CASH"
       ? "Đã thu tiền tại quầy"

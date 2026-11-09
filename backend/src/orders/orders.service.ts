@@ -120,6 +120,7 @@ export class OrdersService {
       const shippingFee = quote?.shippingBreakdown?.totalFee ?? defaultFee;
       const shippingDiscount = quote?.shippingBreakdown ? 0 : null;
       const total = subtotal + shippingFee;
+      if (body.payment_method === PaymentMethod.PAYOS && source !== 'WEB') throw new BadRequestException('PayOS chỉ dùng cho đơn trực tuyến.');
       if (body.payment_method === PaymentMethod.COUNTER_CASH && source !== 'COUNTER') {
         throw new BadRequestException('Thanh toán tiền mặt tại quầy chỉ dùng khi nhân viên nhập đơn quầy.');
       }
@@ -167,7 +168,7 @@ export class OrdersService {
         shippingRateVersion: quote?.shippingRateVersion ?? null,
         total: String(total),
         paymentMethod: body.payment_method as PaymentMethod,
-        paymentStatus: body.payment_method === PaymentMethod.BANK_TRANSFER
+        paymentStatus: [PaymentMethod.BANK_TRANSFER, PaymentMethod.PAYOS].includes(body.payment_method)
           ? PaymentStatus.PENDING
           : body.payment_method === PaymentMethod.COUNTER_CASH ? PaymentStatus.PAID : PaymentStatus.UNPAID,
         clientRequestId: body.client_request_id || randomUUID(),
@@ -264,7 +265,7 @@ export class OrdersService {
       if (!ALLOWED[order.status].includes(body.status)) {
         throw new ConflictException(`Không thể chuyển ${order.status} → ${body.status}`);
       }
-      if (body.status === OrderStatus.CONFIRMED && order.paymentMethod === PaymentMethod.BANK_TRANSFER && order.paymentStatus !== PaymentStatus.PAID) {
+      if (body.status === OrderStatus.CONFIRMED && [PaymentMethod.BANK_TRANSFER, PaymentMethod.PAYOS].includes(order.paymentMethod as PaymentMethod) && order.paymentStatus !== PaymentStatus.PAID) {
         throw new ConflictException('Chưa xác nhận đã nhận tiền chuyển khoản.');
       }
       if (cancelling && order.status === OrderStatus.SCHEDULED) {

@@ -24,6 +24,7 @@ import { OrderStatus } from '../database/entities';
 
 export enum PaymentMethod {
   COD = 'COD',
+  PAYOS = 'PAYOS',
   BANK_TRANSFER = 'BANK_TRANSFER',
   COUNTER_CASH = 'COUNTER_CASH',
 }

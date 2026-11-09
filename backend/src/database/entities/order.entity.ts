@@ -98,8 +98,12 @@ export class Order {
   @Column({ type: 'enum', enum: ['WEB', 'COUNTER'], default: 'WEB' })
   source!: 'WEB' | 'COUNTER';
 
-  @Column({ name: 'payment_method', type: 'enum', enum: ['COD', 'BANK_TRANSFER', 'COUNTER_CASH'], default: 'COD' })
-  paymentMethod!: 'COD' | 'BANK_TRANSFER' | 'COUNTER_CASH';
+  @Column({ name: 'payment_method', type: 'enum', enum: ['COD', 'BANK_TRANSFER', 'COUNTER_CASH', 'PAYOS'], default: 'COD' })
+  paymentMethod!: 'COD' | 'BANK_TRANSFER' | 'COUNTER_CASH' | 'PAYOS';
+
+  @Column({ name: 'payos_order_code', type: 'varchar', length: 20, nullable: true, unique: true }) payosOrderCode!: string | null;
+  @Column({ name: 'payos_link_id', type: 'varchar', length: 100, nullable: true }) payosLinkId!: string | null;
+  @Column({ name: 'payos_checkout_url', type: 'varchar', length: 500, nullable: true }) payosCheckoutUrl!: string | null;
 
   @Column({ name: 'payment_status', type: 'enum', enum: PaymentStatus, default: PaymentStatus.UNPAID })
   paymentStatus!: PaymentStatus;

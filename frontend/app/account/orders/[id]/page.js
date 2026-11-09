@@ -68,6 +68,7 @@ function Detail() {
           )}
           <RemoteTracking
             tracking={tracking}
+            paymentRequest={{ path: `/api/orders/${id}/payos`, options: { method: "POST", token: loadToken() } }}
             proofRequest={{ path: `/api/account/orders/${id}/proof`, options: { token: loadToken() } }}
           />
         </>

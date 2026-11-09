@@ -226,3 +226,10 @@ Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_ima
 - Chạy `database/migrations/025_vehicle_driver.sql` để tạo bảng liên kết tài xế và phương tiện `vehicle_driver`.
 - Cước checkout dùng quãng đường đường bộ: mặc định miễn phí đến 20 km, 150.000₫ đến 30 km, rồi tăng 50.000₫ mỗi 10 km. Có thể chỉnh năm ngưỡng và mức phí trong Cài đặt hệ thống; mỗi lần đổi cước sẽ tăng phiên bản và ghi snapshot vào `shipping_rate_history`.
 - Cấu hình `ORS_API_KEY` và tọa độ kho để lấy quãng đường đường bộ. Thể tích và trọng lượng sản phẩm vẫn dùng để kiểm tra sức chứa xe và điều kiện hỏa tốc; chúng không cộng vào cước giao hàng.
+
+
+### Thanh toán PayOS
+
+Với cơ sở dữ liệu đã có, chạy `database/migrations/026_payos.sql` trước khi cập nhật backend. Cấu hình `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` và `PAYOS_FRONTEND_URL` trong môi trường backend; URL frontend phải là địa chỉ công khai của website khi triển khai. Không đưa khóa vào mã nguồn hoặc frontend.
+
+Trong trang quản lý PayOS, đăng ký webhook HTTPS công khai trỏ đến `https://<dia-chi-backend>/api/orders/payos/webhook`. Khởi động lại backend sau khi cấu hình. Khách chọn PayOS khi đặt đơn, sau đó nhấn thanh toán trong chi tiết đơn. Trạng thái chỉ chuyển sang đã thanh toán khi webhook hợp lệ và PayOS xác nhận đã nhận đủ tiền. Đơn đã huỷ nhưng nhận thanh toán sau đó cần xử lý hoàn tiền thủ công. Kiểm thử với môi trường PayOS phù hợp trước khi sử dụng thực tế.

@@ -19,6 +19,7 @@ export default () => ({
     accountNumber: process.env.BANK_ACCOUNT_NUMBER || '',
     transferContentPrefix: process.env.BANK_TRANSFER_CONTENT_PREFIX || 'THONGVAN',
   },
+  payos: { clientId: process.env.PAYOS_CLIENT_ID || '', apiKey: process.env.PAYOS_API_KEY || '', checksumKey: process.env.PAYOS_CHECKSUM_KEY || '', frontendUrl: process.env.PAYOS_FRONTEND_URL || '' },
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
     apiKey: process.env.CLOUDINARY_API_KEY || '',

@@ -103,7 +103,7 @@ function mapServerOrder(row, localId, customerId = 0) {
       end: String(row.time_window_end || "18:00").slice(0, 5),
     },
     payment: {
-      method: row.payment_method === "BANK_TRANSFER" ? "BANK" : row.payment_method === "COUNTER_CASH" ? "COUNTER_CASH" : "COD",
+      method: row.payment_method === "PAYOS" ? "PAYOS" : row.payment_method === "BANK_TRANSFER" ? "BANK" : row.payment_method === "COUNTER_CASH" ? "COUNTER_CASH" : "COD",
       status: row.payment_status || "UNPAID",
     },
     paymentInstructions: row.payment_instructions || null,
@@ -141,7 +141,7 @@ export const ROUTE_STATUS = {
   DONE: { label: "Hoàn tất", tone: "ok", hint: "Đã giao hết các điểm" },
 };
 
-export const PAYMENT_METHOD = { COD: "Tiền mặt khi nhận", COUNTER_CASH: "Tiền mặt tại quầy", BANK: "Chuyển khoản", EWALLET: "Ví điện tử" };
+export const PAYMENT_METHOD = { PAYOS: "Thanh toán online qua PayOS", COD: "Tiền mặt khi nhận", COUNTER_CASH: "Tiền mặt tại quầy", BANK: "Chuyển khoản", EWALLET: "Ví điện tử" };
 
 class PermissionError extends Error {}
 
@@ -564,7 +564,7 @@ export function StoreProvider({ children }) {
           for (const id of ids) {
             const order = stateRef.current.orders.find((x) => x.id === id);
             if (!order || order.status !== "PENDING") continue;
-            if (order.payment.method === "BANK" && order.payment.status !== "PAID") { skippedPayment++; continue; }
+            if (["BANK", "PAYOS"].includes(order.payment.method) && order.payment.status !== "PAID") { skippedPayment++; continue; }
             let serverOrder;
             if (order.serverId) {
               const token = loadToken();
