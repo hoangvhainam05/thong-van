@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useCategories } from "@/lib/categories";
 import { vnd } from "@/lib/format";
@@ -12,6 +12,32 @@ import { Field, Modal } from "@/components/ui";
 
 const EMPTY = { name: "", brand: "", category: "", costPrice: null, price: "", oldPrice: null, volume: 0.3, weight: 20, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, install: 15, warranty: 12, maintenanceIntervalMonths: null, stock: 10, active: true, description: "" };
 
+function CategorySelect({ categories, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef(null);
+  const options = [{ id: "", name: "Mọi danh mục" }, ...categories];
+  const selected = options.find((option) => option.id === value) || options[0];
+  useEffect(() => {
+    const close = (event) => { if (!root.current?.contains(event.target)) setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  const move = (direction) => {
+    const current = Math.max(0, options.findIndex((option) => option.id === value));
+    const next = options[(current + direction + options.length) % options.length];
+    onChange(next.id);
+  };
+  return <div className={`category-select ${open ? "is-open" : ""}`} ref={root}>
+    <button type="button" className="input category-select-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((state) => !state)} onKeyDown={(event) => {
+      if (["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); if (!open) setOpen(true); else move(event.key === "ArrowDown" ? 1 : -1); }
+      if (event.key === "Escape") setOpen(false);
+    }}><span>{selected.name}</span><span className="category-select-chevron" aria-hidden="true">⌄</span></button>
+    {open && <div className="category-select-menu" role="listbox" aria-label="Lọc theo danh mục">
+      {options.map((option) => <button type="button" key={option.id || "all"} role="option" aria-selected={value === option.id} className="category-select-option" onClick={() => { onChange(option.id); setOpen(false); }}><span>{option.name}</span>{value === option.id && <span className="category-select-check" aria-hidden="true">✓</span>}</button>)}
+    </div>}
+  </div>;
+}
+
 function Products() {
   const { state, actions } = useStore();
   const { categories, error: categoryError, reload: reloadCategories } = useCategories();
@@ -22,6 +48,7 @@ function Products() {
   const [cat, setCat] = useState("");
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState(null);
+  const [viewing, setViewing] = useState(null);
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState("");
@@ -112,10 +139,7 @@ function Products() {
     <>
       <PageHead title="Sản phẩm" sub="Thể tích và thời gian lắp đặt được dùng để tính sức chứa xe và giờ giao.">
         <input className="input" style={{ width: 220 }} placeholder="Tìm tên hoặc mã" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Tìm sản phẩm" />
-        <select className="input" style={{ width: 170 }} value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Danh mục">
-          <option value="">Mọi danh mục</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <CategorySelect categories={categories} value={cat} onChange={setCat} />
         <button className="btn secondary" disabled={!connected} onClick={() => setManagingCategories(true)}>Quản lý danh mục</button>
         <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFiles([]); setFormError(""); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
       </PageHead>
@@ -128,8 +152,8 @@ function Products() {
               <tr key={p.id} style={{ opacity: p.active ? 1 : 0.55 }}>
                 <td>
                   <div className="row" style={{ flexWrap: "nowrap" }}>
-                    <span style={{ width: 36, height: 36, color: "var(--road)", flex: "none" }}>{p.imageUrl ? <img src={p.imageUrl} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6 }} /> : <Art category={p.category} />}</span>
-                    <div><div className="strong">{p.name}</div><div className="tiny muted">{p.sku}</div></div>
+                    <button type="button" className="ghost" aria-label={`Xem thông tin ${p.name}`} onClick={() => setViewing(p)} style={{ width: 36, height: 36, color: "var(--road)", flex: "none", padding: 0, border: 0, background: "transparent", cursor: "pointer" }}>{p.imageUrl ? <img src={p.imageUrl} alt={p.name} style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6 }} /> : <Art category={p.category} />}</button>
+                    <div><button type="button" className="strong ghost" onClick={() => setViewing(p)} style={{ padding: 0, border: 0, background: "transparent", cursor: "pointer", textAlign: "left" }}>{p.name}</button><div className="tiny muted">{p.sku}</div></div>
                   </div>
                 </td>
                 <td className="small">{categories.find((c) => c.id === p.category)?.name}</td>
@@ -148,6 +172,35 @@ function Products() {
           </tbody>
         </table>
       </div>
+
+      {viewing && (
+        <Modal wide title={viewing.name} onClose={() => setViewing(null)} footer={<button className="btn secondary" onClick={() => setViewing(null)}>Đóng</button>}>
+          <div className="row" style={{ alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
+            <div style={{ width: 220, minHeight: 180, flex: "none", display: "grid", placeItems: "center", border: "1px solid var(--line)", borderRadius: 12, padding: 12 }}>
+              {viewing.imageUrl ? <img src={viewing.imageUrl} alt={viewing.name} style={{ width: "100%", maxHeight: 220, objectFit: "contain" }} /> : <div style={{ width: 120, height: 120, color: "var(--road)" }}><Art category={viewing.category} /></div>}
+            </div>
+            <div style={{ flex: "1 1 300px" }}>
+              <div className="tiny muted">Mã sản phẩm: {viewing.sku || "—"}</div>
+              <h3 style={{ margin: "8px 0" }}>{viewing.name}</h3>
+              <div className="small muted">{viewing.brand || "Chưa có hãng"} · {categories.find((c) => c.id === viewing.category)?.name || viewing.category || "Chưa phân loại"}</div>
+              <div className="row" style={{ marginTop: 14, gap: 18 }}><strong>{vnd(viewing.price)}</strong>{viewing.oldPrice > viewing.price && <span className="strike">{vnd(viewing.oldPrice)}</span>}</div>
+              <p style={{ whiteSpace: "pre-wrap" }}>{viewing.description || "Chưa có mô tả sản phẩm."}</p>
+              {(viewing.images || []).length > 1 && <div className="row" style={{ flexWrap: "wrap", marginTop: 12 }}>{viewing.images.map((image, index) => <img key={`${image.imageUrl}-${index}`} src={image.imageUrl} alt={`${viewing.name} ${index + 1}`} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }} />)}</div>}
+            </div>
+          </div>
+          <div className="form-grid" style={{ marginTop: 20 }}>
+            <div><span className="tiny muted">Giá nhập</span><div>{viewing.costPrice == null ? "—" : vnd(viewing.costPrice)}</div></div>
+            <div><span className="tiny muted">Tồn kho</span><div>{viewing.stock ?? 0}</div></div>
+            <div><span className="tiny muted">Trạng thái</span><div>{viewing.active ? "Đang bán" : "Đã ẩn"}</div></div>
+            <div><span className="tiny muted">Bảo hành</span><div>{viewing.warranty ? `${viewing.warranty} tháng` : "—"}</div></div>
+            <div><span className="tiny muted">Thể tích</span><div>{viewing.volume ?? "—"} m³</div></div>
+            <div><span className="tiny muted">Lắp đặt</span><div>{viewing.install ? `${viewing.install} phút` : "—"}</div></div>
+            <div><span className="tiny muted">Chu kỳ bảo dưỡng</span><div>{viewing.maintenanceIntervalMonths ? `${viewing.maintenanceIntervalMonths} tháng` : "—"}</div></div>
+            <div><span className="tiny muted">Kích thước kiện (D × R × C)</span><div>{[viewing.packageLengthCm, viewing.packageWidthCm, viewing.packageHeightCm].some((x) => x != null) ? `${viewing.packageLengthCm ?? "—"} × ${viewing.packageWidthCm ?? "—"} × ${viewing.packageHeightCm ?? "—"} cm` : "—"}</div></div>
+            <div><span className="tiny muted">Trọng lượng kiện</span><div>{viewing.packageWeightKg == null ? "—" : `${viewing.packageWeightKg} kg`}</div></div>
+          </div>
+        </Modal>
+      )}
 
       {managingCategories && (
         <Modal title="Quản lý danh mục" onClose={() => setManagingCategories(false)} footer={<button className="btn secondary" onClick={() => setManagingCategories(false)}>Đóng</button>}>
