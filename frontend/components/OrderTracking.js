@@ -1,14 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { PAYMENT_METHOD, queueInfo, useStore } from "@/lib/store";
 import { dateLabel, hm, vnd } from "@/lib/format";
 import OrderTimeline from "./OrderTimeline";
 import RouteStrip from "./RouteStrip";
+import Logistics3DSimulation from "./Logistics3DSimulation";
 import { OrderBadge } from "./ui";
+import { playTap } from "@/lib/audio-juice";
 
 // Khối "theo dõi đơn" dùng chung cho khách đã đăng nhập và tra cứu bằng mã đơn.
 export default function OrderTracking({ order, actions: extra }) {
   const { state } = useStore();
+  const [view3D, setView3D] = useState(false);
   const q = queueInfo(state, order);
   const headline = trackingHeadline(order, q);
   const paymentLabel = order.payment.method === "BANK"
@@ -47,7 +51,20 @@ export default function OrderTracking({ order, actions: extra }) {
                   {q.lag > 0 && <div className="delta">Đã cập nhật theo tiến độ thực tế (+{q.lag} phút)</div>}
                 </div>
               </div>
-              <RouteStrip strip={q.strip} />
+              <div className="row between" style={{ margin: "14px 0 6px" }}>
+                <span className="small muted">Hành trình giao hàng</span>
+                <div className="hud-pill-group">
+                  <button type="button" className={`hud-pill ${!view3D ? "on" : ""}`} onClick={() => { setView3D(false); playTap(700); }}>🚚 Tuyến đường</button>
+                  <button type="button" className={`hud-pill ${view3D ? "on" : ""}`} onClick={() => { setView3D(true); playTap(900); }}>🌐 Sa bàn 3D</button>
+                </div>
+              </div>
+              {view3D ? (
+                <div style={{ marginTop: 8 }}>
+                  <Logistics3DSimulation height={300} showControls={true} />
+                </div>
+              ) : (
+                <RouteStrip strip={q.strip} />
+              )}
               {!q.locked && <div className="notice warn">Lịch giao đang được sắp xếp, thứ tự có thể thay đổi cho tới khi cửa hàng chốt tuyến.</div>}
               {q.locked && q.route.status === "LOCKED" && <div className="notice">Tuyến đã chốt. Thứ tự của bạn sẽ không bị đổi, xe sẽ xuất kho trong buổi sáng.</div>}
             </>

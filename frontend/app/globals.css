@@ -1394,3 +1394,372 @@ table.table {
   display: grid;
   gap: 16px;
 }
+
+
+/* ==========================================================================
+   GAME JUICE, 3D DIGITAL TWIN & LIVING EFFECTS (UNITY-STYLE UPGRADE)
+   ========================================================================== */
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 6px #10b981; }
+  50% { transform: scale(1.2); opacity: 0.7; box-shadow: 0 0 12px #10b981; }
+}
+
+@keyframes pulseRadar {
+  0% { transform: scale(0.8); opacity: 0.9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes pingBeacon {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes shimmerLight {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* 3D Simulation Canvas Container */
+.logistics-3d-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: var(--r-lg, 16px);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  box-shadow: 0 20px 45px -10px rgba(11, 35, 65, 0.4), 0 0 25px rgba(56, 189, 248, 0.15);
+  overflow: hidden;
+  background: #060911;
+  transition: box-shadow 0.3s ease;
+}
+
+.logistics-3d-wrapper:hover {
+  box-shadow: 0 25px 55px -8px rgba(11, 35, 65, 0.5), 0 0 35px rgba(56, 189, 248, 0.25);
+}
+
+.logistics-3d-hud-top {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.logistics-3d-hud-top > * {
+  pointer-events: auto;
+}
+
+.hud-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: var(--r-full);
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulseGlow 1.6s infinite ease-in-out;
+}
+
+.fps-counter {
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.hud-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hud-pill-group {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-full);
+  padding: 3px;
+  gap: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.hud-pill {
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+}
+
+.hud-pill:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.hud-pill:active {
+  transform: translateY(1px);
+}
+
+.hud-pill.on {
+  background: var(--road, #1b4f8c);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+/* Floating 3D Object Info Popup */
+.logistics-3d-popup {
+  position: absolute;
+  bottom: 38px;
+  left: 16px;
+  max-width: 360px;
+  width: calc(100% - 32px);
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: var(--r-md, 12px);
+  padding: 16px;
+  color: #ffffff;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(56, 189, 248, 0.2);
+  animation: slideUpFade 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.popup-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: 0.06em;
+}
+
+.popup-close {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.popup-close:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.popup-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.popup-desc {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.45;
+  margin-bottom: 8px;
+}
+
+.popup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #34d399;
+  background: rgba(5, 150, 105, 0.18);
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+}
+
+.popup-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34d399;
+}
+
+.logistics-3d-hud-bottom {
+  position: absolute;
+  bottom: 8px;
+  left: 16px;
+  right: 16px;
+  z-index: 9;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Sound Toggle Button */
+.sound-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--r-full);
+  padding: 6px 12px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sound-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.sound-toggle-btn:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 768px) {
+  .sound-toggle-label {
+    display: none;
+  }
+}
+
+/* Modern Upgraded Route Strip */
+.modern-strip {
+  position: relative;
+  padding: 16px 0 6px;
+}
+
+.modern-strip-road {
+  position: relative;
+  height: 10px;
+  background: #334155;
+  border-radius: var(--r-full);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
+  margin: 18px 0;
+}
+
+.strip-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, #059669 0%, #0284c7 60%, var(--signal) 100%);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.strip-truck-box {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  transition: left 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.strip-truck-pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.35);
+  animation: pulseRadar 1.8s infinite;
+}
+
+.strip-truck-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #0f2b4c;
+  color: #38bdf8;
+  display: grid;
+  place-items: center;
+  border: 2px solid #38bdf8;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 10px rgba(56, 189, 248, 0.5);
+}
+
+.strip-node-ping {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--signal);
+  animation: pingBeacon 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.modern-strip-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+/* 3D Tilt Card Container */
+.tilt-card-container {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.tilt-card-glare {
+  mix-blend-mode: overlay;
+}

@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { addDays, dateLabel, vnd, ymd } from "@/lib/format";
 import { RequirePerm } from "@/components/Guard";
 import LocationPicker from "@/components/LocationPicker";
-import { Empty, Field, Loading } from "@/components/ui";
+import { Empty, Field, Loading, Modal } from "@/components/ui";
 
 const WINDOWS = [
   { id: "am", label: "Buổi sáng", start: "08:00", end: "12:00" },
@@ -40,6 +40,10 @@ function Checkout() {
   const [saveNewAddress, setSaveNewAddress] = useState(true);
   const [setAsDefault, setSetAsDefault] = useState(addresses.length === 0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [addressChoice, setAddressChoice] = useState(null);
+  const [deleteAddress, setDeleteAddress] = useState(null);
+  const [addressBusy, setAddressBusy] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const searchTimeoutRef = useRef(null);
 
@@ -272,6 +276,46 @@ function Checkout() {
 
   return (
     <>
+      {addressModalOpen && <Modal title={deleteAddress ? "Xóa địa chỉ" : "Chọn địa chỉ nhận hàng"} onClose={() => { if (!addressBusy) { setDeleteAddress(null); setAddressModalOpen(false); } }} footer={deleteAddress ? <>
+        <button className="btn secondary" disabled={addressBusy} onClick={() => setDeleteAddress(null)}>Quay lại</button>
+        <button className="btn danger" disabled={addressBusy} onClick={async () => {
+          setAddressBusy(true);
+          const removed = await actions.removeAddress(deleteAddress.id);
+          if (removed) {
+            await actions.loadAddresses();
+            if (addressChoice === deleteAddress.id) {
+              const remaining = addresses.filter((address) => address.id !== deleteAddress.id);
+              setAddressChoice((remaining.find((address) => address.isDefault) || remaining[0])?.id ?? "new");
+            }
+            setDeleteAddress(null);
+          }
+          setAddressBusy(false);
+        }}>{addressBusy ? "Đang xóa…" : "Xác nhận xóa"}</button>
+      </> : <>
+        <button className="btn secondary" disabled={addressBusy} onClick={() => setAddressModalOpen(false)}>Quay lại</button>
+        <button className="btn" disabled={addressBusy || addressChoice === null} onClick={() => { setAddrId(addressChoice); setError(""); setAddressModalOpen(false); }}>Dùng địa chỉ này</button>
+      </>}>
+        {deleteAddress ? <p>Bạn muốn xóa địa chỉ <b>{deleteAddress.label || "Địa chỉ"}</b>: {deleteAddress.address}? Địa chỉ này sẽ bị xóa khỏi sổ địa chỉ.</p> : <div className="checkout-address-options" role="radiogroup" aria-label="Địa chỉ nhận hàng">
+          {addresses.map((address) => <div className={`checkout-address-option ${addressChoice === address.id ? "selected" : ""}`} key={address.id}>
+            <label className="checkout-address-select">
+              <input type="radio" name="checkout-address" checked={addressChoice === address.id} disabled={addressBusy} onChange={() => setAddressChoice(address.id)} />
+              <span><b>{address.label || "Địa chỉ"}</b> {address.isDefault && <span className="badge ok plain">Mặc định</span>}
+                {(address.recipientName || address.phone) && <small>{[address.recipientName, address.phone].filter(Boolean).join(" · ")}</small>}
+                <span>{address.address}</span>
+                {(address.lat == null || address.lng == null) && <small>Chưa ghim vị trí trên bản đồ</small>}
+              </span>
+            </label>
+            <div className="checkout-address-actions">
+              {!address.isDefault && <button type="button" className="btn ghost sm" disabled={addressBusy} onClick={async () => { setAddressBusy(true); await actions.setDefaultAddress(address.id); setAddressBusy(false); }}>Đặt mặc định</button>}
+              <button type="button" className="btn ghost sm checkout-address-delete" disabled={addressBusy} onClick={() => setDeleteAddress(address)}>Xóa</button>
+            </div>
+          </div>)}
+          <label className={`checkout-address-option checkout-address-select ${addressChoice === "new" ? "selected" : ""}`}>
+            <input type="radio" name="checkout-address" checked={addressChoice === "new"} disabled={addressBusy} onChange={() => setAddressChoice("new")} />
+            <span><b>Giao đến địa chỉ khác</b><small>Nhập và ghim địa chỉ mới</small></span>
+          </label>
+        </div>}
+      </Modal>}
       {pickerOpen && (
         <LocationPicker
           initial={addrId === "new" ? newAddr : (customer?.addresses?.find((a) => a.id === addrId) || newAddr)}
@@ -330,94 +374,17 @@ function Checkout() {
           <section className="panel">
             <div className="panel-head"><h3>Địa chỉ nhận hàng</h3></div>
             <div className="panel-body stack">
-              {addresses.length === 0 ? (
-                <div className="notice" style={{ marginBottom: 4 }}>
-                  Bạn chưa có địa chỉ nhận hàng lưu sẵn. Vui lòng nhập địa chỉ bên dưới, hệ thống sẽ tự động lưu lại làm địa chỉ mặc định cho các đơn hàng sau.
+              <div className="checkout-address-summary">
+                <div className="grow">
+                  {addrId !== "new" && quoteAddress ? <>
+                    <div className="row"><b>{quoteAddress.label || "Địa chỉ"}</b>{quoteAddress.isDefault && <span className="badge ok plain">Mặc định</span>}</div>
+                    {(quoteAddress.recipientName || quoteAddress.phone) && <div className="small muted">{[quoteAddress.recipientName, quoteAddress.phone].filter(Boolean).join(" · ")}</div>}
+                    <div className="small">{quoteAddress.address}</div>
+                    {(quoteAddress.lat == null || quoteAddress.lng == null) && <div className="tiny muted">Chưa ghim vị trí trên bản đồ</div>}
+                  </> : <div className="small muted">{addresses.length ? "Nhập địa chỉ giao hàng khác bên dưới." : "Bạn chưa có địa chỉ lưu sẵn. Nhập địa chỉ bên dưới để giao hàng."}</div>}
                 </div>
-              ) : (
-                <div className="choice" style={{ display: "grid", gap: 10 }}>
-                  {addresses.map((a) => (
-                    <label
-                      key={a.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 12,
-                        padding: "12px 14px",
-                        border: addrId === a.id ? "2px solid var(--road, #0052cc)" : "1px solid var(--line-soft, #e2e8f0)",
-                        borderRadius: "var(--r-sm, 6px)",
-                        background: addrId === a.id ? "rgba(0, 82, 204, 0.04)" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="addr"
-                        checked={addrId === a.id}
-                        onChange={() => setAddrId(a.id)}
-                        style={{ marginTop: 3 }}
-                      />
-                      <div className="grow stack-xs">
-                        <div className="row between" style={{ alignItems: "center" }}>
-                          <div className="row" style={{ alignItems: "center", gap: 8 }}>
-                            <b>{a.label || "Địa chỉ"}</b>
-                            {a.isDefault && (
-                              <span className="badge ok plain" style={{ fontSize: 11, padding: "2px 8px" }}>
-                                Mặc định
-                              </span>
-                            )}
-                          </div>
-                          {!a.isDefault && (
-                            <button
-                              type="button"
-                              className="btn sm secondary"
-                              style={{ fontSize: 11, padding: "2px 8px" }}
-                              onClick={async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                await actions.setDefaultAddress(a.id);
-                              }}
-                            >
-                              Đặt làm mặc định
-                            </button>
-                          )}
-                        </div>
-                        {(a.recipientName || a.phone) && (
-                          <div className="tiny muted">
-                            {[a.recipientName, a.phone].filter(Boolean).join(" · ")}
-                          </div>
-                        )}
-                        <div className="small">{a.address}</div>
-                        {(!a.lat || !a.lng) && (
-                          <div className="tiny" style={{ color: "var(--stop, #e53e3e)" }}>
-                            ⚠️ Chưa ghim vị trí bản đồ — tài xế cần toạ độ để giao hàng
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: "12px 14px",
-                      border: addrId === "new" ? "2px solid var(--road, #0052cc)" : "1px solid var(--line-soft, #e2e8f0)",
-                      borderRadius: "var(--r-sm, 6px)",
-                      background: addrId === "new" ? "rgba(0, 82, 204, 0.04)" : "#fff",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="addr"
-                      checked={addrId === "new"}
-                      onChange={() => setAddrId("new")}
-                    />
-                    <span><b>+ Giao đến địa chỉ khác / Thêm địa chỉ mới</b></span>
-                  </label>
-                </div>
-              )}
+                {addresses.length > 0 && <button type="button" className="btn secondary sm" onClick={() => { setAddressChoice(addrId); setDeleteAddress(null); setAddressModalOpen(true); }}>Thay đổi</button>}
+              </div>
 
               {(addrId === "new" || addresses.length === 0) && (
                 <div className="form-grid" style={{ marginTop: addresses.length ? 12 : 0, paddingTop: addresses.length ? 12 : 0, borderTop: addresses.length ? "1px dashed var(--line-soft)" : "none" }}>
@@ -569,7 +536,6 @@ function Checkout() {
           <div className="stack-sm small">
             <div className="row between"><span className="muted">Tạm tính</span><span>{vnd(subtotal)}</span></div>
             {shippingQuote?.quoteAvailable && <>
-              <div className="row between"><span className="muted">Khoảng cách đường bộ</span><span>{shippingQuote.distanceKm} km</span></div>
               <div className="row between"><span className="muted">Thể tích kiện hàng</span><span>{shippingQuote.volumeM3} m³</span></div>
               <div className="row between"><span className="muted">Trọng lượng kiện hàng</span><span>{shippingQuote.weightKg} kg · {shippingQuote.packageCount} kiện</span></div>
               <div className="row between"><span className="muted">Thời gian lắp đặt dự kiến</span><span>{shippingQuote.estimatedInstallationMinutes > 0 ? formatDuration(shippingQuote.estimatedInstallationMinutes) : "Không cần lắp đặt"}</span></div>

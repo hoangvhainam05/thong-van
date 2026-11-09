@@ -84,8 +84,6 @@ class Problem {
       time += stop.serviceMin;
       previous = node;
     }
-    time += this.minutes[previous][0];
-    distance += this.km[previous][0];
     if (strict && (time > this.dayEnd || time - this.dayStart > this.maxRouteMinutes)) return null;
     return { arrivals, end: time, km: distance };
   }
@@ -130,14 +128,14 @@ function solveHeuristic(problem: Problem): { routes: Record<number, number[]>; u
   const order = problem.stops.map((_, i) => i + 1).sort((a, b) => Number(Boolean(problem.stops[b-1].urgent)) - Number(Boolean(problem.stops[a-1].urgent)) || problem.stops[a-1].twStart - problem.stops[b-1].twStart || problem.km[0][b] - problem.km[0][a] || a-b);
   const pending: number[] = [];
   for (const node of order) {
-    let best: {id: number; route: number[]; delta: number} | undefined;
+    let best: {id: number; route: number[]; delta: number; count: number} | undefined;
     for (const v of problem.vehicles) {
       const route = routes[v.id];
       for (let i = 0; i <= route.length; i++) {
         const candidate = [...route.slice(0,i), node, ...route.slice(i)];
         if (!valid(v,candidate)) continue;
         const delta = km(candidate) - km(route);
-        if (!best || delta < best.delta - 1e-9) best = {id:v.id, route:candidate, delta};
+        if (!best || route.length < best.count || (route.length === best.count && delta < best.delta - 1e-9)) best = {id:v.id, route:candidate, delta, count:route.length};
       }
     }
     if (best) routes[best.id] = best.route; else pending.push(node);
@@ -155,7 +153,7 @@ function solveHeuristic(problem: Problem): { routes: Record<number, number[]>; u
             if (valid(v,next) && km(next) < km(a)-1e-9) { routes[v.id]=next; improved=true; break outer; }
           } else {
             const x=a.filter((_,k)=>k!==i), y=[...b.slice(0,j),a[i],...b.slice(j)];
-            if (valid(v,x) && valid(w,y) && km(x)+km(y)<km(a)+km(b)-1e-9) { routes[v.id]=x; routes[w.id]=y; improved=true; break outer; }
+            if (valid(v,x) && valid(w,y) && (a.length > b.length + 1 || (a.length === b.length + 1 && km(x)+km(y)<km(a)+km(b)-1e-9))) { routes[v.id]=x; routes[w.id]=y; improved=true; break outer; }
           }
         }
         for (let j=0; j<b.length; j++) {
@@ -191,7 +189,6 @@ export function baselineKm(
   for (let node = 1; node <= stops.length; node += 1) {
     const volume = stops[node - 1].volumeM3;
     if (load + volume > vehicles[vehicleIndex].capacityM3 && vehicleIndex < vehicles.length - 1) {
-      total += problem.km[previous][0];
       vehicleIndex += 1;
       load = 0;
       previous = 0;
@@ -200,7 +197,6 @@ export function baselineKm(
     load += volume;
     previous = node;
   }
-  total += problem.km[previous][0];
   return Number(total.toFixed(2));
 }
 

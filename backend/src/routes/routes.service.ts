@@ -295,9 +295,33 @@ export class RoutesService {
       throw new ConflictException('Tuyến thiếu tọa độ để hiển thị đường đi');
     }
     const points: LatLng[] = [[Number(depot[0]), Number(depot[1])],
-      ...stops.map((stop): LatLng => [Number(stop.order.lat), Number(stop.order.lng)]),
-      [Number(depot[0]), Number(depot[1])]];
+      ...stops.map((stop): LatLng => [Number(stop.order.lat), Number(stop.order.lng)])];
     return { coordinates: await this.roadMatrix.getGeometry(points) };
+  }
+
+  async cancelDraft(id: number, actor: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const warehouse = await manager.getRepository(Warehouse).createQueryBuilder('warehouse')
+        .orderBy('warehouse.id', 'ASC').setLock('pessimistic_write').getOne();
+      if (!warehouse) throw new ConflictException('Chưa khai báo kho');
+      const routes = manager.getRepository(DeliveryRoute);
+      const route = await routes.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!route) throw new NotFoundException('Không tìm thấy tuyến');
+      if (route.status !== RouteStatus.DRAFT) throw new ConflictException('Chỉ hủy được tuyến nháp');
+      const stops = await manager.getRepository(DeliveryStop).find({ where: { routeId: id } });
+      const orders = manager.getRepository(Order);
+      for (const stop of stops) {
+        const updated = await orders.update({ id: stop.orderId, status: OrderStatus.SCHEDULED, deliveryDate: route.routeDate }, { status: OrderStatus.READY });
+        if (updated.affected !== 1) throw new ConflictException('Trạng thái đơn đã thay đổi; vui lòng kiểm tra tuyến');
+        await manager.getRepository(OrderHistoryEvent).save({
+          orderId: stop.orderId, eventType: OrderHistoryEventType.STATUS,
+          fromValue: OrderStatus.SCHEDULED, toValue: OrderStatus.READY,
+          note: `Hủy tuyến nháp ${id}`, actor,
+        });
+      }
+      await routes.delete(id);
+      return { success: true };
+    });
   }
 
   async editDraft(id: number, body: DraftRouteUpdateDto) {

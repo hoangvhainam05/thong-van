@@ -7,14 +7,47 @@ import { api, loadToken } from "@/lib/api";
 import { dateLabel, num, ymd } from "@/lib/format";
 import { RequirePerm } from "@/components/Guard";
 import { PageHead } from "@/components/AdminShell";
-import RouteMap from "@/components/RouteMap";
-import { Empty, Loading, OrderBadge, RouteBadge } from "@/components/ui";
+import RouteMap, { ROUTE_COLORS } from "@/components/RouteMap";
+import Logistics3DSimulation from "@/components/Logistics3DSimulation";
+import { Empty, Loading, Modal, OrderBadge, RouteBadge } from "@/components/ui";
+import { playSuccess, playTap } from "@/lib/audio-juice";
 
 const REASON = {
   NO_VEHICLE: "Không còn xe trống",
   CAPACITY: "Vượt thể tích hoặc tải trọng xe",
   TIME_WINDOW_OR_SHIFT: "Không phù hợp khung giờ hoặc ca 8 giờ",
 };
+
+function DatePickerModal({ value, onClose, onApply }) {
+  const [selectedDate, setSelectedDate] = useState(value);
+  const [year, month] = selectedDate.split("-").map(Number);
+  const [viewMonth, setViewMonth] = useState(() => new Date(year, month - 1, 1));
+  const firstDay = (viewMonth.getDay() + 6) % 7;
+  const days = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
+  const showToday = () => { const today = new Date(); setSelectedDate(ymd(today)); setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1)); };
+  return <Modal title="Chọn ngày giao" onClose={onClose} footer={<>
+    <button className="btn secondary" onClick={onClose}>Quay lại</button>
+    <button className="btn" onClick={() => onApply(selectedDate)}>Áp dụng</button>
+  </>}>
+    <div className="dispatch-calendar">
+      <div className="dispatch-calendar-header">
+        <button type="button" className="dispatch-calendar-nav" aria-label="Tháng trước" onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))}>‹</button>
+        <strong>Tháng {viewMonth.getMonth() + 1}, {viewMonth.getFullYear()}</strong>
+        <button type="button" className="dispatch-calendar-nav" aria-label="Tháng sau" onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))}>›</button>
+      </div>
+      <div className="dispatch-calendar-grid" aria-label="Lịch chọn ngày">
+        {["T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((day) => <span className="dispatch-calendar-weekday" key={day}>{day}</span>)}
+        {Array.from({ length: firstDay }, (_, index) => <span key={`blank-${index}`} />)}
+        {Array.from({ length: days }, (_, index) => {
+          const day = index + 1;
+          const dayValue = ymd(new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day));
+          return <button key={day} type="button" className={`dispatch-calendar-day ${dayValue === selectedDate ? "selected" : ""} ${dayValue === ymd() ? "today" : ""}`} aria-label={`${day}/${viewMonth.getMonth() + 1}/${viewMonth.getFullYear()}`} aria-pressed={dayValue === selectedDate} onClick={() => setSelectedDate(dayValue)}>{day}</button>;
+        })}
+      </div>
+      <div className="dispatch-calendar-bottom"><button type="button" className="btn ghost sm" onClick={showToday}>Hôm nay</button><span className="small muted">Đã chọn: {selectedDate.split("-").reverse().join("/")}</span></div>
+    </div>
+  </Modal>;
+}
 
 function Dispatch() {
   const { can } = useStore();
@@ -30,7 +63,13 @@ function Dispatch() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cancelRoute, setCancelRoute] = useState(null);
+  const [assignment, setAssignment] = useState(null);
   const [error, setError] = useState("");
+  const [view3D, setView3D] = useState(false);
+  const [mapRouteId, setMapRouteId] = useState(null);
+  const [mapChoice, setMapChoice] = useState(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   useEffect(() => { setToken(loadToken()); }, []);
 
@@ -50,6 +89,7 @@ function Dispatch() {
       setOrders(nextOrders);
       setFailedOrders(nextFailed);
       setRoutes(nextRoutes);
+      setMapRouteId((current) => current === "all" || nextRoutes.some((route) => route.id === current) ? current : (nextRoutes[0]?.id ?? null));
       setDrivers(nextDrivers);
       setVehicles(nextVehicles);
       setWarehouse(nextWarehouse);
@@ -83,10 +123,11 @@ function Dispatch() {
   const located = ready.filter((order) => order.lat != null && order.lng != null);
   const waiting = orders.filter((order) => ["PENDING", "CONFIRMED"].includes(order.status));
   const usedVehicles = new Set(routes.filter((route) => route.status !== "DRAFT").map((route) => route.vehicle_id));
-  const mapRoutes = routes.map((route) => ({
-    id: route.id, name: route.code, status: route.status, depot: route.depot,
+  const mapRoutes = routes.map((route, index) => ({
+    color: ROUTE_COLORS[index % ROUTE_COLORS.length], id: route.id, name: `${route.vehicle} · ${route.code}`, status: route.status, depot: route.depot,
     stops: route.stops.map((stop) => ({ lat: stop.lat, lng: stop.lng, seq: stop.sequence, label: stop.address })),
   }));
+  const visibleMapRoutes = mapRouteId === "all" ? mapRoutes : mapRoutes.filter((route) => route.id === mapRouteId);
   const loose = located.map((order) => ({ lat: order.lat, lng: order.lng, label: order.code }));
 
   function changeOrder(route, index, direction) {
@@ -102,7 +143,7 @@ function Dispatch() {
   return (
     <>
       <PageHead title="Điều phối giao hàng" sub="Xếp các đơn đã chuẩn bị hàng vào tuyến giao, kiểm tra sức chứa và chốt lịch.">
-        <label className="small">Ngày giao <input className="input" type="date" value={date} onChange={(event) => { setDate(event.target.value); setResult(null); }} /></label>
+        <div className="dispatch-assignment"><span className="small">Ngày giao</span><button type="button" className="dispatch-assignment-button" onClick={() => setDatePickerOpen(true)}><span>{date.split("-").reverse().join("/")}</span><span aria-hidden="true">▦</span></button></div>
       </PageHead>
 
       {error && <div className="notice bad" style={{ marginBottom: 14 }}>{error}</div>}
@@ -113,6 +154,62 @@ function Dispatch() {
         <p className="small muted">Chọn ngày giao mới ở đầu trang, sau đó đưa đơn vào hàng đợi ngày đó.</p>
         {failedOrders.map(order => <div key={order.id} className="row between small"><span><b>{order.code}</b> · ngày giao cũ {dateLabel(order.delivery_date)} · {order.address}</span><button className="btn secondary sm" disabled={busy || !can('route.optimize') || date <= order.delivery_date || date < ymd()} onClick={() => perform(() => api(`/api/orders/${order.id}/reschedule`, {method:'POST',token,body:{delivery_date:date}}))}>Hẹn lại {dateLabel(date)}</button></div>)}
       </section>}
+
+      {datePickerOpen && <DatePickerModal value={date} onClose={() => setDatePickerOpen(false)} onApply={(nextDate) => { setDate(nextDate); setResult(null); setMapRouteId(null); setDatePickerOpen(false); }} />}
+      {mapChoice !== null && <Modal title="Chọn tuyến trên bản đồ" onClose={() => setMapChoice(null)} footer={<>
+        <button className="btn secondary" onClick={() => setMapChoice(null)}>Quay lại</button>
+        <button className="btn" onClick={() => { setMapRouteId(mapChoice); setMapChoice(null); }}>Xem tuyến</button>
+      </>}>
+        <p className="small muted" style={{ marginBottom: 14 }}>Chọn tuyến của xe để xem đường đi và các điểm giao.</p>
+        <div className="dispatch-options" role="radiogroup" aria-label="Tuyến trên bản đồ">
+          {routes.map((route, index) => <label className={`dispatch-option ${mapChoice === route.id ? "selected" : ""}`} key={route.id}>
+            <input type="radio" name="map-route-choice" checked={mapChoice === route.id} onChange={() => setMapChoice(route.id)} />
+            <span><b>{route.vehicle}</b><small>{route.code} · {route.stops.length} điểm giao</small></span>
+            <i className="map-legend-line" style={{ borderColor: ROUTE_COLORS[index % ROUTE_COLORS.length] }} />
+          </label>)}
+          <label className={`dispatch-option ${mapChoice === "all" ? "selected" : ""}`}>
+            <input type="radio" name="map-route-choice" checked={mapChoice === "all"} onChange={() => setMapChoice("all")} />
+            <span><b>Tất cả tuyến</b><small>Hiển thị tổng quan các xe</small></span>
+          </label>
+        </div>
+      </Modal>}
+
+      {cancelRoute && <Modal title="Hủy tuyến nháp" onClose={() => { if (!busy) setCancelRoute(null); }} footer={<>
+        <button className="btn secondary" disabled={busy} onClick={() => setCancelRoute(null)}>Quay lại</button>
+        <button className="btn danger" disabled={busy} onClick={() => perform(async () => {
+          await api("/api/routes/" + cancelRoute.id + "/cancel", { method: "POST", token });
+          setResult(null);
+          setCancelRoute(null);
+        })}>{busy ? "Đang hủy…" : "Xác nhận hủy tuyến"}</button>
+      </>}>
+        <p>Bạn muốn hủy tuyến <b>{cancelRoute.code}</b> của xe <b>{cancelRoute.vehicle}</b>? Các đơn sẽ trở lại hàng đợi để bố trí lại.</p>
+        {error && <div className="notice bad" style={{ marginTop: 12 }}>{error}</div>}
+      </Modal>}
+
+      {assignment && <Modal title={assignment.kind === "vehicle" ? "Chọn xe giao hàng" : "Chọn tài xế"} onClose={() => { if (!busy) setAssignment(null); }} footer={<>
+        <button className="btn secondary" disabled={busy} onClick={() => setAssignment(null)}>Quay lại</button>
+        <button className="btn" disabled={busy || (assignment.kind === "vehicle" && assignment.value == null)} onClick={() => perform(async () => {
+          await api(`/api/routes/${assignment.route.id}/draft`, { method: "PATCH", token, body: assignment.kind === "vehicle" ? { vehicle_id: assignment.value } : { driver_id: assignment.value } });
+          setAssignment(null);
+        })}>{busy ? "Đang lưu…" : "Xác nhận"}</button>
+      </>}>
+        <p className="small muted" style={{ marginBottom: 14 }}>Tuyến {assignment.route.code} · Chọn một {assignment.kind === "vehicle" ? "xe" : "tài xế"} cho tuyến này.</p>
+        <div className="dispatch-options" role="radiogroup" aria-label={assignment.kind === "vehicle" ? "Xe giao hàng" : "Tài xế"}>
+          {assignment.kind === "driver" && <label className={`dispatch-option ${assignment.value == null ? "selected" : ""}`}>
+            <input type="radio" name="dispatch-assignment" checked={assignment.value == null} disabled={busy} onChange={() => setAssignment({ ...assignment, value: null })} />
+            <span><b>Chưa phân công</b><small>Bỏ chọn tài xế hiện tại</small></span>
+          </label>}
+          {(assignment.kind === "vehicle" ? vehicles : drivers).filter((item) => item.active || item.id === (assignment.kind === "vehicle" ? assignment.route.vehicle_id : assignment.route.driver_id)).map((item) => {
+            const assigned = routes.find((other) => other.id !== assignment.route.id && (assignment.kind === "vehicle" ? other.vehicle_id : other.driver_id) === item.id);
+            return <label className={`dispatch-option ${assignment.value === item.id ? "selected" : ""} ${assigned || !item.active ? "unavailable" : ""}`} key={item.id}>
+              <input type="radio" name="dispatch-assignment" checked={assignment.value === item.id} disabled={busy || Boolean(assigned) || !item.active} onChange={() => setAssignment({ ...assignment, value: item.id })} />
+              <span><b>{assignment.kind === "vehicle" ? item.plate : item.name}</b><small>{assigned ? `Đã có tuyến ${assigned.code}` : !item.active ? "Không hoạt động" : assignment.kind === "vehicle" ? `${item.capacity_m3} m³ · ${item.capacity_kg} kg` : "Sẵn sàng phân công"}</small></span>
+              {assignment.value === item.id && <span className="dispatch-option-current">Đang chọn</span>}
+            </label>;
+          })}
+        </div>
+        {error && <div className="notice bad" style={{ marginTop: 12 }}>{error}</div>}
+      </Modal>}
 
       {token && !loading && <>
         <div className="grid-2" style={{ marginBottom: 16 }}>
@@ -133,15 +230,16 @@ function Dispatch() {
 
           <section className="panel panel-pad stack">
             <h3>Chạy tối ưu</h3>
-            <p className="small muted">Chọn xe tham gia. Tuyến đã chốt và xe/tài xế của tuyến đó được giữ nguyên. Đơn gấp được ưu tiên khi xếp.</p>
+            <p className="small muted">Chọn xe tham gia. Tuyến đã chốt và xe/tài xế của tuyến đó được giữ nguyên. Đơn gấp được ưu tiên và các đơn được chia cân bằng khi đáp ứng các ràng buộc.</p>
             {vehicles.filter((vehicle) => vehicle.active).map((vehicle) => <label className="check" key={vehicle.id}>
               <input type="checkbox" checked={selected.includes(vehicle.id)} disabled={usedVehicles.has(vehicle.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, vehicle.id] : selected.filter((id) => id !== vehicle.id))} />
               {vehicle.plate} <span className="muted small">· {vehicle.capacity_m3} m³ · {vehicle.capacity_kg} kg {usedVehicles.has(vehicle.id) ? "· đã có tuyến chốt" : ""}</span>
             </label>)}
             <p className="tiny muted">Ràng buộc: khung giờ khách, thể tích, tải trọng kg, thời gian dỡ/lắp và ca tối đa 8 giờ. Bộ giải hiện dùng heuristic nội bộ.</p>
-            {can("route.optimize") && <button className="btn lg" disabled={busy || !selected.length || !located.length} onClick={() => perform(async () => {
+            {can("route.optimize") && <button className="btn lg" disabled={busy || !selected.length || (!located.length && !routes.some((route) => route.status === "DRAFT"))} onClick={() => perform(async () => {
               const next = await api("/api/routes/optimize", { method: "POST", token, body: { date, vehicle_ids: selected } });
               setResult(next);
+              playSuccess();
             })}>{busy ? "Đang xử lý…" : "Bố trí điểm giao"}</button>}
             {result && <div className="notice ok stack-sm small">
               <b>{result.routes.length} tuyến · {result.total_km} km · tiết kiệm {result.saving_percent ?? "—"}%</b>
@@ -152,15 +250,44 @@ function Dispatch() {
           </section>
         </div>
 
-        {warehouse && <RouteMap depot={warehouse} routes={mapRoutes} loose={loose} height={360} />}
+        <div className="row between" style={{ margin: "18px 0 10px" }}>
+          <div className="strong" style={{ fontSize: 16 }}>Bản đồ trực quan mạng lưới điều phối</div>
+          <div className="hud-pill-group">
+            <button
+              type="button"
+              className={`hud-pill ${!view3D ? "on" : ""}`}
+              onClick={() => { setView3D(false); playTap(700); }}
+            >
+              🗺️ Bản đồ 2D (Leaflet)
+            </button>
+            <button
+              type="button"
+              className={`hud-pill ${view3D ? "on" : ""}`}
+              onClick={() => { setView3D(true); playTap(900); }}
+            >
+              🌐 Sa bàn 3D (Simulation)
+            </button>
+          </div>
+        </div>
+
+        {!view3D && routes.length > 0 && <div className="row" style={{ marginBottom: 12 }}>
+          <div className="dispatch-assignment"><span className="small">Xem tuyến của xe</span>
+            <button type="button" className="dispatch-assignment-button" onClick={() => setMapChoice(mapRouteId ?? routes[0].id)}><span>{mapRouteId === "all" ? "Tất cả tuyến" : (mapRoutes.find((route) => route.id === mapRouteId)?.name || "Chọn tuyến")}</span><span aria-hidden="true">✎</span></button>
+          </div>
+        </div>}
+        {view3D ? (
+          <Logistics3DSimulation height={440} showControls={true} />
+        ) : (
+          warehouse && <RouteMap depot={warehouse} routes={visibleMapRoutes} loose={mapRouteId === "all" || !routes.length ? loose : []} height={360} />
+        )}
         <div className="stack" style={{ marginTop: 16 }}>
           {routes.length === 0 && <div className="panel"><Empty title="Chưa có tuyến cho ngày này">Chọn xe và chạy tối ưu khi có đơn sẵn sàng.</Empty></div>}
           {routes.map((route) => <section className="panel" key={route.id}>
-            <div className="panel-head row between"><div className="row"><b>{route.code}</b><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ / 8 giờ</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
+            <div className="panel-head row between"><div className="row"><b>{route.code}</b><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ / 8 giờ</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.optimize") && route.status === "DRAFT" && <button className="btn secondary sm" disabled={busy} onClick={() => { setError(""); setCancelRoute(route); }}>Hủy tuyến</button>}{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
             <div className="panel-body stack-sm">
-              <div className="row">
-                <label className="small">Xe <select className="input" value={route.vehicle_id} disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onChange={(event) => perform(() => api("/api/routes/" + route.id + "/draft", { method: "PATCH", token, body: { vehicle_id: Number(event.target.value) } }))}>{vehicles.filter((vehicle) => vehicle.active || vehicle.id === route.vehicle_id).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate} · {vehicle.capacity_m3} m³ / {vehicle.capacity_kg} kg</option>)}</select></label>
-                <label className="small">Tài xế <select className="input" value={route.driver_id || ""} disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onChange={(event) => perform(() => api("/api/routes/" + route.id + "/draft", { method: "PATCH", token, body: { driver_id: event.target.value ? Number(event.target.value) : null } }))}><option value="">Chọn tài xế</option>{drivers.filter((driver) => driver.active || driver.id === route.driver_id).map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></label>
+              <div className="dispatch-assignments">
+                <div className="dispatch-assignment"><span className="tiny muted">Xe giao hàng</span><button type="button" className="dispatch-assignment-button" disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onClick={() => { setError(""); setAssignment({ kind: "vehicle", route, value: route.vehicle_id }); }}><span>{route.vehicle}</span><span aria-hidden="true">✎</span></button></div>
+                <div className="dispatch-assignment"><span className="tiny muted">Tài xế</span><button type="button" className="dispatch-assignment-button" disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onClick={() => { setError(""); setAssignment({ kind: "driver", route, value: route.driver_id }); }}><span>{route.driver_name || "Chọn tài xế"}</span><span aria-hidden="true">✎</span></button></div>
               </div>
               <ol className="stop-list">
                 {route.stops.map((stop, index) => <li key={stop.stop_id}>

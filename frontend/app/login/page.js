@@ -1,26 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { homeFor } from "@/lib/rbac";
 import { Field, Loading } from "@/components/ui";
 
+function isAllowedNext(next, role, perms = []) {
+  if (!next || typeof next !== "string" || !next.startsWith("/") || next === "/" || next === "/login") return false;
+  if (next.startsWith("/admin")) return perms.includes("backoffice.access");
+  if (next.startsWith("/driver")) return perms.includes("delivery.app");
+  if (next.startsWith("/account")) return perms.includes("order.track_own");
+  if (next.startsWith("/checkout")) return role === "CUSTOMER" || perms.includes("order.place");
+  return true;
+}
+
 function LoginForm() {
-  const { ready, actions } = useStore();
+  const { ready, actions, user, state } = useStore();
   const router = useRouter();
   const params = useSearchParams();
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
   const [error, setError] = useState("");
-  if (!ready) return <Loading />;
+
+  useEffect(() => {
+    if (ready && user) {
+      router.replace(homeFor(state?.roleMatrix, user.role));
+    }
+  }, [ready, user, state?.roleMatrix, router]);
+
+  if (!ready || user) return <Loading />;
 
   const go = async (identifier, password) => {
     const res = await actions.login(identifier, password);
     if (!res.ok) return setError(res.error);
+    const dest = homeFor({ [res.user.role]: res.user.permissions }, res.user.role);
     const next = params.get("next");
-    router.push(next && next.startsWith("/") ? next : homeFor({ [res.user.role]: res.user.permissions }, res.user.role));
+    const target = isAllowedNext(next, res.user.role, res.user.permissions) ? next : dest;
+    router.push(target);
   };
 
   return (

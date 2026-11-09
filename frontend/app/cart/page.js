@@ -81,9 +81,9 @@ export default function CartPage() {
                   aria-label={`Chọn ${l.p.name} để thanh toán`}
                 />
               </label>
-              <div style={{ width: 72, height: 72, background: "var(--ground)", borderRadius: 8, display: "grid", placeItems: "center", color: "var(--road)", flex: "none" }}>
+              <Link href={`/products/${l.p.id}`} aria-label={`Xem chi tiết ${l.p.name}`} style={{ width: 72, height: 72, background: "var(--ground)", borderRadius: 8, display: "grid", placeItems: "center", color: "var(--road)", flex: "none", overflow: "hidden" }}>
                 <CartProductImage product={l.p} />
-              </div>
+              </Link>
               <div className="grow stack-sm">
                 <Link href={`/products/${l.p.id}`} className="strong">{l.p.name}</Link>
                 <span className="small muted">{l.p.install ? `Lắp đặt ~${l.p.install} phút/sản phẩm` : "Không cần lắp đặt"}</span>
@@ -105,7 +105,6 @@ export default function CartPage() {
           <div className="stack-sm small">
             <div className="row between"><span className="muted">Sản phẩm đã chọn</span><span>{selectedLines.length}</span></div>
             <div className="row between"><span className="muted">Tạm tính</span><span>{vnd(subtotal)}</span></div>
-            <div className="row between"><span className="muted">Phí giao hàng</span><span className="muted">Tính tại bước checkout</span></div>
             {install > 0 && <div className="row between"><span className="muted">Thời gian lắp đặt dự kiến</span><span>{install} phút</span></div>}
           </div>
           <div className="divider" />

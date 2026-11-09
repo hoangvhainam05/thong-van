@@ -4,16 +4,40 @@ import { api, vnd } from "@/lib/api";
 import { dateLabel, dateTime } from "@/lib/format";
 import { OrderBadge } from "@/components/ui";
 import RouteStrip from "@/components/RouteStrip";
+import Logistics3DSimulation from "./Logistics3DSimulation";
+import { playTap } from "@/lib/audio-juice";
 
 export default function RemoteTracking({ tracking, proofRequest }) {
   const [proof,setProof]=useState(null), [error,setError]=useState(''), [busy,setBusy]=useState(false);
+  const [view3D, setView3D]=useState(false);
   const time = value => value ? new Date(value).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}) : '—';
   const instructions=tracking.payment_instructions;
   const strip=tracking.position == null ? [] : Array.from({length:tracking.total_stops},(_,i)=>({seq:i+1,me:i+1===tracking.position,here:i===0,done:false}));
   async function showProof() { setBusy(true); setError(''); try { const data=await api(proofRequest.path,proofRequest.options); setProof(data.url); } catch(e){setError(e.message);} finally{setBusy(false);} }
   return <div className="two-col"><div className="stack">
     <section className="panel panel-pad stack"><div className="row between"><div><div className="small muted">Đơn {tracking.code} · giao {dateLabel(tracking.delivery_date)} · khung {tracking.time_window}</div><h2 style={{fontSize:24,marginTop:6}}>{tracking.message}</h2></div><OrderBadge status={tracking.status}/></div>
-      {tracking.position != null && <><div className="kpis" style={{gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))'}}><div className="kpi"><div className="label">Vị trí của bạn</div><div className="value">#{tracking.position} / {tracking.total_stops}</div></div><div className="kpi"><div className="label">Còn trước bạn</div><div className="value">{tracking.stops_before} điểm</div></div><div className="kpi"><div className="label">Dự kiến xe tới</div><div className="value" style={{fontSize:20}}>{time(tracking.eta_start)} – {time(tracking.eta_end)}</div></div></div><RouteStrip strip={strip}/>{!tracking.route_locked && <div className="notice warn">Lịch giao có thể điều chỉnh trước khi chốt tuyến.</div>}</>}
+      {tracking.position != null && <>
+        <div className="kpis" style={{gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))'}}>
+          <div className="kpi"><div className="label">Vị trí của bạn</div><div className="value">#{tracking.position} / {tracking.total_stops}</div></div>
+          <div className="kpi"><div className="label">Còn trước bạn</div><div className="value">{tracking.stops_before} điểm</div></div>
+          <div className="kpi"><div className="label">Dự kiến xe tới</div><div className="value" style={{fontSize:20}}>{time(tracking.eta_start)} – {time(tracking.eta_end)}</div></div>
+        </div>
+        <div className="row between" style={{ margin: "14px 0 6px" }}>
+          <span className="small muted">Hành trình giao hàng</span>
+          <div className="hud-pill-group">
+            <button type="button" className={`hud-pill ${!view3D ? "on" : ""}`} onClick={() => { setView3D(false); playTap(700); }}>🚚 Tuyến đường</button>
+            <button type="button" className={`hud-pill ${view3D ? "on" : ""}`} onClick={() => { setView3D(true); playTap(900); }}>🌐 Sa bàn 3D</button>
+          </div>
+        </div>
+        {view3D ? (
+          <div style={{ marginTop: 8 }}>
+            <Logistics3DSimulation height={300} showControls={true} />
+          </div>
+        ) : (
+          <RouteStrip strip={strip} />
+        )}
+        {!tracking.route_locked && <div className="notice warn">Lịch giao có thể điều chỉnh trước khi chốt tuyến.</div>}
+      </>}
       {tracking.requested_info?.length>0 && <div className="notice warn stack-sm"><b>Cửa hàng cần bạn bổ sung thông tin</b>{tracking.requested_info.map((x,i)=><div key={i}>{x.message}</div>)}</div>}
       {tracking.proof_available && <div className="stack-sm"><button className="btn secondary" disabled={busy} onClick={showProof}>Xem ảnh bàn giao</button>{proof && <a href={proof} target="_blank" rel="noreferrer">Mở ảnh bàn giao (liên kết có hạn 5 phút)</a>}{error && <div className="notice bad">{error}</div>}</div>}
     </section>

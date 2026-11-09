@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { api, loadToken } from "@/lib/api";
 import { addMapTiles } from "@/lib/map-tiles";
 export const ROUTE_COLORS = ["#1b4f8c", "#7a4fd1", "#16805a", "#d0661a", "#0f8b9c", "#b03a6a"];
-const OUTBOUND_COLOR = "#16803c";
-const RETURN_COLOR = "#2563eb";
 const valid = (p) => p && p.lat != null && p.lng != null && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng));
 
 function distanceKm(a, b) {
@@ -20,24 +18,6 @@ function distanceKm(a, b) {
 
 function pathDistanceKm(coordinates) {
   return coordinates.slice(1).reduce((sum, point, index) => sum + distanceKm(coordinates[index], point), 0);
-}
-
-function splitAtLastStop(coordinates, lastStop) {
-  if (coordinates.length < 2 || !valid(lastStop)) return { outbound: coordinates, returning: [] };
-  const target = [Number(lastStop.lat), Number(lastStop.lng)];
-  let splitIndex = 0;
-  let nearestDistance = Infinity;
-  coordinates.forEach((point, index) => {
-    const distance = distanceKm(point, target);
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      splitIndex = index;
-    }
-  });
-  return {
-    outbound: coordinates.slice(0, splitIndex + 1),
-    returning: coordinates.slice(splitIndex),
-  };
 }
 
 function formatKm(km) {
@@ -68,6 +48,7 @@ export default function RouteMap({ depot, routes = [], loose = [], height = 460,
         if (p.label) { const label = document.createElement("span"); label.textContent = String(p.label); marker.bindTooltip(label); }
       };
       if (valid(depot)) add(depot, "K", "#142236", "depot");
+      const stopGroups = new Map();
       let remaining = routes.length;
       routes.forEach((route, index) => {
         const color = route.color || ROUTE_COLORS[index % ROUTE_COLORS.length];
@@ -77,21 +58,9 @@ export default function RouteMap({ depot, routes = [], loose = [], height = 460,
         if (routeDepot !== depot && (Number(routeDepot.lat) !== Number(depot?.lat) || Number(routeDepot.lng) !== Number(depot?.lng))) add(routeDepot, "K", "#142236", "depot");
         api(`/api/routes/${route.id}/geometry`, { token: loadToken() }).then(({ coordinates }) => {
           if (active && instance && Array.isArray(coordinates) && coordinates.length > 1) {
-            const split = splitAtLastStop(coordinates, stops[stops.length - 1]);
-            const drawPath = (path, pathColor) => {
-              if (path.length < 2) return;
-              L.polyline(path, { color: "#fff", opacity: opacity * .9, weight: 8 }).addTo(instance);
-              L.polyline(path, { color: pathColor, opacity, weight: 5 }).addTo(instance);
-            };
-            drawPath(split.outbound, OUTBOUND_COLOR);
-            drawPath(split.returning, RETURN_COLOR);
-            setRouteDistances((current) => ({
-              ...current,
-              [route.id]: {
-                outbound: pathDistanceKm(split.outbound),
-                returning: pathDistanceKm(split.returning),
-              },
-            }));
+            L.polyline(coordinates, { color: "#fff", opacity: opacity * .9, weight: 8 }).addTo(instance);
+            L.polyline(coordinates, { color, opacity, weight: 5 }).addTo(instance);
+            setRouteDistances((current) => ({ ...current, [route.id]: pathDistanceKm(coordinates) }));
           }
         }).catch(() => {
           if (active) setRouteError((current) => current ? `${current}, ${route.name}` : route.name);
@@ -99,7 +68,33 @@ export default function RouteMap({ depot, routes = [], loose = [], height = 460,
           remaining -= 1;
           if (active && remaining === 0) setLoadingRoad(false);
         });
-        stops.forEach(s => add(s, String(Number(s.seq) || "•"), s.state === "done" ? "#9fb0c3" : s.state === "here" ? "#f2b100" : color, "stop", opacity));
+        stops.forEach((stop) => {
+          const key = `${Number(stop.lat)},${Number(stop.lng)}`;
+          if (!stopGroups.has(key)) stopGroups.set(key, []);
+          stopGroups.get(key).push({ stop, text: String(Number(stop.seq) || "•"), color: stop.state === "done" ? "#9fb0c3" : stop.state === "here" ? "#f2b100" : color, opacity, routeName: route.name });
+        });
+      });
+      stopGroups.forEach((group) => {
+        const coords = [Number(group[0].stop.lat), Number(group[0].stop.lng)];
+        points.push(coords);
+        const container = document.createElement("div");
+        container.className = "route-map-stop-group";
+        group.forEach(({ stop, text, color, opacity, routeName }) => {
+          const badge = document.createElement("span");
+          badge.className = "stop";
+          badge.textContent = text;
+          badge.style.background = color;
+          badge.style.opacity = String(opacity);
+          badge.title = `${routeName} · điểm ${text}${stop.label ? ` · ${stop.label}` : ""}`;
+          container.appendChild(badge);
+        });
+        const width = group.length * 32 + (group.length - 1) * 3;
+        const icon = L.divIcon({ className: "route-map-icon", html: container, iconSize: [width, 32], iconAnchor: [width / 2, 16] });
+        const marker = L.marker(coords, { icon, title: group.map(({ text, routeName }) => `${routeName} · điểm ${text}`).join(", ") }).addTo(instance);
+        const labels = group.map(({ stop, text, routeName }) => `${routeName} · điểm ${text}${stop.label ? ` · ${stop.label}` : ""}`);
+        const tooltip = document.createElement("span");
+        tooltip.textContent = labels.join(" | ");
+        marker.bindTooltip(tooltip);
       });
       loose.forEach(p => add(p, "•", "#607287", "stop"));
       if (points.length === 1) instance.setView(points[0], 15);
@@ -118,21 +113,13 @@ export default function RouteMap({ depot, routes = [], loose = [], height = 460,
     <div className="map-box"><div ref={element} style={{ height }} aria-label="Bản đồ tuyến giao hàng" /></div>
     <div className="map-legend" aria-label="Chú thích bản đồ">
       <b className="map-legend-heading">Chú thích đường đi</b>
-      {routes.map((route) => {
+      {routes.map((route, index) => {
         const distance = routeDistances[route.id];
-        const stopSequence = route.stops.map((stop, index) => Number(stop.seq) || index + 1);
-        const outboundDescription = stopSequence.length
-          ? `Kho → ${stopSequence.map((sequence) => `điểm ${sequence}`).join(" → ")}`
-          : "Kho → các điểm giao";
-        const prefix = routes.length > 1 ? `${route.name} · ` : "";
+        const stopSequence = route.stops.map((stop, stopIndex) => Number(stop.seq) || stopIndex + 1);
         return <div className="map-legend-route" key={route.id}>
           <span className="map-legend-item">
-            <i className="map-legend-line" style={{ borderColor: OUTBOUND_COLOR }} />
-            <span>{prefix}Đi (xanh lá): {outboundDescription}{distance ? ` (${formatKm(distance.outbound)})` : ""}</span>
-          </span>
-          <span className="map-legend-item">
-            <i className="map-legend-line" style={{ borderColor: RETURN_COLOR }} />
-            <span>{prefix}Về (xanh dương): điểm cuối → Kho{distance ? ` (${formatKm(distance.returning)})` : ""}</span>
+            <i className="map-legend-line" style={{ borderColor: route.color || ROUTE_COLORS[index % ROUTE_COLORS.length] }} />
+            <span>{route.name} · Kho → {stopSequence.map((sequence) => `điểm ${sequence}`).join(" → ")}{distance != null ? ` (${formatKm(distance)})` : ""}</span>
           </span>
         </div>;
       })}

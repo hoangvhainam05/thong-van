@@ -10,7 +10,7 @@ import { PageHead } from "@/components/AdminShell";
 import Art from "@/components/Art";
 import { Field, Modal } from "@/components/ui";
 
-const EMPTY = { name: "", brand: "", category: "", costPrice: null, price: 0, oldPrice: null, volume: 0.3, weight: 20, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, install: 15, warranty: 12, maintenanceIntervalMonths: null, stock: 10, active: true, description: "" };
+const EMPTY = { name: "", brand: "", category: "", costPrice: null, price: "", oldPrice: null, volume: 0.3, weight: 20, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, install: 15, warranty: 12, maintenanceIntervalMonths: null, stock: 10, active: true, description: "" };
 
 function Products() {
   const { state, actions } = useStore();
@@ -26,6 +26,7 @@ function Products() {
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [imageFiles, setImageFiles] = useState([]);
+  const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [imagePreviews, setImagePreviews] = useState([]);
   const list = state.products.filter((p) => (!cat || p.category === cat) && (!q || p.name.toLowerCase().includes(q.toLowerCase()) || p.sku.toLowerCase().includes(q.toLowerCase())));
@@ -68,23 +69,23 @@ function Products() {
   };
 
   const save = async () => {
-    if (!edit.name || !edit.brand || !edit.category || edit.price <= 0 || (edit.costPrice !== null && edit.costPrice !== "" && Number(edit.costPrice) < 0)) { setConnectionError("Vui lòng nhập tên, hãng, danh mục, giá bán hợp lệ và giá nhập không âm."); return; }
+    if (!edit.name.trim() || !edit.brand.trim() || !edit.category || !Number.isFinite(Number(edit.price)) || Number(edit.price) <= 0 || (edit.costPrice !== null && edit.costPrice !== "" && (!Number.isFinite(Number(edit.costPrice)) || Number(edit.costPrice) < 0))) { setFormError("Vui lòng nhập tên, hãng, danh mục, giá bán lớn hơn 0 và giá nhập không âm."); return; }
     if (!connected) return;
     if (imageFiles.some(file => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) {
-      setConnectionError("Ảnh phải là định dạng hình ảnh và nhỏ hơn 5 MB.");
+      setFormError("Ảnh phải là định dạng hình ảnh và không vượt quá 5 MB.");
       return;
     }
-    if ((edit.images || []).length + imageFiles.length > 20) { setConnectionError("Chỉ được chọn tối đa 20 ảnh."); return; }
+    if ((edit.images || []).length + imageFiles.length > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
     setSaving(true);
-    setConnectionError("");
+    setFormError("");
     try {
       const images = [...(edit.images || []), ...await Promise.all(imageFiles.map(uploadImage))];
       const saved = await actions.saveProduct({ ...edit, images, price: Number(edit.price), costPrice: edit.costPrice === "" || edit.costPrice == null ? null : Number(edit.costPrice), oldPrice: edit.oldPrice ? Number(edit.oldPrice) : null, volume: Number(edit.volume), weight: Number(edit.weight), packageLengthCm: edit.packageLengthCm ? Number(edit.packageLengthCm) : null, packageWidthCm: edit.packageWidthCm ? Number(edit.packageWidthCm) : null, packageHeightCm: edit.packageHeightCm ? Number(edit.packageHeightCm) : null, packageWeightKg: edit.packageWeightKg ? Number(edit.packageWeightKg) : null, install: Number(edit.install), stock: Number(edit.stock), warranty: Number(edit.warranty), maintenanceIntervalMonths: edit.maintenanceIntervalMonths ? Number(edit.maintenanceIntervalMonths) : null });
-      if (!saved) return;
+      if (!saved) { setFormError("Không lưu được sản phẩm. Vui lòng kiểm tra thông báo và thử lại."); return; }
       setEdit(null);
       setImageFiles([]);
     } catch (error) {
-      setConnectionError(error.message || "Không lưu được sản phẩm.");
+      setFormError(error.message || "Không tải ảnh hoặc lưu được sản phẩm. Vui lòng thử lại.");
     } finally {
       setSaving(false);
     }
@@ -116,7 +117,7 @@ function Products() {
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <button className="btn secondary" disabled={!connected} onClick={() => setManagingCategories(true)}>Quản lý danh mục</button>
-        <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFiles([]); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
+        <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFiles([]); setFormError(""); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
       </PageHead>
       {(connectionError || categoryError) && <div className="notice bad" style={{ marginBottom: 14 }}>{connectionError || categoryError}</div>}
       <div className="panel table-wrap">
@@ -139,7 +140,7 @@ function Products() {
                 <td className="num">{p.install ? `${p.install} phút` : "—"}</td>
                 <td>{p.active ? <span className="badge ok">Đang bán</span> : <span className="badge">Đã ẩn</span>}</td>
                 <td className="nowrap">
-                  <button className="btn ghost sm" disabled={!connected} onClick={() => { setImageFiles([]); setEdit({ ...p }); }}>Sửa</button>
+                  <button className="btn ghost sm" disabled={!connected} onClick={() => { setImageFiles([]); setFormError(""); setEdit({ ...p }); }}>Sửa</button>
                   <button className="btn ghost sm" disabled={!connected} onClick={() => actions.toggleProduct(p.id)}>{p.active ? "Ẩn" : "Mở bán"}</button>
                 </td>
               </tr>
@@ -162,8 +163,8 @@ function Products() {
         </Modal>
       )}
       {edit && (
-        <Modal wide title={edit.id ? "Sửa sản phẩm" : "Thêm sản phẩm"} onClose={() => setEdit(null)}
-          footer={<><button className="btn secondary" onClick={() => { setEdit(null); setImageFiles([]); }}>Huỷ</button><button className="btn" disabled={saving} onClick={save}>{saving ? "Đang lưu…" : "Lưu sản phẩm"}</button></>}>
+        <Modal wide title={edit.id ? "Sửa sản phẩm" : "Thêm sản phẩm"} onClose={() => { if (!saving) setEdit(null); }}
+          footer={<>{formError && <div className="notice bad product-form-error" role="alert">{formError}</div>}<button className="btn secondary" disabled={saving} onClick={() => { setEdit(null); setImageFiles([]); }}>Huỷ</button><button className="btn" disabled={saving} onClick={save}>{saving ? "Đang tải ảnh và lưu…" : "Lưu sản phẩm"}</button></>}>
           <div className="form-grid">
             <Field label="Tên sản phẩm" full><input className="input" value={edit.name} onChange={set("name")} /></Field>
             <Field label="Hãng"><input className="input" value={edit.brand} onChange={set("brand")} /></Field>
@@ -171,7 +172,7 @@ function Products() {
               <select className="input" value={edit.category} onChange={set("category")}>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             </Field>
             <Field label="Giá nhập (₫)" hint="Để trống nếu chưa biết"><input className="input" type="number" min="0" step="1" value={edit.costPrice ?? ""} onChange={set("costPrice")} /></Field>
-            <Field label="Giá bán (₫)"><input className="input" type="number" min="0" step="10000" value={edit.price} onChange={set("price")} /></Field>
+            <Field label="Giá bán (₫)"><input className="input" type="number" min="0" step="10000" value={edit.price ?? ""} onChange={set("price")} placeholder="Nhập giá bán" /></Field>
             <Field label="Giá trước giảm (₫)" hint="Để trống nếu không giảm giá"><input className="input" type="number" min="0" step="10000" value={edit.oldPrice ?? ""} onChange={set("oldPrice")} /></Field>
             <Field label="Tồn kho"><input className="input" type="number" min="0" value={edit.stock} onChange={set("stock")} /></Field>
             <Field label="Bảo hành (tháng)"><input className="input" type="number" min="0" value={edit.warranty} onChange={set("warranty")} /></Field>
@@ -186,11 +187,22 @@ function Products() {
             <Field label="Mô tả" full><textarea className="input" rows={3} value={edit.description} onChange={set("description")} /></Field>
             <Field label="Ảnh sản phẩm" full>
               <div className="stack-sm">
-                <input className="input" type="file" accept="image/*" multiple onChange={(e) => { setImageFiles(old => [...old, ...Array.from(e.target.files || [])]); e.target.value = ""; }} />
-                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Ảnh đầu tiên là ảnh chính.</span>
+                <label className="product-image-picker">
+                  <span className="btn secondary sm">Chọn ảnh</span>
+                  <span>{imageFiles.length ? `Đã chọn ${imageFiles.length} ảnh mới` : "Chọn ảnh từ thiết bị"}</span>
+                  <input type="file" accept="image/*" multiple disabled={saving} onChange={(event) => {
+                    const files = Array.from(event.target.files || []);
+                    event.target.value = "";
+                    if (files.some((file) => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) { setFormError("Ảnh phải là định dạng hình ảnh và không vượt quá 5 MB."); return; }
+                    if ((edit.images || []).length + imageFiles.length + files.length > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
+                    setFormError("");
+                    setImageFiles((current) => [...current, ...files]);
+                  }} />
+                </label>
+                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Ảnh đầu tiên là ảnh chính; ảnh được tải lên khi lưu sản phẩm.</span>
                 <div className="row" style={{ flexWrap: "wrap" }}>
                   {(edit.images || []).map((image, index) => <div key={`${image.imageUrl}-${index}`}><img src={image.imageUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><button type="button" className="btn ghost sm" onClick={() => setEdit({ ...edit, images: edit.images.filter((_, i) => i !== index) })}>Xóa</button></div>)}
-                  {imagePreviews.map((url, index) => <div key={url}><img src={url} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><button type="button" className="btn ghost sm" onClick={() => setImageFiles(files => files.filter((_, i) => i !== index))}>Xóa</button></div>)}
+                  {imagePreviews.map((url, index) => <div className="product-image-preview" key={url}><img src={url} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><span className="tiny" title={imageFiles[index]?.name}>{imageFiles[index]?.name}</span><button type="button" className="btn ghost sm" disabled={saving} onClick={() => setImageFiles(files => files.filter((_, i) => i !== index))}>Xóa</button></div>)}
                 </div>
               </div>
             </Field>

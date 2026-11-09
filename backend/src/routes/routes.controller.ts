@@ -96,6 +96,12 @@ export class RoutesController {
     return this.routes.editDraft(routeId, body);
   }
 
+  @Post('routes/:routeId/cancel')
+  @RequirePermission('route.optimize')
+  cancelDraft(@Param('routeId', ParseIntPipe) id: number, @Req() req: AuthRequest) {
+    return this.routes.cancelDraft(id, `USER:${req.user.id}`);
+  }
+
   @Post('routes/:routeId/lock')
   @RequirePermission('route.approve')
   lock(@Param('routeId', ParseIntPipe) routeId: number) {

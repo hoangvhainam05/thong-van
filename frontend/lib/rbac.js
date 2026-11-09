@@ -88,9 +88,15 @@ export function can(matrix, role, perm) {
   return (matrix?.[role] || []).includes(perm);
 }
 
-// Trang đích sau khi đăng nhập
+// Trang đích sau khi đăng nhập theo vai trò
 export function homeFor(matrix, role) {
-  if (can(matrix, role, "backoffice.access")) return "/admin";
-  if (can(matrix, role, "delivery.app")) return "/driver";
+  if (!role) return "/";
+  if (role === "DRIVER" || can(matrix, role, "delivery.app")) return "/driver";
+  if (role === "CUSTOMER" || can(matrix, role, "order.track_own")) return "/account/orders";
+  if (role === "MANAGER") return (matrix && matrix[role] ? can(matrix, role, "dispatch.view") : true) ? "/admin/dispatch" : "/admin";
+  if (role === "SALES") return (matrix && matrix[role] ? can(matrix, role, "order.view_all") : true) ? "/admin/orders" : "/admin";
+  if (role === "ADMIN" || can(matrix, role, "backoffice.access")) return "/admin";
+  if (can(matrix, role, "dispatch.view")) return "/admin/dispatch";
+  if (can(matrix, role, "order.view_all")) return "/admin/orders";
   return "/";
 }

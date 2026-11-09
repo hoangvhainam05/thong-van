@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
+import confetti from "canvas-confetti";
 import { api, loadToken, hhmm } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { vnd, ymd } from "@/lib/format";
 import { Empty, Loading, Modal, RouteBadge } from "@/components/ui";
+import { playSuccess } from "@/lib/audio-juice";
 
 const FAIL = ["Khách không có nhà", "Không liên lạc được khách", "Khách hẹn giao lại ngày khác", "Sai địa chỉ", "Không đủ chỗ lắp đặt", "Hàng lỗi, khách từ chối nhận"];
 export default function DriverToday() {
@@ -32,7 +34,7 @@ export default function DriverToday() {
         {!next.actual_arrival ? <button className="btn lg block signal" disabled={busy || !can('delivery.update')} onClick={()=>run(`/api/driver/stops/${next.stop_id}/arrive`)}>Tôi đã đến nơi</button> : <>
           <div className="stack-sm"><label className="small">Ảnh bằng chứng (JPEG, PNG hoặc WebP, tối đa 5 MB)</label>{next.has_proof ? <div className="notice ok">Đã lưu ảnh bằng chứng.</div> : <><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>setPhoto(e.target.files?.[0] || null)}/><button className="btn secondary" disabled={!photo || busy || !can('delivery.update')} onClick={()=>upload(next)}>Tải ảnh</button></>}</div>
           {cod > 0 && <label className="row small"><input type="checkbox" checked={cash} onChange={e=>setCash(e.target.checked)}/> Đã thu đủ {vnd(cod)}</label>}
-          <div className="big-actions"><button className="btn danger" disabled={busy || !can('delivery.update')} onClick={()=>setFail({stop:next,reason:FAIL[0]})}>Không giao được</button><button className="btn go" disabled={busy || !can('delivery.update') || (cod>0 && !cash)} onClick={async()=>{ if (await run(`/api/driver/stops/${next.stop_id}/complete`,{success:true,cod_collected:cod})) {setCash(false);setPhoto(null);} }}>Giao thành công</button></div>
+          <div className="big-actions"><button className="btn danger" disabled={busy || !can('delivery.update')} onClick={()=>setFail({stop:next,reason:FAIL[0]})}>Không giao được</button><button className="btn go" disabled={busy || !can('delivery.update') || (cod>0 && !cash)} onClick={async()=>{ if (await run(`/api/driver/stops/${next.stop_id}/complete`,{success:true,cod_collected:cod})) {setCash(false);setPhoto(null); playSuccess(); try { confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } }); } catch {} } }}>Giao thành công</button></div>
         </>}
       </div></section>}
       <section className="panel"><div className="panel-head"><h3>Thứ tự giao</h3></div>{route.stops.map(s=><div key={s.stop_id} className="d-stop" style={{opacity:s.completed_at ? 0.65 : 1}}><span className={`seq ${s.completed_at?'done':next?.stop_id===s.stop_id?'here':''}`}>{s.completed_at?'✓':s.sequence}</span><div className="small"><div className="row between"><b>{s.customer_name}</b><span>{hhmm(s.actual_arrival || s.planned_arrival)}</span></div><div className="muted">{s.address}</div><div className="tiny muted">{s.time_window}{s.result==='FAILED' ? ` · Thất bại: ${s.result_note}` : s.result==='DELIVERED' ? ' · Đã giao' : ''}</div></div></div>)}</section>

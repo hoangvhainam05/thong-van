@@ -94,6 +94,8 @@ mysql -u thongvan -p thongvan < database/migrations/020_counter_order_permission
 mysql -u thongvan -p thongvan < database/migrations/021_shipping_pricing.sql
 mysql -u thongvan -p thongvan < database/migrations/022_express_cutoff_1600.sql
 mysql -u thongvan -p thongvan < database/migrations/023_persistent_auth_sessions.sql
+mysql -u thongvan -p thongvan < database/migrations/024_distance_shipping_bands.sql
+mysql -u thongvan -p thongvan < database/migrations/025_vehicle_driver.sql
 ```
 Để dùng khoảng cách đường bộ, tạo tài khoản và API key tại [OpenRouteService Dashboard](https://account.heigit.org/), sau đó đặt `ORS_API_KEY` trong `backend/.env` và khởi động lại backend. Key chỉ được dùng ở backend. Matrix API dùng `https://api.heigit.org/openrouteservice/v2/matrix/driving-car`; các yêu cầu được chia thành tối đa 3.500 cặp nguồn–đích mỗi lần. API có quota theo tài khoản; số lượng lớn điểm có thể cần nhiều request. Ma trận ORS hợp lệ được cache trong bộ nhớ 5 phút. ORS không cung cấp giao thông trực tiếp, nên thời gian và ETA không phản ánh traffic hiện tại. Khi thiếu key, hết quota (429), lỗi mạng, timeout hoặc dữ liệu không hợp lệ, toàn bộ ma trận chuyển sang Haversine × hệ số đường bộ và giao diện ghi rõ là ước tính. Sửa tuyến dùng lại ma trận đã lưu; nếu tọa độ thay đổi, cần tối ưu lại. Tuyến cũ chưa có ma trận được tính lại bằng ước tính khi sửa.
 
@@ -221,5 +223,6 @@ Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_ima
 - Với cơ sở dữ liệu đã có, chạy `database/migrations/021_shipping_pricing.sql` một lần. Migration bổ sung kích thước kiện hàng, snapshot cước của đơn và bảng lịch sử phiên bản giá; các đơn cũ giữ nguyên phí đã lưu.
 - Chạy tiếp `database/migrations/022_express_cutoff_1600.sql` để chuyển giờ chốt hỏa tốc sang 16:00 và ghi phiên bản cấu hình mới khi cần.
 - Chạy `database/migrations/023_persistent_auth_sessions.sql` nếu cơ sở dữ liệu chưa có migration này, sau đó chạy `database/migrations/024_distance_shipping_bands.sql` để thêm cấu hình cước theo quãng đường.
+- Chạy `database/migrations/025_vehicle_driver.sql` để tạo bảng liên kết tài xế và phương tiện `vehicle_driver`.
 - Cước checkout dùng quãng đường đường bộ: mặc định miễn phí đến 20 km, 150.000₫ đến 30 km, rồi tăng 50.000₫ mỗi 10 km. Có thể chỉnh năm ngưỡng và mức phí trong Cài đặt hệ thống; mỗi lần đổi cước sẽ tăng phiên bản và ghi snapshot vào `shipping_rate_history`.
 - Cấu hình `ORS_API_KEY` và tọa độ kho để lấy quãng đường đường bộ. Thể tích và trọng lượng sản phẩm vẫn dùng để kiểm tra sức chứa xe và điều kiện hỏa tốc; chúng không cộng vào cước giao hàng.

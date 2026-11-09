@@ -37,14 +37,14 @@ describe('supplied road matrix', () => {
     };
     const result = optimize(depot, stops, [vehicle], { ...options, matrix });
     expect(result.unassigned).toEqual([2]);
-    expect(result.baselineKm).toBe(12);
+    expect(result.baselineKm).toBe(5);
     const plan = result.routes[0];
-    expect(plan.totalKm).toBe(12);
+    expect(plan.totalKm).toBe(5);
     expect(plan.stops.map((s) => s.orderId)).toEqual([1, 3]);
     expect(plan.stops.map((s) => s.arrivalMin)).toEqual([482, 495]);
     const reversed = { km: [[0, 8, 2], [7, 0, 6], [4, 3, 0]], minutes: [[0, 8, 2], [7, 0, 6], [4, 3, 0]] };
     const fixed = evaluateFixedRoute(depot, [stops[2], stops[0]], vehicle, { ...options, matrix: reversed });
-    expect(fixed?.totalKm).toBe(18);
+    expect(fixed?.totalKm).toBe(14);
     expect(fixed?.stops[0].arrivalMin).toBe(488);
   });
 });
@@ -56,7 +56,7 @@ it('chooses the next feasible stop by directed road distance from the current po
   };
   const result = optimize(depot, [stop(1), stop(2), stop(3)], [vehicle], { ...options, matrix });
   expect(result.routes[0].stops.map((s) => s.orderId)).toEqual([2, 3, 1]);
-  expect(result.routes[0].totalKm).toBe(15);
+  expect(result.routes[0].totalKm).toBe(6);
 });
 
 it('inserts a later considered stop before an existing stop when that saves distance', () => {
@@ -67,5 +67,27 @@ it('inserts a later considered stop before an existing stop when that saves dist
   };
   const result = optimize(depot, stops, [vehicle], { ...options, matrix });
   expect(result.routes[0].stops.map(s => s.orderId)).toEqual([2, 1]);
-  expect(result.routes[0].totalKm).toBe(12);
+  expect(result.routes[0].totalKm).toBe(2);
+});
+
+
+describe('balanced one-way delivery routes', () => {
+  const vehicles = [vehicle, { ...vehicle, id: 2 }];
+  it.each([[4, [2, 2]], [5, [2, 3]]])('balances %i orders across two vehicles', (count, expected) => {
+    const result = optimize(depot, Array.from({ length: count }, (_, i) => stop(i + 1)), vehicles, options);
+    expect(result.unassigned).toEqual([]);
+    expect(result.routes.map(route => route.stops.length).sort()).toEqual(expected);
+  });
+  it('respects different vehicle capacities', () => {
+    const result = optimize(depot, [stop(1, { weightKg: 60 }), stop(2, { weightKg: 60 }), stop(3, { weightKg: 60 })], [vehicle, { ...vehicle, id: 2, capacityKg: 200 }], options);
+    expect(result.unassigned).toEqual([]);
+    expect(result.routes.map(route => route.stops.length).sort()).toEqual([1, 2]);
+  });
+  it('does not count a return leg in distance or shift duration', () => {
+    const matrix = { km: [[0, 3], [100, 0]], minutes: [[0, 5], [500, 0]] };
+    const result = optimize(depot, [stop(1)], [vehicle], { ...options, matrix });
+    expect(result.routes[0].totalKm).toBe(3);
+    expect(result.routes[0].totalMinutes).toBe(15);
+    expect(result.baselineKm).toBe(3);
+  });
 });
