@@ -10,7 +10,13 @@ import {
   Req,
   HttpCode,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Res,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
+import { PaymentSupportService } from './payment-support.service';
 import { AuthGuard, AuthRequest, RequirePermission } from '../auth/auth.guard';
 import { OrderStatus } from '../database/entities';
 import { CreateOrderDto, LocationUpdateDto, PaymentUpdateDto, PriorityUpdateDto, RequestInfoDto, ShippingQuoteDto, StatusUpdateDto } from './order.dto';
@@ -19,7 +25,28 @@ import { OrdersService } from './orders.service';
 
 @Controller('api/orders')
 export class OrdersController {
-  constructor(private readonly orders: OrdersService, private readonly payos: PayosService) {}
+  constructor(private readonly orders: OrdersService, private readonly payos: PayosService, private readonly support: PaymentSupportService) {}
+
+  @Get('payment-support')
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.view_all')
+  supportList() { return this.support.list(); }
+
+  @Get('payment-support/:id/image')
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.view_all')
+  async supportImage(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
+    const image = await this.support.image(id);
+    res.set({ 'Content-Type': image.image_mime, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }).send(image.image_data);
+  }
+
+  @Post(':orderId/payment-support')
+  @UseGuards(AuthGuard)
+  @RequirePermission('order.track_own')
+  @UseInterceptors(FileInterceptor('image', { limits: { fileSize: 3 * 1024 * 1024, files: 1 } }))
+  createSupport(@Param('orderId', ParseIntPipe) id: number, @Req() req: AuthRequest, @Body('message') message: string, @UploadedFile() image?: { buffer: Buffer; size: number; mimetype: string }) {
+    return this.support.create(id, req.user.customerId, message, image);
+  }
 
   @Get('payos/available')
   payosAvailable() { return { available: this.payos.available() }; }

@@ -233,3 +233,5 @@ Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_ima
 Với cơ sở dữ liệu đã có, chạy lần lượt `database/migrations/026_payos.sql` và `database/migrations/027_payos_qr.sql` trước khi cập nhật backend (nếu đã chạy 026 thì chỉ chạy 027). Cấu hình `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` và `PAYOS_FRONTEND_URL` trong môi trường backend; URL frontend phải là địa chỉ công khai của website khi triển khai. Không đưa khóa vào mã nguồn hoặc frontend.
 
 Trong trang quản lý PayOS, đăng ký webhook HTTPS công khai trỏ đến `https://<dia-chi-backend>/api/orders/payos/webhook`. Khởi động lại backend sau khi cấu hình. Khách chọn PayOS khi đặt đơn, sau đó nhấn thanh toán trong chi tiết đơn. Trạng thái chỉ chuyển sang đã thanh toán khi webhook hợp lệ và PayOS xác nhận đã nhận đủ tiền. Đơn đã huỷ nhưng nhận thanh toán sau đó cần xử lý hoàn tiền thủ công. Kiểm thử với môi trường PayOS phù hợp trước khi sử dụng thực tế.
+
+Các cơ sở dữ liệu đã có cần chạy thêm `database/migrations/028_payment_support.sql` để lưu yêu cầu hỗ trợ và ảnh đính kèm. Ảnh chỉ được truy cập qua API yêu cầu quyền xem đơn; ảnh tối đa 3 MB.

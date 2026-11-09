@@ -3,6 +3,7 @@
 import CancelOrderModal from "@/components/CancelOrderModal";
 
 import Link from "next/link";
+import { api, loadToken, resolveUrl } from "@/lib/api";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ORDER_STATUS, useStore } from "@/lib/store";
@@ -16,6 +17,11 @@ const PAGE = 25;
 function Orders() {
   const { state, can, actions } = useStore();
   const params = useSearchParams();
+  const [supportRequests, setSupportRequests] = useState([]), [supportError, setSupportError] = useState('');
+  useEffect(() => { api('/api/orders/payment-support', { token: loadToken() }).then(setSupportRequests).catch(e => setSupportError(e.message)); }, []);
+  async function showSupportImage(id) {
+    try { const response = await fetch(resolveUrl(`/api/orders/payment-support/${id}/image`), { headers: { Authorization: `Bearer ${loadToken()}` }, cache: 'no-store' }); if (!response.ok) throw new Error('Không tải được ảnh.'); const url = URL.createObjectURL(await response.blob()); window.open(url, '_blank', 'noopener,noreferrer'); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch (e) { setSupportError(e.message); }
+  }
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState(false);
   const [tab, setTab] = useState(params.get("status") || "ALL");
@@ -58,6 +64,7 @@ function Orders() {
         ]} />
       </PageHead>
 
+      {(supportRequests.length > 0 || supportError) && <section className="panel panel-pad stack-sm"><h3>Yêu cầu hỗ trợ thanh toán</h3>{supportError && <div className="notice bad">{supportError}</div>}{supportRequests.map(r => <div key={r.id} className="notice"><Link href={`/admin/orders/${r.order_id}`}><b>Đơn {r.code}</b></Link><div>{r.message}</div>{r.has_image && <button className="btn secondary sm" onClick={() => showSupportImage(r.id)}>Xem ảnh giao dịch</button>}</div>)}</section>}
       <div className="panel">
         <div style={{ padding: "0 12px" }}>
           <Tabs value={tab} onChange={(v) => { setTab(v); setSel([]); setPage(1); }} items={[

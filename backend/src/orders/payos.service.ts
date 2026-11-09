@@ -14,6 +14,25 @@ function signature(data: Record<string, any>, key: string) {
   return createHmac('sha256', key).update(text).digest('hex');
 }
 
+// VietQR EMV fields contain the actual bank account and transfer reference.
+function fields(value: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (let offset = 0; offset + 4 <= value.length;) {
+    const id = value.slice(offset, offset + 2), lengthText = value.slice(offset + 2, offset + 4);
+    if (!/^\d{2}$/.test(id) || !/^\d{2}$/.test(lengthText)) return {};
+    const length = Number(lengthText); offset += 4;
+    if (offset + length > value.length) return {};
+    result[id] = value.slice(offset, offset + length); offset += length;
+  }
+  return result;
+}
+function paymentDetails(qr: string | null) {
+  if (!qr) return null;
+  const root = fields(qr), merchant = fields(root['38'] || ''), bank = fields(merchant['01'] || ''), extra = fields(root['62'] || '');
+  if (!bank['00'] || !bank['01'] || !extra['08']) return null;
+  return { bankCode: bank['00'], accountNumber: bank['01'], transferContent: extra['08'], amount: root['54'] || null };
+}
+
 @Injectable()
 export class PayosService {
   constructor(private readonly db: DataSource, private readonly config: ConfigService) {}
@@ -48,7 +67,7 @@ export class PayosService {
       const order = await repo.findOne({ where: { id, customerId }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn hàng.');
       if (order.paymentMethod !== 'PAYOS' || order.status === OrderStatus.CANCELLED || order.paymentStatus === PaymentStatus.PAID) throw new ConflictException('Đơn hàng không thể thanh toán qua PayOS.');
-      if (order.payosCheckoutUrl) return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null };
+      if (order.payosCheckoutUrl) return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null, details: paymentDetails(order.payosQrCode), accountName: order.payosAccountName || null };
       const origin = this.credentials.origin.replace(/\/$/, '');
       const returnUrl = `${origin}/account/orders/${order.id}?payos=return`;
       const cancelUrl = `${origin}/account/orders/${order.id}?payos=cancel`;
@@ -61,11 +80,12 @@ export class PayosService {
         catch { throw error; }
       }
       if (Number(link.orderCode) !== data.orderCode || Number(link.amount) !== data.amount || !/^[a-zA-Z0-9]+$/.test(link.paymentLinkId || '') || !/^https:\/\/pay\.payos\.vn\//.test(link.checkoutUrl || '')) throw new ServiceUnavailableException('Thông tin liên kết PayOS không hợp lệ.');
+      order.payosAccountName = typeof link.accountName === 'string' ? link.accountName.slice(0, 255) : null;
       order.payosQrCode = typeof link.qrCode === 'string' && link.qrCode.length <= 4096 ? link.qrCode : null;
       order.payosLinkId = link.paymentLinkId;
       order.payosCheckoutUrl = link.checkoutUrl;
       await repo.save(order);
-      return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null };
+      return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null, details: paymentDetails(order.payosQrCode), accountName: order.payosAccountName || null };
     });
   }
   async webhook(payload: any) {
@@ -78,8 +98,10 @@ export class PayosService {
     const order = await this.db.getRepository(Order).findOne({ where: { payosOrderCode: code } });
     // PayOS sends a signed sample when a webhook URL is registered.
     if (!order) return { received: true };
+    const details = paymentDetails(order.payosQrCode);
+    if (!details || Number(payload.data.amount) !== Number(order.total) || payload.data.currency !== 'VND' || String(payload.data.description || '').trim().toUpperCase() !== details.transferContent.trim().toUpperCase()) return { received: true };
     const link = await this.request(`/v2/payment-requests/${encodeURIComponent(code)}`);
-    if (link.status !== 'PAID' || Number(link.amountPaid) < Number(order.total) || Number(link.amount) !== Number(order.total) || String(link.orderCode) !== code || link.id !== payload.data.paymentLinkId || (order.payosLinkId && link.id !== order.payosLinkId)) return { received: true };
+    if (link.status !== 'PAID' || Number(link.amountPaid) !== Number(order.total) || Number(link.amount) !== Number(order.total) || String(link.orderCode) !== code || link.id !== payload.data.paymentLinkId || (order.payosLinkId && link.id !== order.payosLinkId)) return { received: true };
     await this.db.transaction(async manager => {
       const repo = manager.getRepository(Order);
       const current = await repo.findOne({ where: { id: order.id }, lock: { mode: 'pessimistic_write' } });

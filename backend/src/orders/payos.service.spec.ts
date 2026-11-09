@@ -5,9 +5,9 @@ const key = 'test-checksum';
 const sign = (data: Record<string, any>) => createHmac('sha256', key).update(Object.keys(data).sort().map(k => `${k}=${data[k] ?? ''}`).join('&')).digest('hex');
 describe('PayosService webhook', () => {
   let order: any, repo: any, history: any, service: PayosService;
-  const data = { orderCode: 123456789012, amount: 10000, paymentLinkId: 'abc123', code: '00', currency: 'VND' };
+  const data = { orderCode: 123456789012, amount: 10000, paymentLinkId: 'abc123', code: '00', currency: 'VND', description: 'TV000007' };
   beforeEach(() => {
-    order = { id: 7, payosOrderCode: String(data.orderCode), payosLinkId: 'abc123', total: '10000', paymentMethod: 'PAYOS', paymentStatus: PaymentStatus.PENDING, status: OrderStatus.PENDING };
+    order = { id: 7, payosOrderCode: String(data.orderCode), payosLinkId: 'abc123', payosQrCode: '38220118' + '000697042201041234' + '62120808TV000007', total: '10000', paymentMethod: 'PAYOS', paymentStatus: PaymentStatus.PENDING, status: OrderStatus.PENDING };
     repo = { findOne: jest.fn(async () => order), save: jest.fn(async (x) => x) };
     history = { save: jest.fn() };
     const db: any = { getRepository: jest.fn(() => repo), transaction: jest.fn(async fn => fn({ getRepository: (entity: any) => entity.name === 'Order' ? repo : history })) };
@@ -23,6 +23,17 @@ describe('PayosService webhook', () => {
     const payload = { success: true, code: '00', data, signature: sign(data) };
     await service.webhook(payload); await service.webhook(payload);
     expect(order.paymentStatus).toBe(PaymentStatus.PAID); expect(history.save).toHaveBeenCalledTimes(1);
+  });
+  it('does not confirm a mismatched transfer reference', async () => {
+    const wrong = { ...data, description: 'OTHER' };
+    await service.webhook({ success: true, code: '00', data: wrong, signature: sign(wrong) });
+    expect(order.paymentStatus).toBe(PaymentStatus.PENDING);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+  it('does not confirm an incorrect transfer amount', async () => {
+    const wrong = { ...data, amount: 11000 };
+    await service.webhook({ success: true, code: '00', data: wrong, signature: sign(wrong) });
+    expect(order.paymentStatus).toBe(PaymentStatus.PENDING);
   });
   it('does not mark a partially paid link as paid', async () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ code: '00', data: { id: 'abc123', orderCode: data.orderCode, amount: 10000, amountPaid: 5000, status: 'PENDING' } }) })) as any;

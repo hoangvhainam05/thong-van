@@ -113,13 +113,6 @@ function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const requestIdRef = useRef(null);
-  const [bankInstructions, setBankInstructions] = useState(null);
-
-  useEffect(() => {
-    api("/api/orders/payment-instructions")
-      .then(setBankInstructions)
-      .catch(() => setBankInstructions({ configured: false }));
-  }, []);
 
   let quoteProductIds = null;
   if (searchParams.has("items")) {
@@ -208,8 +201,7 @@ function Checkout() {
   if (!cartLines.length && !isDirectPurchase) return <div className="panel"><Empty title="Giỏ hàng đang trống" action={<Link href="/products" className="btn">Chọn sản phẩm</Link>} /></div>;
   if (!lines.length) return <div className="panel"><Empty title="Chưa chọn sản phẩm để thanh toán" action={<Link href="/cart" className="btn">Quay lại giỏ hàng</Link>} /></div>;
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
-  const bankAvailable = Boolean(bankInstructions?.configured);
-  const paymentChoice = pay === "BANK" && !bankAvailable ? "COD" : pay;
+  const paymentChoice = pay === "BANK" ? (payosAvailable ? "PAYOS" : "COD") : pay;
   const days = Array.from({ length: 7 }, (_, i) => addDays(ymd(), i));
 
   const submit = async () => {
@@ -512,14 +504,13 @@ function Checkout() {
             <div className="panel-head"><h3>Thanh toán</h3></div>
             <div className="panel-body">
               <div className="choice">
-                {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && (k !== "BANK" || (bankAvailable && !payosAvailable)) && (k !== "PAYOS" || payosAvailable)).map(([k, label]) => (
+                {Object.entries(PAYMENT_METHOD).filter(([k]) => !["EWALLET", "COUNTER_CASH"].includes(k) && k !== "BANK" && (k !== "PAYOS" || payosAvailable)).map(([k, label]) => (
                   <label key={k}>
                     <input type="radio" name="pay" checked={paymentChoice === k} onChange={() => setPay(k)} />
                     <span><b>{label}</b><br /><span className="small muted">{k === "COD" ? "Trả cho tài xế khi nhận và kiểm tra hàng" : k === "PAYOS" ? "Quét mã QR để thanh toán sau khi đặt hàng" : "Tạo đơn chờ chuyển khoản; nhân viên xác nhận sau khi đối soát"}</span></span>
                   </label>
                 ))}
               </div>
-              {paymentChoice === "BANK" && bankInstructions?.configured && <div className="notice" style={{ marginTop: 12 }}>Chuyển khoản tới <b>{bankInstructions.bank_name}</b> · {bankInstructions.account_name} · {bankInstructions.account_number}. Mã đơn và nội dung chuyển khoản sẽ hiện sau khi tạo đơn. Nhân viên sẽ đối soát thủ công.</div>}
               {paymentChoice === "PAYOS" && <p className="tiny muted" style={{ marginTop: 10 }}>Sau khi đặt hàng, bạn có thể thanh toán qua PayOS.</p>}
             </div>
           </section>
@@ -549,7 +540,7 @@ function Checkout() {
           <div className="row between"><b>Tổng cộng</b><span className="price" style={{ fontSize: 22 }}>{vnd(subtotal + (shippingQuote?.shippingBreakdown?.totalFee || 0))}</span></div>
           {error && <div className="notice bad">{error}</div>}
           <button className="btn lg block" disabled={submitting || !paymentChoice || quoteLoading || !shippingQuote?.quoteAvailable || (deliveryType === "EXPRESS" && !shippingQuote?.expressEligibility?.eligible)} onClick={submit}>
-            {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Tạo đơn và thanh toán"}
+            {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Thanh toán"}
           </button>
         </aside>
       </div>
