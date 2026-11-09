@@ -407,14 +407,23 @@ export function StoreProvider({ children }) {
       // ------------------------------------------------------------ giỏ hàng & đặt hàng
       addToCart: act((productId, qty = 1) =>
         mutate((d) => {
+          const product = d.products.find((p) => p.id === productId);
+          if (!product || !product.active || product.stock < 1) {
+            throw new Error("Sản phẩm hiện đã hết hàng.");
+          }
           const line = d.cart.find((l) => l.productId === productId);
-          if (line) line.qty = Math.min(line.qty + qty, 10);
-          else d.cart.push({ productId, qty });
+          const nextQty = Math.min((line?.qty || 0) + qty, product.stock, 10);
+          if (line) line.qty = nextQty;
+          else d.cart.push({ productId, qty: nextQty });
         }), "Đã thêm vào giỏ"),
       setCartQty: (productId, qty) =>
         mutate((d) => {
           if (qty <= 0) d.cart = d.cart.filter((l) => l.productId !== productId);
-          else d.cart.find((l) => l.productId === productId).qty = Math.min(qty, 10);
+          else {
+            const line = d.cart.find((l) => l.productId === productId);
+            const product = d.products.find((p) => p.id === productId);
+            if (line && product) line.qty = Math.min(qty, product.stock, 10);
+          }
         }),
       clearCart: () => mutate((d) => { d.cart = []; }),
 
