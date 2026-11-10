@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   ParseIntPipe,
@@ -64,7 +65,9 @@ export class OrdersController {
   @UseGuards(AuthGuard)
   @RequirePermission('order.track_own')
   cancelOwn(@Param('orderId', ParseIntPipe) id: number, @Req() req: AuthRequest, @Body('reason') reason?: string) {
-    return this.orders.cancelOwn(id, req.user.customerId, reason || 'Khách tự huỷ đơn');
+    const customerId = req.user.customerId;
+    if (customerId == null) throw new ForbiddenException('Tài khoản chưa liên kết với khách hàng');
+    return this.orders.cancelOwn(id, customerId, reason || 'Khách tự huỷ đơn');
   }
 
   @Patch(':orderId/status')
