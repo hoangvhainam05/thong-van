@@ -14,14 +14,14 @@ import { createProductWorkbook, readProductWorkbook } from "@/lib/product-excel"
 const EMPTY = { name: "", brand: "", category: "", costPrice: null, price: "", oldPrice: null, volume: 0.3, weight: 20, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, install: 15, warranty: 12, maintenanceIntervalMonths: null, stock: 10, active: true, description: "" };
 
 const IMPORT_COLUMNS = [
-  ["Mã sản phẩm (SKU)", "sku"], ["Tên sản phẩm", "name"], ["Hãng", "brand"], ["Danh mục", "category"],
+  ["Tên sản phẩm", "name"], ["Hãng", "brand"], ["Danh mục", "category"],
   ["Giá nhập (₫)", "costPrice"], ["Giá bán (₫)", "price"], ["Giá trước giảm (₫)", "oldPrice"],
   ["Tồn kho", "stock"], ["Bảo hành (tháng)", "warranty"], ["Chu kỳ bảo dưỡng (tháng)", "maintenanceIntervalMonths"],
   ["Thể tích sản phẩm (m³)", "volume"], ["Trọng lượng sản phẩm (kg)", "weight"], ["Thời gian lắp đặt (phút)", "install"],
   ["Dài kiện hàng (cm)", "packageLengthCm"], ["Rộng kiện hàng (cm)", "packageWidthCm"], ["Cao kiện hàng (cm)", "packageHeightCm"],
-  ["Trọng lượng kiện hàng (kg)", "packageWeightKg"], ["Mô tả", "description"], ["Ảnh URL", "imageUrl"],
+  ["Trọng lượng kiện hàng (kg)", "packageWeightKg"], ["Mô tả", "description"],
 ];
-const IMPORT_DEFAULTS = { costPrice: null, oldPrice: null, stock: 10, warranty: 12, maintenanceIntervalMonths: null, volume: 0.3, weight: 20, install: 15, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, description: "", imageUrl: null };
+const IMPORT_DEFAULTS = { costPrice: null, oldPrice: null, stock: 10, warranty: 12, maintenanceIntervalMonths: null, volume: 0.3, weight: 20, install: 15, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, description: "" };
 const OPTIONAL_NUMBERS = new Set(["costPrice", "oldPrice", "maintenanceIntervalMonths", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightKg"]);
 const INTEGER_NUMBERS = new Set(["stock", "warranty", "maintenanceIntervalMonths", "install"]);
 
@@ -47,7 +47,6 @@ function parseProductRows(rows, categories) {
     const product = { ...IMPORT_DEFAULTS };
     product.name = cellText(source.name);
     product.brand = cellText(source.brand);
-    product.sku = cellText(source.sku) || undefined;
     const category = categoryFor(source.category);
     product.category = category?.id || "";
     product.price = importNumber(source.price);
@@ -64,7 +63,6 @@ function parseProductRows(rows, categories) {
     product.packageHeightCm = importNumber(source.packageHeightCm);
     product.packageWeightKg = importNumber(source.packageWeightKg);
     product.description = cellText(source.description);
-    product.imageUrl = cellText(source.imageUrl) || null;
     const errors = [];
     if (!product.name || product.name.length < 2) errors.push("Tên sản phẩm cần ít nhất 2 ký tự");
     if (!product.brand) errors.push("Thiếu hãng");
@@ -83,15 +81,16 @@ function parseProductRows(rows, categories) {
 
 function downloadProductTemplate(categories) {
   const headers = IMPORT_COLUMNS.map(([label]) => label);
-  const sample = ["", "Máy nước nóng mẫu", "Thương hiệu mẫu", categories[0]?.name || "Tên danh mục", "", 2500000, "", 10, 12, "", 0.3, 20, 15, "", "", "", "", "Mô tả sản phẩm (không bắt buộc)", ""];
+  const sample = ["Máy nước nóng mẫu", "Thương hiệu mẫu", categories[0]?.name || "Tên danh mục", 1600000, 2500000, 2900000, 10, 12, 6, 0.3, 20, 15, 45, 35, 80, 18.5, "Máy nước nóng dung tích 20 lít, bảo hành chính hãng."];
   const guide = [
     ["Hướng dẫn nhập sản phẩm"],
-    ["1. Nhập dữ liệu từ dòng 2 trong sheet Sản phẩm; không đổi tên hàng tiêu đề."],
+    ["1. Nhập dữ liệu từ dòng 2 trong sheet Sản phẩm; không đổi tên hàng tiêu đề. Dòng 2 là ví dụ đầy đủ, hãy thay bằng thông tin thật."],
     ["2. Bắt buộc: Tên sản phẩm (tối thiểu 2 ký tự), Hãng, Danh mục, Giá bán (> 0)."],
-    ["3. Danh mục phải khớp chính xác tên hoặc mã danh mục đang có trong hệ thống."],
-    ["4. Để trống ảnh nếu chưa có; nếu có, nhập URL ảnh công khai vào cột Ảnh URL."],
-    ["5. Cột số dùng số không âm. Các ô để trống sẽ lấy mặc định trong biểu mẫu (ví dụ tồn kho 10, thể tích 0,3)."],
-    ["6. Không nhập SKU trùng với sản phẩm đã có."],
+    ["3. Danh mục nhập đúng tên hoặc mã danh mục đang có trong hệ thống."],
+    ["4. Mẫu có đủ các trường sản phẩm. Thay nội dung ví dụ bằng dữ liệu cần nhập; các trường tùy chọn có thể để trống nếu chưa có."],
+    ["5. Mã sản phẩm (SKU) do hệ thống tự tạo sau khi lưu, không cần nhập trong file."],
+    ["6. Không có cột ảnh vì không bắt buộc; có thể thêm ảnh sau trong form sửa sản phẩm."],
+    ["7. Các cột số phải là số không âm; tồn kho, bảo hành, chu kỳ bảo dưỡng và thời gian lắp đặt là số nguyên."],
     ["Danh mục hiện có", ...categories.map((category) => `${category.name} (${category.id})`)],
   ];
   const bytes = createProductWorkbook([{ name: "Sản phẩm", rows: [headers, sample] }, { name: "Hướng dẫn", rows: guide }]);
@@ -312,12 +311,11 @@ function Products() {
         <button className="btn" disabled={importing || !importRows.some((row) => row.status === "ready")} onClick={importProducts}>{importing ? "Đang nhập…" : "Nhập các dòng hợp lệ"}</button>
       </>}>
         {importError && <div className="notice bad" role="alert">{importError}</div>}
-        <p className="small muted">Ảnh có thể để trống. Danh mục nhập theo tên hoặc mã đang có. Chỉ dòng hợp lệ được gửi; lỗi máy chủ sẽ hiện theo dòng.</p>
-        <div className="table-wrap" style={{ maxHeight: "55vh", overflow: "auto" }}><table className="table"><thead><tr><th>Dòng</th><th>Tên sản phẩm</th><th>Danh mục</th><th className="num">Giá bán</th><th>Ảnh</th><th>Trạng thái</th></tr></thead>
+        <p className="small muted">SKU do hệ thống tự tạo. Ảnh không nằm trong file Excel và có thể bổ sung sau. Danh mục nhập theo tên hoặc mã; chỉ dòng hợp lệ được gửi.</p>
+        <div className="table-wrap" style={{ maxHeight: "55vh", overflow: "auto" }}><table className="table"><thead><tr><th>Dòng</th><th>Tên sản phẩm</th><th>Danh mục</th><th className="num">Giá bán</th><th>Trạng thái</th></tr></thead>
           <tbody>{importRows.map((row) => <tr key={row.rowNumber}>
-            <td>{row.rowNumber}</td><td>{row.product.name || "—"}{row.product.sku && <div className="tiny muted">{row.product.sku}</div>}</td>
+            <td>{row.rowNumber}</td><td>{row.product.name || "—"}</td>
             <td>{categories.find((category) => category.id === row.product.category)?.name || "—"}</td><td className="num">{Number.isFinite(row.product.price) ? vnd(row.product.price) : "—"}</td>
-            <td>{row.product.imageUrl ? "Có URL" : "Để trống"}</td>
             <td>{row.status === "success" ? <span className="badge ok">Đã nhập</span> : row.errors.length ? <span className="small" style={{ color: "var(--stop)" }}>{row.errors.join("; ")}</span> : <span className="badge">Sẵn sàng</span>}</td>
           </tr>)}</tbody></table></div>
       </Modal>}
