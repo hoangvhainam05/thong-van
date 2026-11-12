@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, FindOptionsRelations, In, Repository } from 'typeorm';
 import {
   DeliveryRoute,
+  DeliveryShift,
   DeliveryStop,
   Driver,
   Order,
@@ -61,17 +62,21 @@ export class RoutesService {
     private readonly roadMatrix: RoadMatrixService,
   ) {}
 
-  async optimize(routeDate: string, selectedVehicleIds?: number[]) {
+  async optimize(routeDate: string, shift: DeliveryShift, selectedVehicleIds?: number[], selectedOrderIds?: number[]) {
     // Build a read-only snapshot before making a network request.
     const initialWarehouse = await this.warehouses.findOne({ where: {}, order: { id: 'ASC' } });
     if (!initialWarehouse) throw new ConflictException('Chưa khai báo kho');
-    const initialDrafts = await this.routes.find({ where: { routeDate, status: RouteStatus.DRAFT }, relations: { stops: true }, order: { id: 'ASC' } });
+    const initialDrafts = await this.routes.find({ where: { routeDate, shift, status: RouteStatus.DRAFT }, relations: { stops: true }, order: { id: 'ASC' } });
     const draftOrderIds = initialDrafts.flatMap((route) => (route.stops || []).map((stop) => stop.orderId));
     const candidates = await this.orders.find({
-      where: [{ deliveryDate: routeDate, status: OrderStatus.READY }, ...(draftOrderIds.length ? [{ id: In(draftOrderIds), deliveryDate: routeDate, status: OrderStatus.SCHEDULED }] : [])],
+      where: selectedOrderIds
+        ? { id: In(selectedOrderIds), deliveryDate: routeDate, status: OrderStatus.READY }
+        : [{ deliveryDate: routeDate, status: OrderStatus.READY }, ...(draftOrderIds.length ? [{ id: In(draftOrderIds), deliveryDate: routeDate, status: OrderStatus.SCHEDULED }] : [])],
       relations: ORDER_RELATIONS, order: { id: 'ASC' },
     });
-    const initialOrders = candidates.filter((order) => order.lat !== null && order.lng !== null
+    const incompatible = candidates.filter((order) => !this.orderFitsShift(order, shift));
+    if (selectedOrderIds && incompatible.length) throw new BadRequestException('Có đơn không thuộc ca đã chọn; hãy chọn lại đơn phù hợp với ca giao');
+    const initialOrders = candidates.filter((order) => this.orderFitsShift(order, shift) && order.lat !== null && order.lng !== null
       && (!(order.stops || []).some((stop) => !stop.completedAt) || draftOrderIds.includes(order.id)));
     const initialSpecs = initialOrders.map((order) => this.orderSpec(order));
     const points: LatLng[] = [[Number(initialWarehouse.lat), Number(initialWarehouse.lng)],
@@ -88,7 +93,7 @@ export class RoutesService {
     await manager.getRepository(Order).createQueryBuilder('order')
       .where('order.deliveryDate = :routeDate', { routeDate }).setLock('pessimistic_write').getMany();
     const draftRoutes = await manager.getRepository(DeliveryRoute).find({
-      where: { routeDate, status: RouteStatus.DRAFT },
+      where: { routeDate, shift, status: RouteStatus.DRAFT },
       relations: { stops: { order: true } },
     });
     const draftSignature = (routes: DeliveryRoute[]) => JSON.stringify(routes.map((route) => ({
@@ -99,29 +104,38 @@ export class RoutesService {
       || Number(warehouse.lng) !== points[0][1] || draftSignature(draftRoutes) !== draftSignature(initialDrafts)) {
       throw new ConflictException('Dữ liệu điều phối đã thay đổi; vui lòng tối ưu lại');
     }
-    for (const route of draftRoutes) {
-      for (const stop of route.stops || []) {
-        if (stop.order.status !== OrderStatus.SCHEDULED || stop.order.deliveryDate !== routeDate) {
-          throw new ConflictException('Trạng thái đơn đã thay đổi; vui lòng kiểm tra tuyến');
+    if (!selectedOrderIds) {
+      for (const route of draftRoutes) {
+        for (const stop of route.stops || []) {
+          if (stop.order.status !== OrderStatus.SCHEDULED || stop.order.deliveryDate !== routeDate) {
+            throw new ConflictException('Trạng thái đơn đã thay đổi; vui lòng kiểm tra tuyến');
+          }
+          await manager.getRepository(Order).update({ id: stop.orderId, status: OrderStatus.SCHEDULED }, { status: OrderStatus.READY });
+          await manager.getRepository(OrderHistoryEvent).save({
+            orderId: stop.orderId, eventType: OrderHistoryEventType.STATUS,
+            fromValue: OrderStatus.SCHEDULED, toValue: OrderStatus.READY,
+            note: 'Tối ưu lại tuyến nháp', actor: 'STAFF',
+          });
         }
-        await manager.getRepository(Order).update({ id: stop.orderId, status: OrderStatus.SCHEDULED }, { status: OrderStatus.READY });
-        await manager.getRepository(OrderHistoryEvent).save({
-          orderId: stop.orderId, eventType: OrderHistoryEventType.STATUS,
-          fromValue: OrderStatus.SCHEDULED, toValue: OrderStatus.READY,
-          note: 'Tối ưu lại tuyến nháp', actor: 'STAFF',
-        });
+        await manager.getRepository(DeliveryRoute).delete(route.id);
       }
-      await manager.getRepository(DeliveryRoute).delete(route.id);
     }
 
     const candidateOrders = await manager.getRepository(Order).find({
-      where: { deliveryDate: routeDate, status: OrderStatus.READY },
+      where: selectedOrderIds
+        ? { id: In(selectedOrderIds), deliveryDate: routeDate, status: OrderStatus.READY }
+        : { deliveryDate: routeDate, status: OrderStatus.READY },
       relations: ORDER_RELATIONS,
       order: { id: 'ASC' },
     });
+    if (selectedOrderIds && candidateOrders.length !== selectedOrderIds.length) {
+      throw new ConflictException('Một hoặc nhiều đơn đã thay đổi trạng thái hoặc ngày giao; hãy tải lại hàng đợi');
+    }
     const missingLocation = candidateOrders.filter((order) => order.lat === null || order.lng === null);
-    const orders = candidateOrders.filter((order) => order.lat !== null && order.lng !== null && !(order.stops || []).some((stop) => !stop.completedAt));
-    const busyRoutes = await manager.getRepository(DeliveryRoute).find({ where: { routeDate } });
+    const incompatibleOrders = candidateOrders.filter((order) => !this.orderFitsShift(order, shift));
+    if (selectedOrderIds && incompatibleOrders.length) throw new BadRequestException('Có đơn không thuộc ca đã chọn; hãy chọn lại đơn phù hợp với ca giao');
+    const orders = candidateOrders.filter((order) => this.orderFitsShift(order, shift) && order.lat !== null && order.lng !== null && !(order.stops || []).some((stop) => !stop.completedAt));
+    const busyRoutes = await manager.getRepository(DeliveryRoute).find({ where: { routeDate, shift } });
     const busyVehicles = new Set(busyRoutes.map((route) => route.vehicleId));
     const busyDrivers = new Set(busyRoutes.map((route) => route.driverId).filter((id): id is number => id !== null));
     const vehicles = (await manager.getRepository(Vehicle).find({ where: { active: true }, relations: ['drivers'], order: { id: 'ASC' } }))
@@ -181,14 +195,15 @@ export class RoutesService {
       throw new ConflictException('Đơn giao hàng đã thay đổi; vui lòng tối ưu lại');
     }
     const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
+    const options = await this.solverOptions(shift);
     const result = optimize(depot, stops, vehicleSpecs, {
-      dayStart: timeToMinutes(setting?.deliveryDayStart || this.config.get<string>('optimization.dayStart', '08:00')),
-      dayEnd: timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')),
+      ...options,
+      dayEnd: shift === DeliveryShift.MORNING
+        ? Math.min(timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')), 12 * 60)
+        : timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')),
       weightKm: setting ? Number(setting.weightKm) : this.config.get<number>('optimization.weightKm', 1),
       weightTime: setting ? Number(setting.weightTime) : this.config.get<number>('optimization.weightTime', 0.5),
-      roadFactor: setting ? Number(setting.roadFactor) : this.config.get<number>('optimization.roadFactor', 1.35),
-      speedKmh: setting ? Number(setting.avgSpeedKmh) : this.config.get<number>('optimization.avgSpeedKmh', 30),
-      maxRouteMinutes: 480,
+      shift,
       matrix,
     });
 
@@ -203,13 +218,14 @@ export class RoutesService {
       const routeMatrix = subsetMatrices(matrix, indices);
       const route = this.routes.create({
         routeDate,
+        shift,
         warehouseId: warehouse.id,
         driverId: plan.driverId,
         vehicleId: plan.vehicleId,
         status: RouteStatus.DRAFT,
         totalKm: String(plan.totalKm),
         totalMinutes: plan.totalMinutes,
-        baselineKm: String(baselineKm(depot, ownStops, [{ id: plan.vehicleId, capacityM3: Number.MAX_SAFE_INTEGER, capacityKg: Number.MAX_SAFE_INTEGER }], 1.35, 30, routeMatrix)),
+        baselineKm: String(baselineKm(depot, ownStops, [{ id: plan.vehicleId, capacityM3: Number.MAX_SAFE_INTEGER, capacityKg: Number.MAX_SAFE_INTEGER }], options.roadFactor, options.speedKmh, routeMatrix, shift)),
         routingMatrix: { ...routeMatrix, source: matrix.source, orderIds: ownStops.map((stop) => stop.orderId), points: indices.map((index) => points[index]) },
         solver: result.solver,
         lockedAt: null,
@@ -262,7 +278,12 @@ export class RoutesService {
           const weightUsed = assignedStops.reduce((sum, stop) => sum + (specById.get(stop.orderId)?.weightKg || 0), 0);
           return volumeUsed + spec.volumeM3 > vehicle.capacityM3 + 1e-9 || weightUsed + spec.weightKg > vehicle.capacityKg + 1e-9;
         });
-        return { order_id: id, code: orderById.get(id)?.code || '', reason: !vehicles.length ? 'NO_VEHICLE' : !fits || allRemainingCapacityExhausted ? 'CAPACITY' : 'TIME_WINDOW_OR_SHIFT' };
+        return {
+          order_id: id,
+          code: orderById.get(id)?.code || '',
+          reason: !vehicles.length ? 'NO_VEHICLE' : !fits || allRemainingCapacityExhausted ? 'CAPACITY' : 'TIME_WINDOW_OR_SHIFT',
+          defer_to_shift: shift === DeliveryShift.MORNING && this.orderFitsShift(orderById.get(id)!, DeliveryShift.AFTERNOON) ? DeliveryShift.AFTERNOON : null,
+        };
       }),
       missing_location_codes: missingLocation.map((order) => order.code || '').filter(Boolean),
       total_km: result.totalKm,
@@ -354,14 +375,14 @@ export class RoutesService {
         if (!driver) throw new ConflictException('Tài xế không hoạt động');
       }
       const otherRoutes = await repo.find({ where: { routeDate: route.routeDate } });
-      if (otherRoutes.some((other) => other.id !== id && other.vehicleId === vehicleId)) throw new ConflictException('Xe đã có tuyến trong ngày');
-      if (driverId !== null && otherRoutes.some((other) => other.id !== id && other.driverId === driverId)) throw new ConflictException('Tài xế đã có tuyến trong ngày');
+      if (otherRoutes.some((other) => other.id !== id && other.shift === route.shift && other.vehicleId === vehicleId)) throw new ConflictException('Xe đã có tuyến trong ca này');
+      if (driverId !== null && otherRoutes.some((other) => other.id !== id && other.shift === route.shift && other.driverId === driverId)) throw new ConflictException('Tài xế đã có tuyến trong ca này');
       const byId = new Map(stops.map((stop) => [stop.orderId, stop]));
       const specs = orderIds.map((orderId) => this.orderSpec(byId.get(orderId)!.order));
       const routeWarehouse = route.warehouseId === warehouse.id ? warehouse : await manager.getRepository(Warehouse).findOne({ where: { id: route.warehouseId } });
       if (!routeWarehouse) throw new ConflictException('Không tìm thấy kho của tuyến');
       const depot = { lat: Number(routeWarehouse.lat), lng: Number(routeWarehouse.lng) };
-      const options = await this.solverOptions();
+      const options = await this.solverOptions(route.shift);
       const stored = route.routingMatrix;
       const currentPoints: LatLng[] = [[depot.lat, depot.lng], ...specs.map((spec): LatLng => [spec.lat, spec.lng])];
       let routeMatrix;
@@ -377,7 +398,7 @@ export class RoutesService {
       }
       const plan = evaluateFixedRoute(depot, specs, {
         id: vehicle.id, capacityM3: Number(vehicle.capacityM3), capacityKg: Number(vehicle.capacityKg), driverId,
-      }, { ...options, matrix: routeMatrix });
+      }, { ...options, shift: route.shift, matrix: routeMatrix });
       if (!plan) throw new ConflictException('Thứ tự/xe đã chọn vi phạm khung giờ, tải trọng hoặc ca 8 giờ');
       await manager.query('UPDATE delivery_stop SET sequence = -sequence WHERE route_id = ?', [id]);
       for (const point of plan.stops) {
@@ -392,7 +413,7 @@ export class RoutesService {
       await repo.update(id, {
         vehicleId, driverId, totalKm: String(plan.totalKm), totalMinutes: plan.totalMinutes,
         baselineKm: String(baselineKm(depot, sortedByOrder, [{ id: vehicle.id, capacityM3: Number.MAX_SAFE_INTEGER, capacityKg: Number.MAX_SAFE_INTEGER }], options.roadFactor, options.speedKmh,
-          subsetMatrices(routeMatrix, [0, ...sortedByOrder.map((spec) => orderIds.indexOf(spec.orderId) + 1)]))),
+          subsetMatrices(routeMatrix, [0, ...sortedByOrder.map((spec) => orderIds.indexOf(spec.orderId) + 1)]), route.shift)),
         routingMatrix: { ...routeMatrix, source: stored?.source ?? 'estimate', orderIds, points: currentPoints },
       });
       return this.toOut((await repo.findOne({ where: { id }, relations: ROUTE_RELATIONS }))!);
@@ -534,11 +555,19 @@ export class RoutesService {
     };
   }
 
-  private async solverOptions() {
+  private orderFitsShift(order: Order, shift: DeliveryShift): boolean {
+    const start = timeToMinutes(order.timeWindowStart);
+    const end = timeToMinutes(order.timeWindowEnd);
+    return shift === DeliveryShift.MORNING ? start < 12 * 60 : end > 12 * 60;
+  }
+
+  private async solverOptions(shift: DeliveryShift = DeliveryShift.MORNING) {
     const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
+    const dayStart = timeToMinutes(setting?.deliveryDayStart || this.config.get<string>('optimization.dayStart', '08:00'));
+    const dayEnd = timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00'));
     return {
-      dayStart: timeToMinutes(setting?.deliveryDayStart || this.config.get<string>('optimization.dayStart', '08:00')),
-      dayEnd: timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')),
+      dayStart: shift === DeliveryShift.AFTERNOON ? Math.max(dayStart, 12 * 60) : dayStart,
+      dayEnd: shift === DeliveryShift.MORNING ? Math.min(dayEnd, 12 * 60) : dayEnd,
       roadFactor: setting ? Number(setting.roadFactor) : this.config.get<number>('optimization.roadFactor', 1.35),
       speedKmh: setting ? Number(setting.avgSpeedKmh) : this.config.get<number>('optimization.avgSpeedKmh', 30),
       maxRouteMinutes: 480,
@@ -566,6 +595,7 @@ export class RoutesService {
       id: route.id,
       code: `R${route.routeDate.replace(/-/g, '')}-${route.id}`,
       route_date: route.routeDate,
+      shift: route.shift,
       status: route.status,
       vehicle_id: route.vehicleId,
       vehicle: route.vehicle.plate,

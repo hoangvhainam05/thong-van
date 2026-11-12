@@ -274,6 +274,7 @@ CREATE TABLE order_history (
 CREATE TABLE route (
   id                INT AUTO_INCREMENT PRIMARY KEY,
   route_date        DATE NOT NULL,
+  shift             ENUM('MORNING','AFTERNOON') NOT NULL DEFAULT 'MORNING',
   warehouse_id      INT  NOT NULL,
   driver_id         INT  NULL,
   vehicle_id        INT  NOT NULL,
@@ -289,8 +290,8 @@ CREATE TABLE route (
   CONSTRAINT fk_route_driver  FOREIGN KEY (driver_id)    REFERENCES driver(id),
   CONSTRAINT fk_route_vehicle FOREIGN KEY (vehicle_id)   REFERENCES vehicle(id),
   INDEX idx_route_date (route_date),
-  UNIQUE KEY uq_route_date_vehicle (route_date, vehicle_id),
-  UNIQUE KEY uq_route_date_driver (route_date, driver_id)
+  UNIQUE KEY uq_route_date_shift_vehicle (route_date, shift, vehicle_id),
+  UNIQUE KEY uq_route_date_shift_driver (route_date, shift, driver_id)
 );
 
 -- Điểm dừng: sequence là cơ sở của tính năng "còn N đơn trước bạn"

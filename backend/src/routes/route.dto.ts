@@ -3,6 +3,7 @@ import {
   IsArray,
   IsDateString,
   IsInt,
+  IsIn,
   IsLatitude,
   IsLongitude,
   IsOptional,
@@ -12,14 +13,22 @@ import {
   Min,
   Matches,
   IsNumber,
+  ArrayNotEmpty,
 } from 'class-validator';
+import { DeliveryShift } from '../database/entities/enums';
 
 export class OptimizeRequestDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   date!: string;
 
+  @IsIn([DeliveryShift.MORNING, DeliveryShift.AFTERNOON])
+  shift!: DeliveryShift;
+
   @IsOptional() @IsArray() @ArrayUnique() @IsInt({ each: true }) @Min(1, { each: true })
   vehicle_ids?: number[];
+
+  @IsOptional() @IsArray() @ArrayNotEmpty() @ArrayUnique() @IsInt({ each: true }) @Min(1, { each: true })
+  order_ids?: number[];
 }
 
 export class DraftRouteUpdateDto {

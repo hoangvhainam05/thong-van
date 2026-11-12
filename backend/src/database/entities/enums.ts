@@ -16,6 +16,11 @@ export enum RouteStatus {
   DONE = 'DONE',
 }
 
+export enum DeliveryShift {
+  MORNING = 'MORNING',
+  AFTERNOON = 'AFTERNOON',
+}
+
 export enum PaymentStatus {
   UNPAID = 'UNPAID',
   PENDING = 'PENDING',

@@ -129,7 +129,7 @@ Khi MySQL và backend đang chạy, đặt `AUTH_TEST_TOKEN` là phiên của t�
 1. Chạy MySQL, backend và frontend. Đăng nhập tài khoản quản lý ở `/login`, rồi mở `/admin/dispatch`. Nếu ngày hiện tại không có đơn, chọn ngày có đơn trong MySQL hoặc tạo đơn mới qua checkout.
 2. Ở `/admin/products`, tạo/sửa sản phẩm và tải ảnh lên Cloudinary. Kiểm tra sản phẩm ở `/products`; khi API lỗi, trang báo lỗi thay vì hiển thị sản phẩm mẫu như dữ liệu thật.
 3. Đặt đơn ở `/checkout`; vào `/admin/orders` để xác nhận, cập nhật vị trí nếu cần và chuyển sang `READY`. Đơn `READY` thiếu tọa độ vẫn xuất hiện ở hàng đợi với cảnh báo.
-4. Ở `/admin/fleet`, xem/thêm/sửa xe, tài xế và sức chứa; gán tối đa 2 tài xế cho mỗi xe (tài xế mới tạo chưa liên kết xe, có thể gán khi thêm hoặc sửa xe). Vào `/admin/dispatch`, chọn ngày và xe, đánh dấu đơn gấp nếu cần, rồi bấm **Bố trí điểm giao**. Tuyến tự động ưu tiên tài xế phụ trách xe.
+4. Ở `/admin/fleet`, xem/thêm/sửa xe, tài xế và sức chứa; gán tối đa 2 tài xế cho mỗi xe (tài xế mới tạo chưa liên kết xe, có thể gán khi thêm hoặc sửa xe). Vào `/admin/dispatch`, chọn ngày, chọn **ca sáng** hoặc **ca chiều**, chọn xe và các đơn phù hợp rồi bấm **Bố trí điểm giao**. Đơn chỉ giao được trong ca đã chọn được ưu tiên; đơn cả ngày dùng sức chứa còn lại. Đơn cả ngày chưa xếp được ca sáng vẫn ở hàng đợi để bố trí ca chiều. Một xe và tài xế có thể nhận một tuyến ở mỗi ca.
 5. Đổi thứ tự điểm, xe hoặc tài xế trên tuyến nháp; mở chi tiết tuyến để xem thứ tự đã lưu. Chọn tài xế và bấm **Duyệt và chốt**. Chạy tối ưu lại: tuyến đã chốt giữ nguyên.
 
 ### Kiểm tra Sprint 4
@@ -224,6 +224,7 @@ Với cơ sở dữ liệu đã có, chạy `database/migrations/018_product_ima
 - Chạy tiếp `database/migrations/022_express_cutoff_1600.sql` để chuyển giờ chốt hỏa tốc sang 16:00 và ghi phiên bản cấu hình mới khi cần.
 - Chạy `database/migrations/023_persistent_auth_sessions.sql` nếu cơ sở dữ liệu chưa có migration này, sau đó chạy `database/migrations/024_distance_shipping_bands.sql` để thêm cấu hình cước theo quãng đường.
 - Chạy `database/migrations/025_vehicle_driver.sql` để tạo bảng liên kết tài xế và phương tiện `vehicle_driver`.
+- Chạy `database/migrations/030_route_delivery_shifts.sql` để thêm ca vào tuyến và cho phép dùng lại xe/tài xế ở ca còn lại trong cùng ngày.
 - Cước checkout dùng quãng đường đường bộ: mặc định miễn phí đến 20 km, 150.000₫ đến 30 km, rồi tăng 50.000₫ mỗi 10 km. Có thể chỉnh năm ngưỡng và mức phí trong Cài đặt hệ thống; mỗi lần đổi cước sẽ tăng phiên bản và ghi snapshot vào `shipping_rate_history`.
 - Cấu hình `ORS_API_KEY` và tọa độ kho để lấy quãng đường đường bộ. Thể tích và trọng lượng sản phẩm vẫn dùng để kiểm tra sức chứa xe và điều kiện hỏa tốc; chúng không cộng vào cước giao hàng.
 
@@ -235,3 +236,5 @@ Với cơ sở dữ liệu đã có, chạy lần lượt `database/migrations/0
 Trong trang quản lý PayOS, đăng ký webhook HTTPS công khai trỏ đến `https://<dia-chi-backend>/api/orders/payos/webhook`. Khởi động lại backend sau khi cấu hình. Khách chọn PayOS khi đặt đơn, sau đó nhấn thanh toán trong chi tiết đơn. Trạng thái chỉ chuyển sang đã thanh toán khi webhook hợp lệ và PayOS xác nhận đã nhận đủ tiền. Đơn đã huỷ nhưng nhận thanh toán sau đó cần xử lý hoàn tiền thủ công. Kiểm thử với môi trường PayOS phù hợp trước khi sử dụng thực tế.
 
 Các cơ sở dữ liệu đã có cần chạy thêm `database/migrations/028_payment_support.sql` để lưu yêu cầu hỗ trợ và ảnh đính kèm. Ảnh chỉ được truy cập qua API yêu cầu quyền xem đơn; ảnh tối đa 3 MB.
+
+Trước khi cập nhật backend có trường hết hạn thanh toán PayOS, chạy `database/migrations/029_payos_expiration.sql` trên cơ sở dữ liệu đã có. Migration thêm `orders.payos_expires_at`; nếu thiếu cột này, các API đọc đơn hàng và tuyến có thể trả lỗi máy chủ nội bộ. Cơ sở dữ liệu mới tạo từ `database/schema.sql` đã có cột này.

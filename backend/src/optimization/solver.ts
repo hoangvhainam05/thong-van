@@ -24,6 +24,8 @@ export interface Depot {
   lng: number;
 }
 
+export type OptimizationShift = 'MORNING' | 'AFTERNOON';
+
 export interface PlannedStop {
   orderId: number;
   sequence: number;
@@ -61,6 +63,7 @@ class Problem {
     roadFactor: number,
     speedKmh: number,
     matrix?: Matrices,
+    readonly shift: OptimizationShift = 'MORNING',
   ) {
     const points: LatLng[] = [
       [depot.lat, depot.lng],
@@ -94,7 +97,7 @@ class Problem {
   }
 
   routeStart(nodes: number[], hasAfternoonWindow = nodes.some((node) => this.stops[node - 1].twStart >= 12 * 60)): number {
-    return hasAfternoonWindow ? Math.max(this.dayStart, 12 * 60) : this.dayStart;
+    return this.shift === 'AFTERNOON' || hasAfternoonWindow ? Math.max(this.dayStart, 12 * 60) : this.dayStart;
   }
 
   cost(nodes: number[], weightKm: number, weightTime: number): number | null {
@@ -134,7 +137,15 @@ function solveHeuristic(problem: Problem): { routes: Record<number, number[]>; u
   const routes: Record<number, number[]> = Object.fromEntries(problem.vehicles.map(v => [v.id, []]));
   const valid = (v: VehicleSpec, r: number[]) => problem.load(r) <= v.capacityM3 + 1e-9 && problem.weight(r) <= v.capacityKg + 1e-9 && problem.simulate(r) !== null;
   const km = (r: number[]) => r.length ? problem.simulate(r)!.km : 0;
-  const order = problem.stops.map((_, i) => i + 1).sort((a, b) => Number(Boolean(problem.stops[b-1].urgent)) - Number(Boolean(problem.stops[a-1].urgent)) || problem.stops[a-1].twStart - problem.stops[b-1].twStart || problem.km[0][b] - problem.km[0][a] || a-b);
+  const order = problem.stops.map((_, i) => i + 1).sort((a, b) => {
+    const left = problem.stops[a - 1], right = problem.stops[b - 1];
+    const isFlexible = (stop: StopSpec) => stop.twStart < 12 * 60 && stop.twEnd > 12 * 60;
+    // Orders tied to this shift get first claim on capacity. All-day orders
+    // fill remaining morning capacity and stay READY for the afternoon otherwise.
+    const shiftPriority = Number(isFlexible(left)) - Number(isFlexible(right));
+    return shiftPriority || Number(Boolean(right.urgent)) - Number(Boolean(left.urgent))
+      || left.twStart - right.twStart || problem.km[0][b] - problem.km[0][a] || a - b;
+  });
   const pending: number[] = [];
   for (const node of order) {
     let best: {id: number; route: number[]; delta: number; count: number} | undefined;
@@ -191,8 +202,9 @@ export function baselineKm(
   roadFactor = 1.35,
   speedKmh = 30,
   matrix?: Matrices,
+  shift: OptimizationShift = 'MORNING',
 ): number {
-  const problem = new Problem(depot, stops, vehicles, 0, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, roadFactor, speedKmh, matrix);
+  const problem = new Problem(depot, stops, vehicles, 0, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, roadFactor, speedKmh, matrix, shift);
   let total = 0;
   let vehicleIndex = 0;
   let load = 0;
@@ -224,6 +236,7 @@ export function optimize(
     speedKmh?: number;
     maxRouteMinutes?: number;
     matrix?: Matrices;
+    shift?: OptimizationShift;
   } = {},
 ): OptimizationResult {
   if (!stops.length || !vehicles.length) {
@@ -235,14 +248,15 @@ export function optimize(
   const weightTime = options.weightTime ?? 0.5;
   const roadFactor = options.roadFactor ?? 1.35;
   const speedKmh = options.speedKmh ?? 30;
-  const problem = new Problem(depot, stops, vehicles, dayStart, dayEnd, options.maxRouteMinutes ?? 480, roadFactor, speedKmh, options.matrix);
+  const shift = options.shift ?? 'MORNING';
+  const problem = new Problem(depot, stops, vehicles, dayStart, dayEnd, options.maxRouteMinutes ?? 480, roadFactor, speedKmh, options.matrix, shift);
   const solved = solveHeuristic(problem);
   const routes = problem.plans(solved.routes);
   const totalKm = Number(routes.reduce((sum, route) => sum + route.totalKm, 0).toFixed(2));
   const unassignedSet = new Set(solved.unassigned);
   const assigned = stops.filter((stop) => !unassignedSet.has(stop.orderId));
   const assignedIndices = [0, ...stops.flatMap((stop, index) => unassignedSet.has(stop.orderId) ? [] : [index + 1])];
-  const baseline = assigned.length ? baselineKm(depot, assigned, vehicles, roadFactor, speedKmh, subsetMatrices(problem, assignedIndices)) : null;
+  const baseline = assigned.length ? baselineKm(depot, assigned, vehicles, roadFactor, speedKmh, subsetMatrices(problem, assignedIndices), shift) : null;
   return {
     routes,
     unassigned: solved.unassigned,
@@ -257,10 +271,10 @@ export function evaluateFixedRoute(
   depot: Depot,
   stops: StopSpec[],
   vehicle: VehicleSpec,
-  options: { dayStart: number; dayEnd: number; roadFactor: number; speedKmh: number; maxRouteMinutes?: number; matrix?: Matrices },
+  options: { dayStart: number; dayEnd: number; roadFactor: number; speedKmh: number; maxRouteMinutes?: number; matrix?: Matrices; shift?: OptimizationShift },
 ): RoutePlan | null {
   const problem = new Problem(depot, stops, [vehicle], options.dayStart, options.dayEnd,
-    options.maxRouteMinutes ?? 480, options.roadFactor, options.speedKmh, options.matrix);
+    options.maxRouteMinutes ?? 480, options.roadFactor, options.speedKmh, options.matrix, options.shift ?? 'MORNING');
   const nodes = stops.map((_, index) => index + 1);
   if (problem.load(nodes) > vehicle.capacityM3 + 1e-9 || problem.weight(nodes) > vehicle.capacityKg + 1e-9) return null;
   const result = problem.simulate(nodes);
@@ -270,6 +284,6 @@ export function evaluateFixedRoute(
     driverId: vehicle.driverId ?? null,
     stops: stops.map((stop, index) => ({ orderId: stop.orderId, sequence: index + 1, arrivalMin: result.arrivals[index] })),
     totalKm: Number(result.km.toFixed(2)),
-    totalMinutes: Math.ceil(result.end - options.dayStart),
+    totalMinutes: Math.ceil(result.end - problem.routeStart(nodes)),
   };
 }

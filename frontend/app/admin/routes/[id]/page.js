@@ -44,7 +44,7 @@ function RouteDetail() {
   }));
   return <>
     <Link href="/admin/dispatch" className="small muted">‹ Điều phối giao hàng</Link>
-    <PageHead title={"Tuyến " + route.code} sub={"Giao " + dateLabel(route.route_date) + " · " + route.vehicle + " · " + (route.driver_name || "chưa phân công")}>
+    <PageHead title={"Tuyến " + route.code} sub={"Giao " + dateLabel(route.route_date) + " · " + (route.shift === "AFTERNOON" ? "Ca chiều" : "Ca sáng") + " · " + route.vehicle + " · " + (route.driver_name || "chưa phân công")}>
       <RouteBadge status={route.status} />
     </PageHead>
     <div className="kpis" style={{ marginBottom: 16 }}>

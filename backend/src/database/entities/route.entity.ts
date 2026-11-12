@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { DeliveryStop } from './delivery-stop.entity';
 import { Driver } from './driver.entity';
-import { RouteStatus } from './enums';
+import { DeliveryShift, RouteStatus } from './enums';
 import { Vehicle } from './vehicle.entity';
 import { Warehouse } from './warehouse.entity';
 
@@ -20,6 +20,9 @@ export class DeliveryRoute {
 
   @Column({ name: 'route_date', type: 'date' })
   routeDate!: string;
+
+  @Column({ type: 'enum', enum: DeliveryShift, default: DeliveryShift.MORNING })
+  shift!: DeliveryShift;
 
   @Column({ name: 'warehouse_id' })
   warehouseId!: number;

@@ -69,7 +69,7 @@ export class RoutesController {
   @Post('routes/optimize')
   @RequirePermission('route.optimize')
   optimize(@Body() body: OptimizeRequestDto) {
-    return this.routes.optimize(body.date, body.vehicle_ids);
+    return this.routes.optimize(body.date, body.shift, body.vehicle_ids, body.order_ids);
   }
 
   @Get('routes')

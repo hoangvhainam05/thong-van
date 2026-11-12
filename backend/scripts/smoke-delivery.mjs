@@ -63,7 +63,7 @@ try {
  await req(`/api/tracking/T${tag}1?phone=0000000000`,'GET',null,null,404);
  await req(`/api/orders/${ids.orders[1]}/reschedule`,'POST',{delivery_date:retry},tokens[0],201);
  const waiting=await req(`/api/tracking/T${tag}1?phone=${customer.phone}`);assert(waiting.status==='READY' && waiting.position===null,'Tracking vẫn hiển thị tuyến cũ sau khi hẹn lại');
- const optimized=await req('/api/routes/optimize','POST',{date:retry,vehicle_ids:[vehicle.insertId]},tokens[0],201);
+ const optimized=await req('/api/routes/optimize','POST',{date:retry,shift:'MORNING',vehicle_ids:[vehicle.insertId]},tokens[0],201);
  assert(optimized.routes.length===1 && optimized.routes[0].stops[0].order_id===ids.orders[1],'Không xếp lại được đơn thất bại');ids.routes.push(optimized.routes[0].id);
  const [attempts]=await db.query('SELECT result,sequence,route_id FROM delivery_stop WHERE order_id=? ORDER BY id',[ids.orders[1]]);
  assert(attempts.length===2&&attempts[0].result==='FAILED'&&attempts[0].route_id===route.insertId&&attempts[0].sequence===2,'Không bảo toàn lịch sử tuyến cũ');

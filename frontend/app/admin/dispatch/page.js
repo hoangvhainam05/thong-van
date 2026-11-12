@@ -26,6 +26,14 @@ function deliveryShift(startValue, endValue) {
   return "Cả ngày";
 }
 
+function canUseOrderInShift(order, shift) {
+  const start = String(order.time_window_start || "08:00").slice(0, 5);
+  const end = String(order.time_window_end || "18:00").slice(0, 5);
+  return shift === "MORNING" ? start < "12:00" : end > "12:00";
+}
+
+function shiftLabel(shift) { return shift === "AFTERNOON" ? "Ca chiều" : "Ca sáng"; }
+
 function DatePickerModal({ value, minDate = ymd(), onClose, onApply }) {
   const [selectedDate, setSelectedDate] = useState(value);
   const [year, month] = selectedDate.split("-").map(Number);
@@ -60,6 +68,7 @@ function DatePickerModal({ value, minDate = ymd(), onClose, onApply }) {
 function Dispatch() {
   const { can } = useStore();
   const [date, setDate] = useState(ymd());
+  const [shift, setShift] = useState("MORNING");
   const [token, setToken] = useState("");
   const [orders, setOrders] = useState([]);
   const [failedOrders, setFailedOrders] = useState([]);
@@ -67,7 +76,8 @@ function Dispatch() {
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [warehouse, setWarehouse] = useState(null);
-  const [selected, setSelected] = useState([]);
+  const [selectedVehicles, setSelectedVehicles] = useState([]);
+  const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -102,9 +112,11 @@ function Dispatch() {
       setDrivers(nextDrivers);
       setVehicles(nextVehicles);
       setWarehouse(nextWarehouse);
-      const used = new Set(nextRoutes.filter((route) => route.status !== "DRAFT").map((route) => route.vehicle_id));
+      const readyIds = new Set(nextOrders.filter((order) => order.status === "READY" && canUseOrderInShift(order, shift)).map((order) => order.id));
+      setSelectedOrderIds((current) => current.filter((id) => readyIds.has(id)));
+      const used = new Set(nextRoutes.filter((route) => route.shift === shift).map((route) => route.vehicle_id));
       const freeIds = nextVehicles.filter((vehicle) => vehicle.active && !used.has(vehicle.id)).map((vehicle) => vehicle.id);
-      setSelected((current) => current.length ? current.filter((id) => freeIds.includes(id)) : freeIds);
+      setSelectedVehicles((current) => current.length ? current.filter((id) => freeIds.includes(id)) : freeIds);
     } catch (err) {
       setError(err.message || "Không tải được dữ liệu điều phối.");
     } finally {
@@ -112,7 +124,7 @@ function Dispatch() {
     }
   }
 
-  useEffect(() => { if (token) refresh(token); }, [date, token]);
+  useEffect(() => { if (token) refresh(token); }, [date, shift, token]);
 
   async function perform(callback) {
     setBusy(true);
@@ -131,9 +143,10 @@ function Dispatch() {
   const missing = ready.filter((order) => order.lat == null || order.lng == null);
   const located = ready.filter((order) => order.lat != null && order.lng != null);
   const waiting = orders.filter((order) => ["PENDING", "CONFIRMED"].includes(order.status));
-  const usedVehicles = new Set(routes.filter((route) => route.status !== "DRAFT").map((route) => route.vehicle_id));
+  const usedVehicles = new Set(routes.filter((route) => route.shift === shift).map((route) => route.vehicle_id));
+  const eligibleReady = ready.filter((order) => canUseOrderInShift(order, shift));
   const mapRoutes = routes.map((route, index) => ({
-    color: ROUTE_COLORS[index % ROUTE_COLORS.length], id: route.id, name: `${route.vehicle} · ${route.code}`, status: route.status, depot: route.depot,
+    color: ROUTE_COLORS[index % ROUTE_COLORS.length], id: route.id, name: `${route.vehicle} · ${shiftLabel(route.shift)} · ${route.code}`, status: route.status, depot: route.depot,
     stops: route.stops.map((stop) => ({ lat: stop.lat, lng: stop.lng, seq: stop.sequence, label: stop.address })),
   }));
   const visibleMapRoutes = mapRouteId === "all" ? mapRoutes : mapRoutes.filter((route) => route.id === mapRouteId);
@@ -178,7 +191,7 @@ function Dispatch() {
               setResult(null);
             });
           } else {
-            setDate(nextDate); setResult(null); setMapRouteId(null);
+            setDate(nextDate); setResult(null); setMapRouteId(null); setSelectedOrderIds([]);
           }
         }}
       />}
@@ -190,7 +203,7 @@ function Dispatch() {
         <div className="dispatch-options" role="radiogroup" aria-label="Tuyến trên bản đồ">
           {routes.map((route, index) => <label className={`dispatch-option ${mapChoice === route.id ? "selected" : ""}`} key={route.id}>
             <input type="radio" name="map-route-choice" checked={mapChoice === route.id} onChange={() => setMapChoice(route.id)} />
-            <span><b>{route.vehicle}</b><small>{route.code} · {route.stops.length} điểm giao</small></span>
+            <span><b>{route.vehicle}</b><small>{shiftLabel(route.shift)} · {route.code} · {route.stops.length} điểm giao</small></span>
             <i className="map-legend-line" style={{ borderColor: ROUTE_COLORS[index % ROUTE_COLORS.length] }} />
           </label>)}
           <label className={`dispatch-option ${mapChoice === "all" ? "selected" : ""}`}>
@@ -226,7 +239,7 @@ function Dispatch() {
             <span><b>Chưa phân công</b><small>Bỏ chọn tài xế hiện tại</small></span>
           </label>}
           {(assignment.kind === "vehicle" ? vehicles : drivers).filter((item) => item.active || item.id === (assignment.kind === "vehicle" ? assignment.route.vehicle_id : assignment.route.driver_id)).map((item) => {
-            const assigned = routes.find((other) => other.id !== assignment.route.id && (assignment.kind === "vehicle" ? other.vehicle_id : other.driver_id) === item.id);
+            const assigned = routes.find((other) => other.id !== assignment.route.id && other.shift === assignment.route.shift && (assignment.kind === "vehicle" ? other.vehicle_id : other.driver_id) === item.id);
             return <label className={`dispatch-option ${assignment.value === item.id ? "selected" : ""} ${assigned || !item.active ? "unavailable" : ""}`} key={item.id}>
               <input type="radio" name="dispatch-assignment" checked={assignment.value === item.id} disabled={busy || Boolean(assigned) || !item.active} onChange={() => setAssignment({ ...assignment, value: item.id })} />
               <span><b>{assignment.kind === "vehicle" ? item.plate : item.name}</b><small>{assigned ? `Đã có tuyến ${assigned.code}` : !item.active ? "Không hoạt động" : assignment.kind === "vehicle" ? `${item.capacity_m3} m³ · ${item.capacity_kg} kg` : "Sẵn sàng phân công"}</small></span>
@@ -241,11 +254,18 @@ function Dispatch() {
         <div className="grid-2" style={{ marginBottom: 16 }}>
           <section className="panel panel-pad stack-sm">
             <h3>Hàng đợi {dateLabel(date)}</h3>
-            <div className="small">{ready.length} đơn sẵn sàng · {missing.length} thiếu vị trí · {waiting.length} đang xác nhận</div>
+            <div className="small">{eligibleReady.length} đơn phù hợp {shiftLabel(shift).toLowerCase()} · {missing.filter((order) => canUseOrderInShift(order, shift)).length} thiếu vị trí · {waiting.length} đang xác nhận</div>
+            {eligibleReady.length > 0 && <label className="check" style={{ marginTop: 10 }}>
+              <input type="checkbox" checked={selectedOrderIds.length === eligibleReady.length} onChange={(event) => setSelectedOrderIds(event.target.checked ? eligibleReady.map((order) => order.id) : [])} />
+              Chọn tất cả đơn phù hợp ca
+            </label>}
             {ready.length === 0 && <Empty title="Chưa có đơn sẵn sàng" />}
             {ready.map((order) => <div key={order.id} className="row between small" style={{ borderBottom: "1px solid var(--line-soft)", padding: "8px 0", alignItems: "flex-start" }}>
-              <div><Link href={"/admin/orders/" + order.id} className="strong">{order.code}</Link> {order.is_urgent && <span className="badge move">Gấp</span>} <span className="badge">{deliveryShift(order.time_window_start, order.time_window_end)}</span><div className="tiny muted">{order.address} · {String(order.time_window_start).slice(0, 5)}–{String(order.time_window_end).slice(0, 5)}</div>
-                <div className="tiny" style={{ marginTop: 3 }}>{(order.items || []).map((item) => `${item.product_name || item.name} × ${item.quantity}`).join(", ") || "Chưa có thông tin sản phẩm"} · {Number(order.volume_m3 || 0).toFixed(3)} m³</div>
+              <div className="row" style={{ alignItems: "flex-start", gap: 10 }}>
+                <input type="checkbox" aria-label={`Chọn đơn ${order.code} để bố trí điểm giao`} checked={selectedOrderIds.includes(order.id)} disabled={!canUseOrderInShift(order, shift)} onChange={(event) => setSelectedOrderIds((current) => event.target.checked ? [...current, order.id] : current.filter((id) => id !== order.id))} />
+                <div><Link href={"/admin/orders/" + order.id} className="strong">{order.code}</Link> {order.is_urgent && <span className="badge move">Gấp</span>} <span className="badge">{deliveryShift(order.time_window_start, order.time_window_end)}</span><div className="tiny muted">{order.address} · {String(order.time_window_start).slice(0, 5)}–{String(order.time_window_end).slice(0, 5)}</div>
+                  <div className="tiny" style={{ marginTop: 3 }}>{(order.items || []).map((item) => `${item.product_name || item.name} × ${item.quantity}`).join(", ") || "Chưa có thông tin sản phẩm"} · {Number(order.volume_m3 || 0).toFixed(3)} m³</div>
+                </div>
               </div>
               <div className="row">
                 {order.lat == null && <span className="badge move">Thiếu vị trí</span>}
@@ -258,21 +278,29 @@ function Dispatch() {
 
           <section className="panel panel-pad stack">
             <h3>Chạy tối ưu</h3>
-            <p className="small muted">Chọn xe tham gia. Tuyến đã chốt và xe/tài xế của tuyến đó được giữ nguyên. Đơn gấp được ưu tiên và các đơn được chia cân bằng khi đáp ứng các ràng buộc.</p>
+            <p className="small muted">Chọn ca trước, sau đó chọn đơn và xe. Đơn chỉ giao được trong ca này được xếp trước; đơn cả ngày lấp chỗ còn trống, nếu chưa xếp được vẫn ở hàng đợi để thử ở ca tiếp theo.</p>
+            <fieldset className="dispatch-shift-picker" aria-label="Chọn ca bố trí">
+              <legend className="small">Ca cần bố trí</legend>
+              {[["MORNING", "Ca sáng", "08:00–12:00"], ["AFTERNOON", "Ca chiều", "12:00–18:00"]].map(([value, label, hours]) => <label className={`dispatch-option ${shift === value ? "selected" : ""}`} key={value}>
+                <input type="radio" name="dispatch-shift" value={value} checked={shift === value} disabled={busy} onChange={() => { setShift(value); setResult(null); setSelectedOrderIds([]); }} />
+                <span><b>{label}</b><small>{hours}</small></span>
+              </label>)}
+            </fieldset>
             {vehicles.filter((vehicle) => vehicle.active).map((vehicle) => <label className="check" key={vehicle.id}>
-              <input type="checkbox" checked={selected.includes(vehicle.id)} disabled={usedVehicles.has(vehicle.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, vehicle.id] : selected.filter((id) => id !== vehicle.id))} />
-              {vehicle.plate} <span className="muted small">· {vehicle.capacity_m3} m³ · {vehicle.capacity_kg} kg {usedVehicles.has(vehicle.id) ? "· đã có tuyến chốt" : ""}</span>
+              <input type="checkbox" checked={selectedVehicles.includes(vehicle.id)} disabled={usedVehicles.has(vehicle.id)} onChange={(event) => setSelectedVehicles(event.target.checked ? [...selectedVehicles, vehicle.id] : selectedVehicles.filter((id) => id !== vehicle.id))} />
+              {vehicle.plate} <span className="muted small">· {vehicle.capacity_m3} m³ · {vehicle.capacity_kg} kg {usedVehicles.has(vehicle.id) ? `· đã có tuyến ${shiftLabel(shift).toLowerCase()}` : ""}</span>
             </label>)}
-            <p className="tiny muted">Ràng buộc: khung giờ khách, thể tích, tải trọng kg, thời gian dỡ/lắp và ca tối đa 8 giờ. Bộ giải hiện dùng heuristic nội bộ.</p>
-            {can("route.optimize") && <button className="btn lg" disabled={busy || !selected.length || (!located.length && !routes.some((route) => route.status === "DRAFT"))} onClick={() => perform(async () => {
-              const next = await api("/api/routes/optimize", { method: "POST", token, body: { date, vehicle_ids: selected } });
+            <p className="tiny muted">Ràng buộc: khung giờ khách, thể tích, tải trọng kg, thời gian dỡ/lắp và giờ kết thúc ca. Một xe có thể nhận một tuyến sáng và một tuyến chiều.</p>
+            <p className="tiny muted">{selectedOrderIds.length ? `Đã chọn ${selectedOrderIds.length} đơn.` : "Chọn ít nhất một đơn để bố trí."}</p>
+            {can("route.optimize") && <button className="btn lg" disabled={busy || !selectedVehicles.length || !selectedOrderIds.length} onClick={() => perform(async () => {
+              const next = await api("/api/routes/optimize", { method: "POST", token, body: { date, shift, vehicle_ids: selectedVehicles, order_ids: selectedOrderIds } });
               setResult(next);
               playSuccess();
             })}>{busy ? "Đang xử lý…" : "Bố trí điểm giao"}</button>}
             {result && <div className={`notice ${result.unassigned?.length ? "warn" : "ok"} stack-sm small`}>
               <b>{result.routes.length} tuyến · {result.total_km} km · tiết kiệm {result.saving_percent ?? "—"}%</b>
               <span>{result.distance_source === "ors" ? "Số liệu định tuyến OpenRouteService" : "Số liệu khoảng cách và thời gian là ước tính"}</span>
-              {result.unassigned?.map((item) => <div key={item.order_id}><b>{item.code}:</b> {REASON[item.reason] || item.reason} {item.reason === "CAPACITY" || item.reason === "NO_VEHICLE" ? <span>Hãy chọn thêm xe ở trên hoặc </span> : null}{(item.reason === "CAPACITY" || item.reason === "NO_VEHICLE") && <button className="btn ghost sm" disabled={busy} onClick={() => { setRescheduleTarget(item.order_id); setDatePickerOpen(true); }}>đổi ngày giao</button>}</div>)}
+              {result.unassigned?.map((item) => <div key={item.order_id}><b>{item.code}:</b> {item.defer_to_shift ? "Chưa xếp được ca sáng; đơn cả ngày vẫn ở hàng đợi. Chọn ca chiều để xếp tiếp." : REASON[item.reason] || item.reason} {!item.defer_to_shift && (item.reason === "CAPACITY" || item.reason === "NO_VEHICLE") ? <span>Hãy chọn thêm xe ở trên hoặc </span> : null}{!item.defer_to_shift && (item.reason === "CAPACITY" || item.reason === "NO_VEHICLE") && <button className="btn ghost sm" disabled={busy} onClick={() => { setRescheduleTarget(item.order_id); setDatePickerOpen(true); }}>đổi ngày giao</button>}</div>)}
               {result.missing_location_codes?.map((code) => <div key={code}>{code}: Thiếu vị trí</div>)}
             </div>}
           </section>
@@ -311,7 +339,7 @@ function Dispatch() {
         <div className="stack" style={{ marginTop: 16 }}>
           {routes.length === 0 && <div className="panel"><Empty title="Chưa có tuyến cho ngày này">Chọn xe và chạy tối ưu khi có đơn sẵn sàng.</Empty></div>}
           {routes.map((route) => <section className="panel" key={route.id}>
-            <div className="panel-head row between"><div className="row"><b>{route.code}</b><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ / 8 giờ · {num(route.total_volume_m3, 3)} m³ / {num(route.vehicle_capacity_m3, 3)} m³ · {num(route.total_weight_kg, 1)} / {num(route.vehicle_capacity_kg, 0)} kg</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.optimize") && route.status === "DRAFT" && <button className="btn secondary sm" disabled={busy} onClick={() => { setError(""); setCancelRoute(route); }}>Hủy tuyến</button>}{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
+            <div className="panel-head row between"><div className="row"><b>{route.code}</b><span className="badge">{shiftLabel(route.shift)}</span><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ · {num(route.total_volume_m3, 3)} m³ / {num(route.vehicle_capacity_m3, 3)} m³ · {num(route.total_weight_kg, 1)} / {num(route.vehicle_capacity_kg, 0)} kg</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.optimize") && route.status === "DRAFT" && <button className="btn secondary sm" disabled={busy} onClick={() => { setError(""); setCancelRoute(route); }}>Hủy tuyến</button>}{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
             <div className="panel-body stack-sm">
               <div className="dispatch-assignments">
                 <div className="dispatch-assignment"><span className="tiny muted">Xe giao hàng</span><button type="button" className="dispatch-assignment-button" disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onClick={() => { setError(""); setAssignment({ kind: "vehicle", route, value: route.vehicle_id }); }}><span>{route.vehicle}</span><span aria-hidden="true">✎</span></button></div>

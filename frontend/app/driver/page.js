@@ -24,7 +24,7 @@ export default function DriverToday() {
     const next=route.stops.find(s=>!s.completed_at);
     const cod=next?.payment_method==='COD' && next?.payment_status!=='PAID' ? next.total : 0;
     return <div className="stack" key={route.id}>
-      <section className="panel panel-pad stack-sm"><div className="row between"><div><b>Tuyến {route.code}</b><div className="small muted">{route.vehicle} · {route.stops.length} điểm · {route.total_km} km</div></div><RouteBadge status={route.status}/></div><div className="progress"><span style={{width:`${route.stops.length ? done/route.stops.length*100 : 0}%`}}/></div><div className="small">Đã xử lý {done}/{route.stops.length} điểm</div></section>
+      <section className="panel panel-pad stack-sm"><div className="row between"><div><b>Tuyến {route.code} · {route.shift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</b><div className="small muted">{route.vehicle} · {route.stops.length} điểm · {route.total_km} km</div></div><RouteBadge status={route.status}/></div><div className="progress"><span style={{width:`${route.stops.length ? done/route.stops.length*100 : 0}%`}}/></div><div className="small">Đã xử lý {done}/{route.stops.length} điểm</div></section>
       {route.status==='LOCKED' && <button className="btn lg block" disabled={busy || !can('delivery.update')} onClick={()=>run(`/api/driver/routes/${route.id}/start`)}>Bắt đầu tuyến</button>}
       {route.status==='DONE' && <div className="notice ok">Đã hoàn tất tuyến. Bàn giao tiền thu hộ khi về kho.</div>}
       {route.status==='IN_PROGRESS' && next && <section className="next-stop"><div className="ns-head"><span>Điểm tiếp theo: số {next.sequence}</span><span>Kế hoạch {hhmm(next.planned_arrival)}</span></div><div className="ns-body stack-sm">

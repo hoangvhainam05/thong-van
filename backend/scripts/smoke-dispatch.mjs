@@ -131,7 +131,7 @@ try {
   assert(response.status === 200 && response.data.is_urgent, 'Không đánh dấu được đơn gấp');
   checks.readyWithoutLocationAndPriority = true;
 
-  response = await request('/routes/optimize', { method: 'POST', body: { date, vehicle_ids: [vehicle1.data.id] } });
+  response = await request('/routes/optimize', { method: 'POST', body: { date, shift: 'MORNING', vehicle_ids: [vehicle1.data.id] } });
   assert(response.status === 201, 'Tối ưu thất bại: ' + JSON.stringify(response.data));
   assert(response.data.routes.length === 1 && response.data.routes[0].stops.length === 2, 'Không xếp được hai đơn vào một xe');
   assert(response.data.missing_location_codes.includes(missing.code), 'Đơn thiếu toạ độ không được báo rõ');
@@ -163,7 +163,7 @@ try {
   const urgent = await prepareOrder(orderPayload(product.id, date, 21.039, 105.86));
   response = await request('/orders/' + urgent.id + '/priority', { method: 'PATCH', body: { is_urgent: true } });
   assert(response.status === 200, 'Không đánh dấu được đơn gấp sau khi đã chốt tuyến khác');
-  response = await request('/routes/optimize', { method: 'POST', body: { date, vehicle_ids: [vehicle2.data.id] } });
+  response = await request('/routes/optimize', { method: 'POST', body: { date, shift: 'MORNING', vehicle_ids: [vehicle2.data.id] } });
   assert(response.status === 201 && response.data.routes.length === 1, 'Đơn gấp sau chốt không được đưa vào tuyến mới');
   const lockedAfter = (await request('/routes/' + route.id)).data;
   assert(lockedAfter.status === 'LOCKED' && lockedAfter.stops.map((stop) => stop.order_id).join(',') === lockedSnapshot.stops.map((stop) => stop.order_id).join(','), 'Tối ưu lại đã thay đổi tuyến chốt');
