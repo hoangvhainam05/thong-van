@@ -193,7 +193,7 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
       output.toBlob((blob) => {
         if (!blob) { setError("Không thể xử lý ảnh này. Hãy thử chọn ảnh khác."); return; }
         const sourceName = typeof source === "string" ? "anh-san-pham" : source.name.replace(/\.[^.]+$/, "");
-        const name = `${sourceName}-4x4.jpg`;
+        const name = `${sourceName}-anh-san-pham.jpg`;
         onSave(new File([blob], name, { type: "image/jpeg", lastModified: Date.now() }));
       }, "image/jpeg", 0.9);
     } catch {
@@ -206,7 +206,7 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
     <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Lưu chỉnh sửa</button>
   </>}>
     <div className="product-crop-editor">
-      <p className="small muted">Ảnh sẽ được cắt thành hình vuông tỷ lệ 4:4. Kéo ảnh để chọn vùng, phóng to hoặc xoay trước khi tải lên.</p>
+      <p className="small muted">Khung cắt khớp với khung ảnh chính khi xem sản phẩm (tỷ lệ 1:1). Kéo ảnh để chọn vùng, phóng to hoặc xoay trước khi lưu.</p>
       <div className={`product-crop-stage${image ? " is-ready" : ""}`} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
         {image ? <canvas ref={canvasRef} width={CROP_SIZE} height={CROP_SIZE} tabIndex={0} aria-label="Vùng cắt ảnh. Kéo ảnh hoặc dùng phím mũi tên để chỉnh vị trí." onKeyDown={(event) => {
           const movements = { ArrowUp: [0, -20], ArrowDown: [0, 20], ArrowLeft: [-20, 0], ArrowRight: [20, 0] };
