@@ -475,7 +475,7 @@
 }
 
 .product-card .art-box {
-  background: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
+  background: #fff;
   aspect-ratio: 4 / 3;
   display: grid;
   place-items: center;

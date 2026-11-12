@@ -147,6 +147,10 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
   const zoomMin = image ? minCropZoom(image, rotation) : 1;
+  const useOriginal = () => {
+    if (typeof source === "string") { onCancel(); return; }
+    onSave(source);
+  };
 
   useEffect(() => {
     const remoteSource = typeof source === "string";
@@ -211,10 +215,11 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
 
   return <Modal title="Chỉnh sửa ảnh sản phẩm" onClose={onCancel} footer={<>
     <button type="button" className="btn secondary" onClick={onCancel}>Huỷ</button>
-    <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Lưu chỉnh sửa</button>
+    {typeof source !== "string" && <button type="button" className="btn secondary" onClick={useOriginal}>Dùng ảnh gốc</button>}
+    <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Cắt ảnh & lưu</button>
   </>}>
     <div className="product-crop-editor">
-      <p className="small muted">Khung cắt khớp với khung ảnh chính khi xem sản phẩm (tỷ lệ 1:1). Kéo ảnh để chọn vùng, phóng to hoặc xoay trước khi lưu.</p>
+      <p className="small muted">Ảnh gốc được giữ nguyên nếu bạn chọn “Dùng ảnh gốc”. Hoặc kéo, thu phóng và xoay để cắt theo khung hiển thị sản phẩm (tỷ lệ 1:1).</p>
       <div className={`product-crop-stage${image ? " is-ready" : ""}`} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
         {image ? <canvas ref={canvasRef} width={CROP_SIZE} height={CROP_SIZE} tabIndex={0} aria-label="Vùng cắt ảnh. Kéo ảnh hoặc dùng phím mũi tên để chỉnh vị trí." onKeyDown={(event) => {
           const movements = { ArrowUp: [0, -20], ArrowDown: [0, 20], ArrowLeft: [-20, 0], ArrowRight: [20, 0] };
@@ -577,14 +582,14 @@ function Products() {
                     setCropQueue(files.map((file) => ({ source: file, replaceImageIndex: null })));
                   }} />
                 </label>
-                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Chọn ảnh mới để cắt vuông, hoặc chỉnh / thay ảnh hiện có. Ảnh chỉ tải lên khi lưu sản phẩm.</span>
+                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Có thể dùng ảnh gốc hoặc cắt ảnh; ảnh chỉ tải lên khi lưu sản phẩm.</span>
                 <div className="row" style={{ flexWrap: "wrap" }}>
                   {(edit.images || []).map((image, index) => {
                     const replacementIndex = imageFiles.findIndex((item) => item.replaceImageIndex === index);
                     const previewUrl = replacementIndex < 0 ? image.imageUrl : imagePreviews[replacementIndex];
                     return <div className="product-image-preview" key={`${image.imageUrl}-${index}`}>
                       <button type="button" className="product-image-edit-trigger" aria-label={`Chỉnh sửa ảnh ${index + 1}`} title="Nhấn để chỉnh sửa ảnh" disabled={saving} onClick={() => replacementIndex >= 0 ? editPendingImage(replacementIndex) : setCropQueue([{ source: image.imageUrl, replaceImageIndex: index }])}>
-                        <img src={previewUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                        <img src={previewUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "contain", background: "#fff" }} />
                       </button>
                       {replacementIndex >= 0 && <span className="tiny muted">Đã chỉnh, chờ lưu</span>}
                       <label className="btn ghost sm">Thay ảnh
@@ -600,7 +605,7 @@ function Products() {
                   })}
                   {imageFiles.map((item, index) => item.replaceImageIndex == null && <div className="product-image-preview" key={imagePreviews[index]}>
                     <button type="button" className="product-image-edit-trigger" aria-label={`Chỉnh sửa ảnh mới ${index + 1}`} title="Nhấn để chỉnh sửa ảnh" disabled={saving} onClick={() => editPendingImage(index)}>
-                      <img src={imagePreviews[index]} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                      <img src={imagePreviews[index]} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "contain", background: "#fff" }} />
                     </button>
                     <span className="tiny" title={item.file.name}>{item.file.name}</span>
                     <button type="button" className="btn ghost sm" disabled={saving} onClick={() => setImageFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Xóa</button>
