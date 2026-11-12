@@ -168,13 +168,12 @@ export class RoutesService {
         (sum, item) => sum + item.product.installMinutes * item.quantity,
         0,
       ),
-      volumeM3: (order.items || []).reduce(
-        (sum, item) => sum + Number(item.product.volumeM3) * item.quantity,
-        0,
-      ),
-      weightKg: (order.items || []).reduce(
+      volumeM3: order.volumeM3 == null ? (order.items || []).reduce(
+        (sum, item) => sum + Number(item.product.volumeM3) * item.quantity, 0,
+      ) : Number(order.volumeM3),
+      weightKg: order.weightKg == null ? (order.items || []).reduce(
         (sum, item) => sum + Number(item.product.weightKg) * item.quantity, 0,
-      ),
+      ) : Number(order.weightKg),
       urgent: order.isUrgent,
     }));
     const depot: Depot = { lat: Number(warehouse.lat), lng: Number(warehouse.lng) };
@@ -257,7 +256,13 @@ export class RoutesService {
       unassigned: result.unassigned.map((id) => {
         const spec = specById.get(id)!;
         const fits = vehicles.some((vehicle) => spec.volumeM3 <= Number(vehicle.capacityM3) && spec.weightKg <= Number(vehicle.capacityKg));
-        return { order_id: id, code: orderById.get(id)?.code || '', reason: !vehicles.length ? 'NO_VEHICLE' : fits ? 'TIME_WINDOW_OR_SHIFT' : 'CAPACITY' };
+        const allRemainingCapacityExhausted = vehicleSpecs.length > 0 && vehicleSpecs.every((vehicle) => {
+          const assignedStops = result.routes.find((route) => route.vehicleId === vehicle.id)?.stops || [];
+          const volumeUsed = assignedStops.reduce((sum, stop) => sum + (specById.get(stop.orderId)?.volumeM3 || 0), 0);
+          const weightUsed = assignedStops.reduce((sum, stop) => sum + (specById.get(stop.orderId)?.weightKg || 0), 0);
+          return volumeUsed + spec.volumeM3 > vehicle.capacityM3 + 1e-9 || weightUsed + spec.weightKg > vehicle.capacityKg + 1e-9;
+        });
+        return { order_id: id, code: orderById.get(id)?.code || '', reason: !vehicles.length ? 'NO_VEHICLE' : !fits || allRemainingCapacityExhausted ? 'CAPACITY' : 'TIME_WINDOW_OR_SHIFT' };
       }),
       missing_location_codes: missingLocation.map((order) => order.code || '').filter(Boolean),
       total_km: result.totalKm,
@@ -500,13 +505,16 @@ export class RoutesService {
       const orders = manager.getRepository(Order);
       const order = await orders.findOne({ where: { id: orderId }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn');
-      if (order.status !== OrderStatus.FAILED) throw new ConflictException('Chỉ xếp lại đơn giao thất bại');
+      if (![OrderStatus.FAILED, OrderStatus.READY].includes(order.status)) {
+        throw new ConflictException('Chỉ đổi ngày cho đơn sẵn sàng chưa được xếp tuyến hoặc đơn giao thất bại');
+      }
       const today = new Date(); today.setHours(0,0,0,0);
       if (parsed < today || date <= order.deliveryDate) throw new BadRequestException('Ngày giao lại phải sau ngày giao cũ và không ở quá khứ');
       const active = await manager.query('SELECT id FROM delivery_stop WHERE order_id=? AND completed_at IS NULL', [orderId]);
       if (active.length) throw new ConflictException('Đơn đang có điểm giao chưa hoàn tất');
+      const previousStatus = order.status;
       await orders.update(orderId, { status: OrderStatus.READY, deliveryDate: date });
-      await manager.getRepository(OrderHistoryEvent).save({ orderId, eventType: OrderHistoryEventType.STATUS, fromValue: OrderStatus.FAILED, toValue: OrderStatus.READY, note: `Hẹn giao lại ngày ${date}`, actor });
+      await manager.getRepository(OrderHistoryEvent).save({ orderId, eventType: OrderHistoryEventType.STATUS, fromValue: previousStatus, toValue: OrderStatus.READY, note: `Đổi ngày giao sang ${date}`, actor });
     });
     return { id: orderId, status: OrderStatus.READY, delivery_date: date };
   }
@@ -520,8 +528,8 @@ export class RoutesService {
       orderId: order.id, lat: Number(order.lat), lng: Number(order.lng),
       twStart: timeToMinutes(order.timeWindowStart), twEnd: timeToMinutes(order.timeWindowEnd),
       serviceMin: UNLOAD_MINUTES + (order.items || []).reduce((sum, item) => sum + item.product.installMinutes * item.quantity, 0),
-      volumeM3: (order.items || []).reduce((sum, item) => sum + Number(item.product.volumeM3) * item.quantity, 0),
-      weightKg: (order.items || []).reduce((sum, item) => sum + Number(item.product.weightKg) * item.quantity, 0),
+      volumeM3: order.volumeM3 == null ? (order.items || []).reduce((sum, item) => sum + Number(item.product.volumeM3) * item.quantity, 0) : Number(order.volumeM3),
+      weightKg: order.weightKg == null ? (order.items || []).reduce((sum, item) => sum + Number(item.product.weightKg) * item.quantity, 0) : Number(order.weightKg),
       urgent: order.isUrgent,
     };
   }
@@ -567,6 +575,12 @@ export class RoutesService {
       driver_name: route.driver?.name || null,
       total_km: Number(route.totalKm),
       total_minutes: route.totalMinutes,
+      total_volume_m3: Number((route.stops || []).reduce((sum, stop) => sum + (stop.order.volumeM3 == null
+        ? (stop.order.items || []).reduce((itemSum, item) => itemSum + Number(item.product.volumeM3) * item.quantity, 0)
+        : Number(stop.order.volumeM3)), 0).toFixed(4)),
+      total_weight_kg: Number((route.stops || []).reduce((sum, stop) => sum + (stop.order.weightKg == null
+        ? (stop.order.items || []).reduce((itemSum, item) => itemSum + Number(item.product.weightKg) * item.quantity, 0)
+        : Number(stop.order.weightKg)), 0).toFixed(3)),
       baseline_km: route.baselineKm === null ? null : Number(route.baselineKm),
       solver: route.solver,
       distance_source: route.routingMatrix?.source ?? 'estimate',
@@ -580,7 +594,9 @@ export class RoutesService {
         order_code: stop.order.code || '',
         customer_name: stop.order.recipientName || stop.order.customer.name,
         phone: stop.order.recipientPhone || stop.order.customer.phone,
-        items: (stop.order.items || []).map(item => ({ name: item.product.name, quantity: item.quantity, install_minutes: item.product.installMinutes })),
+        items: (stop.order.items || []).map(item => ({ name: item.product.name, quantity: item.quantity, install_minutes: item.product.installMinutes, volume_m3: Number(item.product.volumeM3) * item.quantity })),
+        volume_m3: stop.order.volumeM3 == null ? (stop.order.items || []).reduce((sum, item) => sum + Number(item.product.volumeM3) * item.quantity, 0) : Number(stop.order.volumeM3),
+        weight_kg: stop.order.weightKg == null ? (stop.order.items || []).reduce((sum, item) => sum + Number(item.product.weightKg) * item.quantity, 0) : Number(stop.order.weightKg),
         note: stop.order.note,
         payment_method: stop.order.paymentMethod,
         payment_status: stop.order.paymentStatus,

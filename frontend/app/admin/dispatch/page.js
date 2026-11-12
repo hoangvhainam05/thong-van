@@ -13,18 +13,26 @@ import { Empty, Loading, Modal, OrderBadge, RouteBadge } from "@/components/ui";
 import { playSuccess, playTap } from "@/lib/audio-juice";
 
 const REASON = {
-  NO_VEHICLE: "Không còn xe trống",
-  CAPACITY: "Vượt thể tích hoặc tải trọng xe",
-  TIME_WINDOW_OR_SHIFT: "Không phù hợp khung giờ hoặc ca 8 giờ",
+  NO_VEHICLE: "Không còn xe trống để nhận đơn này.",
+  CAPACITY: "Xe đã hết chỗ chứa. Vui lòng thêm xe, chuyển đơn sang chuyến sau hoặc gia hạn ngày giao hàng.",
+  TIME_WINDOW_OR_SHIFT: "Khung giờ hoặc ca giao không phù hợp. Ca sáng và chiều cần tuyến riêng; đơn cả ngày có thể ghép với một trong hai ca.",
 };
 
-function DatePickerModal({ value, onClose, onApply }) {
+function deliveryShift(startValue, endValue) {
+  const start = String(startValue || "08:00").slice(0, 5);
+  const end = String(endValue || "18:00").slice(0, 5);
+  if (start >= "12:00") return "Ca chiều";
+  if (end <= "12:00") return "Ca sáng";
+  return "Cả ngày";
+}
+
+function DatePickerModal({ value, minDate = ymd(), onClose, onApply }) {
   const [selectedDate, setSelectedDate] = useState(value);
   const [year, month] = selectedDate.split("-").map(Number);
   const [viewMonth, setViewMonth] = useState(() => new Date(year, month - 1, 1));
   const firstDay = (viewMonth.getDay() + 6) % 7;
   const days = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
-  const showToday = () => { const today = new Date(); setSelectedDate(ymd(today)); setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1)); };
+  const showToday = () => { const today = new Date(); const earliest = ymd(today) < minDate ? new Date(`${minDate}T00:00:00`) : today; setSelectedDate(ymd(earliest)); setViewMonth(new Date(earliest.getFullYear(), earliest.getMonth(), 1)); };
   return <Modal title="Chọn ngày giao" onClose={onClose} footer={<>
     <button className="btn secondary" onClick={onClose}>Quay lại</button>
     <button className="btn" onClick={() => onApply(selectedDate)}>Áp dụng</button>
@@ -41,10 +49,10 @@ function DatePickerModal({ value, onClose, onApply }) {
         {Array.from({ length: days }, (_, index) => {
           const day = index + 1;
           const dayValue = ymd(new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day));
-          return <button key={day} type="button" className={`dispatch-calendar-day ${dayValue === selectedDate ? "selected" : ""} ${dayValue === ymd() ? "today" : ""}`} aria-label={`${day}/${viewMonth.getMonth() + 1}/${viewMonth.getFullYear()}`} aria-pressed={dayValue === selectedDate} onClick={() => setSelectedDate(dayValue)}>{day}</button>;
+          return <button key={day} type="button" disabled={dayValue < minDate} className={`dispatch-calendar-day ${dayValue === selectedDate ? "selected" : ""} ${dayValue === ymd() ? "today" : ""}`} aria-label={`${day}/${viewMonth.getMonth() + 1}/${viewMonth.getFullYear()}`} aria-pressed={dayValue === selectedDate} onClick={() => setSelectedDate(dayValue)}>{day}</button>;
         })}
       </div>
-      <div className="dispatch-calendar-bottom"><button type="button" className="btn ghost sm" onClick={showToday}>Hôm nay</button><span className="small muted">Đã chọn: {selectedDate.split("-").reverse().join("/")}</span></div>
+      <div className="dispatch-calendar-bottom"><button type="button" className="btn ghost sm" onClick={showToday}>{minDate > ymd() ? "Ngày sớm nhất" : "Hôm nay"}</button><span className="small muted">Đã chọn: {selectedDate.split("-").reverse().join("/")}</span></div>
     </div>
   </Modal>;
 }
@@ -70,6 +78,7 @@ function Dispatch() {
   const [mapRouteId, setMapRouteId] = useState(null);
   const [mapChoice, setMapChoice] = useState(null);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
 
   useEffect(() => { setToken(loadToken()); }, []);
 
@@ -155,7 +164,24 @@ function Dispatch() {
         {failedOrders.map(order => <div key={order.id} className="row between small"><span><b>{order.code}</b> · ngày giao cũ {dateLabel(order.delivery_date)} · {order.address}</span><button className="btn secondary sm" disabled={busy || !can('route.optimize') || date <= order.delivery_date || date < ymd()} onClick={() => perform(() => api(`/api/orders/${order.id}/reschedule`, {method:'POST',token,body:{delivery_date:date}}))}>Hẹn lại {dateLabel(date)}</button></div>)}
       </section>}
 
-      {datePickerOpen && <DatePickerModal value={date} onClose={() => setDatePickerOpen(false)} onApply={(nextDate) => { setDate(nextDate); setResult(null); setMapRouteId(null); setDatePickerOpen(false); }} />}
+      {datePickerOpen && <DatePickerModal
+        value={rescheduleTarget ? (() => { const next = new Date(`${date}T00:00:00`); next.setDate(next.getDate() + 1); return ymd(next); })() : date}
+        minDate={rescheduleTarget ? (() => { const next = new Date(`${date}T00:00:00`); next.setDate(next.getDate() + 1); return ymd(next); })() : ymd()}
+        onClose={() => { setDatePickerOpen(false); setRescheduleTarget(null); }}
+        onApply={(nextDate) => {
+          setDatePickerOpen(false);
+          if (rescheduleTarget) {
+            const orderId = rescheduleTarget;
+            setRescheduleTarget(null);
+            perform(async () => {
+              await api(`/api/orders/${orderId}/reschedule`, { method: "POST", token, body: { delivery_date: nextDate } });
+              setResult(null);
+            });
+          } else {
+            setDate(nextDate); setResult(null); setMapRouteId(null);
+          }
+        }}
+      />}
       {mapChoice !== null && <Modal title="Chọn tuyến trên bản đồ" onClose={() => setMapChoice(null)} footer={<>
         <button className="btn secondary" onClick={() => setMapChoice(null)}>Quay lại</button>
         <button className="btn" onClick={() => { setMapRouteId(mapChoice); setMapChoice(null); }}>Xem tuyến</button>
@@ -217,8 +243,10 @@ function Dispatch() {
             <h3>Hàng đợi {dateLabel(date)}</h3>
             <div className="small">{ready.length} đơn sẵn sàng · {missing.length} thiếu vị trí · {waiting.length} đang xác nhận</div>
             {ready.length === 0 && <Empty title="Chưa có đơn sẵn sàng" />}
-            {ready.map((order) => <div key={order.id} className="row between small" style={{ borderBottom: "1px solid var(--line-soft)", padding: "6px 0" }}>
-              <div><Link href={"/admin/orders/" + order.id} className="strong">{order.code}</Link> {order.is_urgent && <span className="badge move">Gấp</span>}<div className="tiny muted">{order.address} · {String(order.time_window_start).slice(0, 5)}–{String(order.time_window_end).slice(0, 5)}</div></div>
+            {ready.map((order) => <div key={order.id} className="row between small" style={{ borderBottom: "1px solid var(--line-soft)", padding: "8px 0", alignItems: "flex-start" }}>
+              <div><Link href={"/admin/orders/" + order.id} className="strong">{order.code}</Link> {order.is_urgent && <span className="badge move">Gấp</span>} <span className="badge">{deliveryShift(order.time_window_start, order.time_window_end)}</span><div className="tiny muted">{order.address} · {String(order.time_window_start).slice(0, 5)}–{String(order.time_window_end).slice(0, 5)}</div>
+                <div className="tiny" style={{ marginTop: 3 }}>{(order.items || []).map((item) => `${item.product_name || item.name} × ${item.quantity}`).join(", ") || "Chưa có thông tin sản phẩm"} · {Number(order.volume_m3 || 0).toFixed(3)} m³</div>
+              </div>
               <div className="row">
                 {order.lat == null && <span className="badge move">Thiếu vị trí</span>}
                 {can("route.dispatch") && <button className="btn ghost sm" disabled={busy} onClick={() => perform(() => api("/api/orders/" + order.id + "/priority", { method: "PATCH", token, body: { is_urgent: !order.is_urgent } }))}>{order.is_urgent ? "Bỏ gấp" : "Đánh dấu gấp"}</button>}
@@ -241,10 +269,10 @@ function Dispatch() {
               setResult(next);
               playSuccess();
             })}>{busy ? "Đang xử lý…" : "Bố trí điểm giao"}</button>}
-            {result && <div className="notice ok stack-sm small">
+            {result && <div className={`notice ${result.unassigned?.length ? "warn" : "ok"} stack-sm small`}>
               <b>{result.routes.length} tuyến · {result.total_km} km · tiết kiệm {result.saving_percent ?? "—"}%</b>
               <span>{result.distance_source === "ors" ? "Số liệu định tuyến OpenRouteService" : "Số liệu khoảng cách và thời gian là ước tính"}</span>
-              {result.unassigned?.map((item) => <div key={item.order_id}>{item.code}: {REASON[item.reason] || item.reason}</div>)}
+              {result.unassigned?.map((item) => <div key={item.order_id}><b>{item.code}:</b> {REASON[item.reason] || item.reason} {item.reason === "CAPACITY" || item.reason === "NO_VEHICLE" ? <span>Hãy chọn thêm xe ở trên hoặc </span> : null}{(item.reason === "CAPACITY" || item.reason === "NO_VEHICLE") && <button className="btn ghost sm" disabled={busy} onClick={() => { setRescheduleTarget(item.order_id); setDatePickerOpen(true); }}>đổi ngày giao</button>}</div>)}
               {result.missing_location_codes?.map((code) => <div key={code}>{code}: Thiếu vị trí</div>)}
             </div>}
           </section>
@@ -283,7 +311,7 @@ function Dispatch() {
         <div className="stack" style={{ marginTop: 16 }}>
           {routes.length === 0 && <div className="panel"><Empty title="Chưa có tuyến cho ngày này">Chọn xe và chạy tối ưu khi có đơn sẵn sàng.</Empty></div>}
           {routes.map((route) => <section className="panel" key={route.id}>
-            <div className="panel-head row between"><div className="row"><b>{route.code}</b><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ / 8 giờ</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.optimize") && route.status === "DRAFT" && <button className="btn secondary sm" disabled={busy} onClick={() => { setError(""); setCancelRoute(route); }}>Hủy tuyến</button>}{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
+            <div className="panel-head row between"><div className="row"><b>{route.code}</b><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ / 8 giờ · {num(route.total_volume_m3, 3)} m³ / {num(route.vehicle_capacity_m3, 3)} m³ · {num(route.total_weight_kg, 1)} / {num(route.vehicle_capacity_kg, 0)} kg</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.optimize") && route.status === "DRAFT" && <button className="btn secondary sm" disabled={busy} onClick={() => { setError(""); setCancelRoute(route); }}>Hủy tuyến</button>}{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
             <div className="panel-body stack-sm">
               <div className="dispatch-assignments">
                 <div className="dispatch-assignment"><span className="tiny muted">Xe giao hàng</span><button type="button" className="dispatch-assignment-button" disabled={busy || route.status !== "DRAFT" || !can("route.dispatch")} onClick={() => { setError(""); setAssignment({ kind: "vehicle", route, value: route.vehicle_id }); }}><span>{route.vehicle}</span><span aria-hidden="true">✎</span></button></div>
@@ -292,7 +320,7 @@ function Dispatch() {
               <ol className="stop-list">
                 {route.stops.map((stop, index) => <li key={stop.stop_id}>
                   <span className="seq">{stop.sequence}</span>
-                  <div className="grow"><Link href={"/admin/orders/" + stop.order_id} className="strong">{stop.order_code}</Link> {stop.is_urgent && <span className="badge move">Gấp</span>} · {stop.customer_name}<div className="tiny muted">{stop.address} · hẹn {stop.time_window}</div></div>
+                  <div className="grow"><Link href={"/admin/orders/" + stop.order_id} className="strong">{stop.order_code}</Link> {stop.is_urgent && <span className="badge move">Gấp</span>} <span className="badge">{deliveryShift(stop.time_window?.split("–")[0], stop.time_window?.split("–")[1])}</span> · {stop.customer_name}<div className="tiny muted">{stop.address} · hẹn {stop.time_window}</div><div className="tiny" style={{ marginTop: 3 }}>{(stop.items || []).map((item) => `${item.name} × ${item.quantity} (${Number(item.volume_m3 || 0).toFixed(3)} m³)`).join(", ")} · Tổng {Number(stop.volume_m3 || 0).toFixed(3)} m³</div></div>
                   <div className="right small">{new Date(stop.planned_arrival).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</div>
                   {route.status === "DRAFT" && can("route.dispatch") && <div className="row"><button className="btn ghost sm" disabled={busy || index === 0} onClick={() => changeOrder(route, index, -1)} aria-label="Đưa điểm lên">↑</button><button className="btn ghost sm" disabled={busy || index === route.stops.length - 1} onClick={() => changeOrder(route, index, 1)} aria-label="Đưa điểm xuống">↓</button></div>}
                 </li>)}

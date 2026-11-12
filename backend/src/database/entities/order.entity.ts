@@ -106,6 +106,7 @@ export class Order {
   @Column({ name: 'payos_account_name', type: 'varchar', length: 255, nullable: true }) payosAccountName!: string | null;
   @Column({ name: 'payos_qr_code', type: 'text', nullable: true }) payosQrCode!: string | null;
   @Column({ name: 'payos_checkout_url', type: 'varchar', length: 500, nullable: true }) payosCheckoutUrl!: string | null;
+  @Column({ name: 'payos_expires_at', type: 'datetime', nullable: true }) payosExpiresAt!: Date | null;
 
   @Column({ name: 'payment_status', type: 'enum', enum: PaymentStatus, default: PaymentStatus.UNPAID })
   paymentStatus!: PaymentStatus;

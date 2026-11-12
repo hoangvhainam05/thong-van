@@ -14,6 +14,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Res,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
@@ -32,6 +33,27 @@ export class OrdersController {
   @UseGuards(AuthGuard)
   @RequirePermission('order.view_all')
   supportList() { return this.support.list(); }
+
+  @Get('cron/expire-payos')
+  async expirePayosOrders(@Req() req: AuthRequest) {
+    const secret = process.env.CRON_SECRET;
+    if (!secret) throw new ServiceUnavailableException('CRON_SECRET chưa được cấu hình.');
+    if (req.headers.authorization !== `Bearer ${secret}`) throw new ForbiddenException();
+    const ids = await this.payos.expiredUnpaidOrderIds();
+    let cancelled = 0;
+    for (const id of ids) {
+      try {
+        await this.orders.updateStatus(id, {
+          status: OrderStatus.CANCELLED,
+          reason: 'Tự động huỷ: mã thanh toán PayOS đã hết hạn',
+        }, 'SYSTEM');
+        cancelled += 1;
+      } catch {
+        // A concurrent payment or order-state change makes this candidate ineligible.
+      }
+    }
+    return { cancelled };
+  }
 
   @Get('payment-support/:id/image')
   @UseGuards(AuthGuard)

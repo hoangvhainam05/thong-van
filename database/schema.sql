@@ -231,6 +231,7 @@ CREATE TABLE orders (
   payos_account_name VARCHAR(255) NULL,
   payos_qr_code      TEXT NULL,
   payos_checkout_url VARCHAR(500) NULL,
+  payos_expires_at   DATETIME NULL,
   payment_status     ENUM('UNPAID','PENDING','PAID') NOT NULL DEFAULT 'UNPAID',
   source             ENUM('WEB','COUNTER') NOT NULL DEFAULT 'WEB',
   status             ENUM('PENDING','CONFIRMED','READY','SCHEDULED',

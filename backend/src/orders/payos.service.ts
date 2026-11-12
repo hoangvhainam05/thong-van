@@ -4,6 +4,16 @@ import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { Order, OrderHistoryEvent, OrderHistoryEventType, OrderStatus, PaymentStatus } from '../database/entities';
 
+function expirationDate(value: unknown, fallback: Date) {
+  if (typeof value === 'number' && Number.isFinite(value)) return new Date(value < 1e12 ? value * 1000 : value);
+  if (typeof value === 'string' && value) {
+    const numeric = Number(value);
+    const parsed = Number.isFinite(numeric) ? new Date(numeric < 1e12 ? numeric * 1000 : numeric) : new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return fallback;
+}
+
 function signature(data: Record<string, any>, key: string) {
   const text = Object.keys(data).sort().filter(k => data[k] !== undefined).map(k => {
     let value = data[k];
@@ -67,7 +77,10 @@ export class PayosService {
       const order = await repo.findOne({ where: { id, customerId }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn hàng.');
       if (order.paymentMethod !== 'PAYOS' || order.status === OrderStatus.CANCELLED || order.paymentStatus === PaymentStatus.PAID) throw new ConflictException('Đơn hàng không thể thanh toán qua PayOS.');
-      if (order.payosCheckoutUrl) return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null, details: paymentDetails(order.payosQrCode), accountName: order.payosAccountName || null, expiresAt: new Date(order.updatedAt.getTime() + 15 * 60 * 1000).toISOString() };
+      if (order.payosCheckoutUrl) {
+        const expiresAt = order.payosExpiresAt || new Date(order.updatedAt.getTime() + 15 * 60 * 1000);
+        return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null, details: paymentDetails(order.payosQrCode), accountName: order.payosAccountName || null, expiresAt: expiresAt.toISOString() };
+      }
       const origin = this.credentials.origin.replace(/\/$/, '');
       const returnUrl = `${origin}/account/orders/${order.id}?payos=return`;
       const cancelUrl = `${origin}/account/orders/${order.id}?payos=cancel`;
@@ -84,9 +97,37 @@ export class PayosService {
       order.payosQrCode = typeof link.qrCode === 'string' && link.qrCode.length <= 4096 ? link.qrCode : null;
       order.payosLinkId = link.paymentLinkId;
       order.payosCheckoutUrl = link.checkoutUrl;
+      order.payosExpiresAt = expirationDate(link.expiredAt, new Date(Date.now() + 15 * 60 * 1000));
       await repo.save(order);
-      return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null, details: paymentDetails(order.payosQrCode), accountName: order.payosAccountName || null, expiresAt: link.expiredAt || new Date(Date.now() + 15 * 60 * 1000).toISOString() };
+      return { checkoutUrl: order.payosCheckoutUrl, qrCode: order.payosQrCode || null, details: paymentDetails(order.payosQrCode), accountName: order.payosAccountName || null, expiresAt: order.payosExpiresAt.toISOString() };
     });
+  }
+
+  async expiredUnpaidOrderIds() {
+    const now = new Date();
+    const candidates = await this.db.getRepository(Order).createQueryBuilder('order')
+      .select(['order.id', 'order.payosOrderCode', 'order.payosExpiresAt'])
+      .where('order.payment_method = :method', { method: 'PAYOS' })
+      .andWhere('order.payment_status = :paymentStatus', { paymentStatus: PaymentStatus.PENDING })
+      .andWhere('order.status IN (:...statuses)', { statuses: [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY, OrderStatus.SCHEDULED] })
+      .andWhere('order.payos_order_code IS NOT NULL')
+      .andWhere('order.payos_expires_at IS NOT NULL')
+      .andWhere('order.payos_expires_at <= :now', { now })
+      .orderBy('order.payos_expires_at', 'ASC')
+      .take(100)
+      .getMany();
+
+    const expired: number[] = [];
+    for (const order of candidates) {
+      if (!order.payosOrderCode || !order.payosExpiresAt || order.payosExpiresAt > now) continue;
+      try {
+        const link = await this.request(`/v2/payment-requests/${encodeURIComponent(order.payosOrderCode)}`);
+        if (link.status !== 'PAID' && (link.status === 'CANCELLED' || order.payosExpiresAt <= now)) expired.push(order.id);
+      } catch {
+        // A PayOS/API outage should defer cancellation to the next cron run.
+      }
+    }
+    return expired;
   }
   async webhook(payload: any) {
     const key = this.credentials.key;

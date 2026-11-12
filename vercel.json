@@ -53,5 +53,11 @@
         "service": "frontend"
       }
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/orders/cron/expire-payos",
+      "schedule": "* * * * *"
+    }
   ]
 }

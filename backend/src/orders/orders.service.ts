@@ -262,6 +262,9 @@ export class OrdersService {
       const orderRepo = manager.getRepository(Order);
       const order = await orderRepo.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!order) throw new NotFoundException('Không tìm thấy đơn');
+      if (actor === 'SYSTEM' && cancelling && order.paymentStatus === PaymentStatus.PAID) {
+        throw new ConflictException('Đơn đã thanh toán và không thể tự động huỷ.');
+      }
       if (actor === 'CUSTOMER' && ![OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY, OrderStatus.SCHEDULED].includes(order.status)) {
         throw new ConflictException('Chỉ có thể huỷ đơn trước khi đơn bắt đầu vận chuyển.');
       }

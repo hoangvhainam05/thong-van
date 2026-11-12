@@ -70,7 +70,12 @@ class Problem {
   }
 
   simulate(nodes: number[], strict = true): { arrivals: number[]; end: number; km: number } | null {
-    let time = this.dayStart;
+    const hasMorningWindow = nodes.some((node) => this.stops[node - 1].twEnd <= 12 * 60);
+    const hasAfternoonWindow = nodes.some((node) => this.stops[node - 1].twStart >= 12 * 60);
+    // A route can serve all-day orders alongside either shift, but not both shifts.
+    if (hasMorningWindow && hasAfternoonWindow) return null;
+    const routeStart = this.routeStart(nodes, hasAfternoonWindow);
+    let time = routeStart;
     let previous = 0;
     let distance = 0;
     const arrivals: number[] = [];
@@ -84,13 +89,17 @@ class Problem {
       time += stop.serviceMin;
       previous = node;
     }
-    if (strict && (time > this.dayEnd || time - this.dayStart > this.maxRouteMinutes)) return null;
+    if (strict && (time > this.dayEnd || time - routeStart > this.maxRouteMinutes)) return null;
     return { arrivals, end: time, km: distance };
+  }
+
+  routeStart(nodes: number[], hasAfternoonWindow = nodes.some((node) => this.stops[node - 1].twStart >= 12 * 60)): number {
+    return hasAfternoonWindow ? Math.max(this.dayStart, 12 * 60) : this.dayStart;
   }
 
   cost(nodes: number[], weightKm: number, weightTime: number): number | null {
     const result = this.simulate(nodes);
-    return result ? weightKm * result.km + weightTime * (result.end - this.dayStart) : null;
+    return result ? weightKm * result.km + weightTime * (result.end - this.routeStart(nodes)) : null;
   }
 
   load(nodes: number[]): number {
@@ -115,7 +124,7 @@ class Problem {
           arrivalMin: result.arrivals[index],
         })),
         totalKm: Number(result.km.toFixed(2)),
-        totalMinutes: Math.ceil(result.end - this.dayStart),
+        totalMinutes: Math.ceil(result.end - this.routeStart(nodes)),
       }];
     });
   }
@@ -135,7 +144,9 @@ function solveHeuristic(problem: Problem): { routes: Record<number, number[]>; u
         const candidate = [...route.slice(0,i), node, ...route.slice(i)];
         if (!valid(v,candidate)) continue;
         const delta = km(candidate) - km(route);
-        if (!best || route.length < best.count || (route.length === best.count && delta < best.delta - 1e-9)) best = {id:v.id, route:candidate, delta, count:route.length};
+        // Keep nearby deliveries together on the same truck. Prefer a new truck
+        // only when the current route cannot take the stop or adds more distance.
+        if (!best || delta < best.delta - 1e-9 || (Math.abs(delta - best.delta) <= 1e-9 && route.length < best.count)) best = {id:v.id, route:candidate, delta, count:route.length};
       }
     }
     if (best) routes[best.id] = best.route; else pending.push(node);
