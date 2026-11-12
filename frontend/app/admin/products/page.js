@@ -9,6 +9,7 @@ import { RequirePerm } from "@/components/Guard";
 import { PageHead } from "@/components/AdminShell";
 import Art from "@/components/Art";
 import { Field, Modal } from "@/components/ui";
+import { RotateCcw, RotateCw } from "lucide-react";
 import { createProductWorkbook, readProductWorkbook } from "@/lib/product-excel";
 
 const EMPTY = { name: "", brand: "", category: "", costPrice: null, price: "", oldPrice: null, volume: 0.3, weight: 20, packageLengthCm: null, packageWidthCm: null, packageHeightCm: null, packageWeightKg: null, install: 15, warranty: 12, maintenanceIntervalMonths: null, stock: 10, active: true, description: "" };
@@ -100,6 +101,131 @@ function downloadProductTemplate(categories) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const CROP_SIZE = 512;
+function cropGeometry(image, rotation, zoom, size = CROP_SIZE) {
+  const quarterTurn = Math.abs(rotation % 180) === 90;
+  const rotatedWidth = quarterTurn ? image.naturalHeight : image.naturalWidth;
+  const rotatedHeight = quarterTurn ? image.naturalWidth : image.naturalHeight;
+  const scale = Math.max(size / rotatedWidth, size / rotatedHeight) * zoom;
+  return {
+    scale,
+    maxX: Math.max(0, (rotatedWidth * scale - size) / 2),
+    maxY: Math.max(0, (rotatedHeight * scale - size) / 2),
+  };
+}
+
+function drawSquareCrop(canvas, image, rotation, zoom, offset) {
+  const size = canvas.width;
+  const { scale, maxX, maxY } = cropGeometry(image, rotation, zoom, size);
+  const x = Math.max(-maxX, Math.min(maxX, offset.x));
+  const y = Math.max(-maxY, Math.min(maxY, offset.y));
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, size, size);
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, size, size);
+  context.save();
+  context.translate(size / 2 + x, size / 2 + y);
+  context.rotate(rotation * Math.PI / 180);
+  context.scale(scale, scale);
+  context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
+  context.restore();
+}
+
+function ProductImageCropModal({ file, queueIndex, queueTotal, onCancel, onSave }) {
+  const [image, setImage] = useState(null);
+  const [rotation, setRotation] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [error, setError] = useState("");
+  const canvasRef = useRef(null);
+  const dragRef = useRef(null);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    const loadedImage = new Image();
+    loadedImage.onload = () => { setImage(loadedImage); setError(""); };
+    loadedImage.onerror = () => setError("Không đọc được ảnh này. Hãy chọn một file ảnh khác.");
+    loadedImage.src = url;
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  useEffect(() => {
+    if (image && canvasRef.current) drawSquareCrop(canvasRef.current, image, rotation, zoom, offset);
+  }, [image, rotation, zoom, offset]);
+
+  const rotate = (direction) => {
+    setRotation((value) => (value + direction + 360) % 360);
+    setOffset({ x: 0, y: 0 });
+  };
+  const nudgeCrop = (dx, dy) => {
+    if (!image) return;
+    const { maxX, maxY } = cropGeometry(image, rotation, zoom);
+    setOffset((current) => ({ x: Math.max(-maxX, Math.min(maxX, current.x + dx)), y: Math.max(-maxY, Math.min(maxY, current.y + dy)) }));
+  };
+  const startDrag = (event) => {
+    if (!image) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { x: event.clientX, y: event.clientY };
+  };
+  const moveDrag = (event) => {
+    if (!dragRef.current || !image) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const ratio = CROP_SIZE / bounds.width;
+    const dx = (event.clientX - dragRef.current.x) * ratio;
+    const dy = (event.clientY - dragRef.current.y) * ratio;
+    dragRef.current = { x: event.clientX, y: event.clientY };
+    const { maxX, maxY } = cropGeometry(image, rotation, zoom);
+    setOffset((current) => ({
+      x: Math.max(-maxX, Math.min(maxX, current.x + dx)),
+      y: Math.max(-maxY, Math.min(maxY, current.y + dy)),
+    }));
+  };
+  const saveCrop = () => {
+    if (!image || !canvasRef.current) return;
+    try {
+      const output = document.createElement("canvas");
+      output.width = 1024;
+      output.height = 1024;
+      drawSquareCrop(output, image, rotation, zoom, { x: offset.x * 2, y: offset.y * 2 });
+      output.toBlob((blob) => {
+        if (!blob) { setError("Không thể xử lý ảnh này. Hãy thử chọn ảnh khác."); return; }
+        const name = `${file.name.replace(/\.[^.]+$/, "")}-4x4.jpg`;
+        onSave(new File([blob], name, { type: "image/jpeg", lastModified: Date.now() }));
+      }, "image/jpeg", 0.9);
+    } catch {
+      setError("Không thể xử lý ảnh này. Hãy thử chọn ảnh khác.");
+    }
+  };
+
+  return <Modal title={`Chỉnh ảnh ${queueIndex} / ${queueTotal}`} onClose={onCancel} footer={<>
+    <button type="button" className="btn secondary" onClick={onCancel}>Huỷ</button>
+    <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Dùng ảnh này</button>
+  </>}>
+    <div className="product-crop-editor">
+      <p className="small muted">Ảnh sẽ được cắt thành hình vuông tỷ lệ 4:4. Kéo ảnh để chọn vùng, phóng to hoặc xoay trước khi tải lên.</p>
+      <div className={`product-crop-stage${image ? " is-ready" : ""}`} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
+        {image ? <canvas ref={canvasRef} width={CROP_SIZE} height={CROP_SIZE} tabIndex={0} aria-label="Vùng cắt ảnh. Kéo ảnh hoặc dùng phím mũi tên để chỉnh vị trí." onKeyDown={(event) => {
+          const movements = { ArrowUp: [0, -20], ArrowDown: [0, 20], ArrowLeft: [-20, 0], ArrowRight: [20, 0] };
+          const movement = movements[event.key];
+          if (movement) { event.preventDefault(); nudgeCrop(...movement); }
+        }} /> : <span>{error || "Đang mở ảnh…"}</span>}
+      </div>
+      {error && image && <div className="notice bad" role="alert">{error}</div>}
+      {image && <>
+        <div className="product-crop-tools">
+          <button type="button" className="btn secondary" aria-label="Xoay trái 90 độ" onClick={() => rotate(-90)}><RotateCcw size={18} /> Xoay trái</button>
+          <button type="button" className="btn secondary" aria-label="Xoay phải 90 độ" onClick={() => rotate(90)}><RotateCw size={18} /> Xoay phải</button>
+        </div>
+        <label className="product-crop-zoom">Phóng to / thu nhỏ
+          <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+        </label>
+        <div className="tiny muted">{file.name} · {image.naturalWidth} × {image.naturalHeight} px</div>
+      </>}
+    </div>
+  </Modal>;
+}
+
 function CategorySelect({ categories, value, onChange }) {
   const [open, setOpen] = useState(false);
   const root = useRef(null);
@@ -141,6 +267,7 @@ function Products() {
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [imageFiles, setImageFiles] = useState([]);
+  const [cropQueue, setCropQueue] = useState([]);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [imagePreviews, setImagePreviews] = useState([]);
@@ -227,6 +354,10 @@ function Products() {
     } catch (error) { setConnectionError(error.message); }
   };
   const set = (k) => (e) => setEdit({ ...edit, [k]: e.target.value });
+  const acceptCroppedImage = (file) => {
+    setImageFiles((current) => [...current, file]);
+    setCropQueue((current) => current.slice(1));
+  };
   const readImportFile = async (file) => {
     setImportError("");
     try {
@@ -273,7 +404,7 @@ function Products() {
         <input className="input" style={{ width: 220 }} placeholder="Tìm tên hoặc mã" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Tìm sản phẩm" />
         <CategorySelect categories={categories} value={cat} onChange={setCat} />
         <button className="btn secondary" disabled={!connected} onClick={() => setManagingCategories(true)}>Quản lý danh mục</button>
-        <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFiles([]); setFormError(""); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
+        <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFiles([]); setCropQueue([]); setFormError(""); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
       </PageHead>
       {(connectionError || categoryError) && <div className="notice bad" style={{ marginBottom: 14 }}>{connectionError || categoryError}</div>}
       <div className="panel table-wrap">
@@ -296,7 +427,7 @@ function Products() {
                 <td className="num">{p.install ? `${p.install} phút` : "—"}</td>
                 <td>{p.active ? <span className="badge ok">Đang bán</span> : <span className="badge">Đã ẩn</span>}</td>
                 <td className="nowrap">
-                  <button className="btn ghost sm" disabled={!connected} onClick={() => { setImageFiles([]); setFormError(""); setEdit({ ...p }); }}>Sửa</button>
+                  <button className="btn ghost sm" disabled={!connected} onClick={() => { setImageFiles([]); setCropQueue([]); setFormError(""); setEdit({ ...p }); }}>Sửa</button>
                   <button className="btn ghost sm" disabled={!connected} onClick={() => actions.toggleProduct(p.id)}>{p.active ? "Ẩn" : "Mở bán"}</button>
                 </td>
               </tr>
@@ -375,7 +506,7 @@ function Products() {
                 </label>
               </div>}
               <div className="row product-form-actions">
-                <button className="btn secondary" disabled={saving} onClick={() => { setEdit(null); setImageFiles([]); }}>Huỷ</button>
+                <button className="btn secondary" disabled={saving} onClick={() => { setEdit(null); setImageFiles([]); setCropQueue([]); }}>Huỷ</button>
                 <button className="btn" disabled={saving} onClick={save}>{saving ? "Đang tải ảnh và lưu…" : "Lưu sản phẩm"}</button>
               </div>
             </div>
@@ -409,12 +540,12 @@ function Products() {
                     const files = Array.from(event.target.files || []);
                     event.target.value = "";
                     if (files.some((file) => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) { setFormError("Ảnh phải là định dạng hình ảnh và không vượt quá 5 MB."); return; }
-                    if ((edit.images || []).length + imageFiles.length + files.length > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
+                    if ((edit.images || []).length + imageFiles.length + cropQueue.length + files.length > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
                     setFormError("");
-                    setImageFiles((current) => [...current, ...files]);
+                    setCropQueue(files);
                   }} />
                 </label>
-                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Ảnh đầu tiên là ảnh chính; ảnh được tải lên khi lưu sản phẩm.</span>
+                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Ảnh được cắt vuông 4:4 và tải lên khi lưu sản phẩm.</span>
                 <div className="row" style={{ flexWrap: "wrap" }}>
                   {(edit.images || []).map((image, index) => <div key={`${image.imageUrl}-${index}`}><img src={image.imageUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><button type="button" className="btn ghost sm" onClick={() => setEdit({ ...edit, images: edit.images.filter((_, i) => i !== index) })}>Xóa</button></div>)}
                   {imagePreviews.map((url, index) => <div className="product-image-preview" key={url}><img src={url} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><span className="tiny" title={imageFiles[index]?.name}>{imageFiles[index]?.name}</span><button type="button" className="btn ghost sm" disabled={saving} onClick={() => setImageFiles(files => files.filter((_, i) => i !== index))}>Xóa</button></div>)}
@@ -424,6 +555,14 @@ function Products() {
           </div>
         </Modal>
       )}
+      {cropQueue.length > 0 && <ProductImageCropModal
+        key={`${cropQueue[0].name}-${cropQueue[0].lastModified}-${cropQueue[0].size}`}
+        file={cropQueue[0]}
+        queueIndex={imageFiles.length + 1}
+        queueTotal={imageFiles.length + cropQueue.length}
+        onCancel={() => setCropQueue([])}
+        onSave={acceptCroppedImage}
+      />}
     </>
   );
 }

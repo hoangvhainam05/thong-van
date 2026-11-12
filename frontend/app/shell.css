@@ -1497,6 +1497,16 @@
 .product-image-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .product-image-preview { display: grid; gap: 4px; max-width: 110px; }
 .product-image-preview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-crop-editor { display: grid; gap: 14px; }
+.product-crop-editor > p { margin: 0; }
+.product-crop-stage { width: min(100%, 512px); aspect-ratio: 1; margin: 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #111827; color: white; }
+.product-crop-stage.is-ready { cursor: grab; touch-action: none; user-select: none; }
+.product-crop-stage.is-ready:active { cursor: grabbing; }
+.product-crop-stage canvas { display: block; width: 100%; height: 100%; }
+.product-crop-tools { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.product-crop-tools .btn { display: inline-flex; align-items: center; gap: 8px; }
+.product-crop-zoom { display: grid; gap: 8px; font-weight: 600; }
+.product-crop-zoom input { width: 100%; accent-color: var(--road); }
 
 .modal-foot:has(.product-form-error) { flex-wrap: wrap; }
 .product-form-error { flex: 1 1 100%; margin-right: auto; }
