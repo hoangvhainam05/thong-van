@@ -105,6 +105,10 @@ function databaseOptions(config: ConfigService) {
     username,
     password,
     database,
+    // Vercel may run several short-lived backend instances at once. Keep each
+    // instance's MySQL pool small so aggregate connections stay within Aiven's limit.
+    poolSize: process.env.VERCEL ? 1 : 10,
+    ...(process.env.VERCEL ? { extra: { maxIdle: 1, idleTimeout: 10_000 } } : {}),
     timezone: 'Z',
     charset: 'utf8mb4',
     ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
