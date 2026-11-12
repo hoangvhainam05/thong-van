@@ -131,7 +131,7 @@ function drawSquareCrop(canvas, image, rotation, zoom, offset) {
   context.restore();
 }
 
-function ProductImageCropModal({ file, queueIndex, queueTotal, onCancel, onSave }) {
+function ProductImageCropModal({ source, onCancel, onSave }) {
   const [image, setImage] = useState(null);
   const [rotation, setRotation] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -141,13 +141,15 @@ function ProductImageCropModal({ file, queueIndex, queueTotal, onCancel, onSave 
   const dragRef = useRef(null);
 
   useEffect(() => {
-    const url = URL.createObjectURL(file);
+    const remoteSource = typeof source === "string";
+    const url = remoteSource ? source : URL.createObjectURL(source);
     const loadedImage = new Image();
     loadedImage.onload = () => { setImage(loadedImage); setError(""); };
-    loadedImage.onerror = () => setError("Không đọc được ảnh này. Hãy chọn một file ảnh khác.");
+    loadedImage.onerror = () => setError("Không đọc được ảnh này. Hãy chọn ảnh từ thiết bị để thay thế.");
+    if (remoteSource) loadedImage.crossOrigin = "anonymous";
     loadedImage.src = url;
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    return () => { if (!remoteSource) URL.revokeObjectURL(url); };
+  }, [source]);
 
   useEffect(() => {
     if (image && canvasRef.current) drawSquareCrop(canvasRef.current, image, rotation, zoom, offset);
@@ -190,17 +192,18 @@ function ProductImageCropModal({ file, queueIndex, queueTotal, onCancel, onSave 
       drawSquareCrop(output, image, rotation, zoom, { x: offset.x * 2, y: offset.y * 2 });
       output.toBlob((blob) => {
         if (!blob) { setError("Không thể xử lý ảnh này. Hãy thử chọn ảnh khác."); return; }
-        const name = `${file.name.replace(/\.[^.]+$/, "")}-4x4.jpg`;
+        const sourceName = typeof source === "string" ? "anh-san-pham" : source.name.replace(/\.[^.]+$/, "");
+        const name = `${sourceName}-4x4.jpg`;
         onSave(new File([blob], name, { type: "image/jpeg", lastModified: Date.now() }));
       }, "image/jpeg", 0.9);
     } catch {
-      setError("Không thể xử lý ảnh này. Hãy thử chọn ảnh khác.");
+      setError("Ảnh hiện tại không cho phép chỉnh sửa trực tiếp. Hãy dùng nút “Thay ảnh” để chọn ảnh từ thiết bị.");
     }
   };
 
-  return <Modal title={`Chỉnh ảnh ${queueIndex} / ${queueTotal}`} onClose={onCancel} footer={<>
+  return <Modal title="Chỉnh sửa ảnh sản phẩm" onClose={onCancel} footer={<>
     <button type="button" className="btn secondary" onClick={onCancel}>Huỷ</button>
-    <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Dùng ảnh này</button>
+    <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Lưu chỉnh sửa</button>
   </>}>
     <div className="product-crop-editor">
       <p className="small muted">Ảnh sẽ được cắt thành hình vuông tỷ lệ 4:4. Kéo ảnh để chọn vùng, phóng to hoặc xoay trước khi tải lên.</p>
@@ -220,7 +223,7 @@ function ProductImageCropModal({ file, queueIndex, queueTotal, onCancel, onSave 
         <label className="product-crop-zoom">Phóng to / thu nhỏ
           <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
         </label>
-        <div className="tiny muted">{file.name} · {image.naturalWidth} × {image.naturalHeight} px</div>
+        <div className="tiny muted">{typeof source === "string" ? "Ảnh hiện tại" : source.name} · {image.naturalWidth} × {image.naturalHeight} px</div>
       </>}
     </div>
   </Modal>;
@@ -296,7 +299,7 @@ function Products() {
   }, []);
 
   useEffect(() => {
-    const urls = imageFiles.map(file => URL.createObjectURL(file));
+    const urls = imageFiles.map(({ file }) => URL.createObjectURL(file));
     setImagePreviews(urls);
     return () => urls.forEach(url => URL.revokeObjectURL(url));
   }, [imageFiles]);
@@ -318,15 +321,21 @@ function Products() {
   const save = async () => {
     if (!edit.name.trim() || !edit.brand.trim() || !edit.category || !Number.isFinite(Number(edit.price)) || Number(edit.price) <= 0 || (edit.costPrice !== null && edit.costPrice !== "" && (!Number.isFinite(Number(edit.costPrice)) || Number(edit.costPrice) < 0))) { setFormError("Vui lòng nhập tên, hãng, danh mục, giá bán lớn hơn 0 và giá nhập không âm."); return; }
     if (!connected) return;
-    if (imageFiles.some(file => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) {
+    if (imageFiles.some(({ file }) => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) {
       setFormError("Ảnh phải là định dạng hình ảnh và không vượt quá 5 MB.");
       return;
     }
-    if ((edit.images || []).length + imageFiles.length > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
+    const newImageCount = imageFiles.filter((item) => item.replaceImageIndex == null).length;
+    if ((edit.images || []).length + newImageCount > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
     setSaving(true);
     setFormError("");
     try {
-      const images = [...(edit.images || []), ...await Promise.all(imageFiles.map(uploadImage))];
+      const images = [...(edit.images || [])];
+      const uploaded = await Promise.all(imageFiles.map((item) => uploadImage(item.file)));
+      imageFiles.forEach((item, index) => {
+        if (item.replaceImageIndex == null) images.push(uploaded[index]);
+        else images[item.replaceImageIndex] = uploaded[index];
+      });
       const saved = await actions.saveProduct({ ...edit, images, price: Number(edit.price), costPrice: edit.costPrice === "" || edit.costPrice == null ? null : Number(edit.costPrice), oldPrice: edit.oldPrice ? Number(edit.oldPrice) : null, volume: Number(edit.volume), weight: Number(edit.weight), packageLengthCm: edit.packageLengthCm ? Number(edit.packageLengthCm) : null, packageWidthCm: edit.packageWidthCm ? Number(edit.packageWidthCm) : null, packageHeightCm: edit.packageHeightCm ? Number(edit.packageHeightCm) : null, packageWeightKg: edit.packageWeightKg ? Number(edit.packageWeightKg) : null, install: Number(edit.install), stock: Number(edit.stock), warranty: Number(edit.warranty), maintenanceIntervalMonths: edit.maintenanceIntervalMonths ? Number(edit.maintenanceIntervalMonths) : null });
       if (!saved) { setFormError("Không lưu được sản phẩm. Vui lòng kiểm tra thông báo và thử lại."); return; }
       setEdit(null);
@@ -355,8 +364,21 @@ function Products() {
   };
   const set = (k) => (e) => setEdit({ ...edit, [k]: e.target.value });
   const acceptCroppedImage = (file) => {
-    setImageFiles((current) => [...current, file]);
+    const currentCrop = cropQueue[0];
+    if (currentCrop?.replacePendingIndex != null) {
+      setImageFiles((current) => current.map((item, index) => index === currentCrop.replacePendingIndex ? { ...item, file } : item));
+    } else {
+      setImageFiles((current) => [...current, { file, replaceImageIndex: currentCrop?.replaceImageIndex ?? null }]);
+    }
     setCropQueue((current) => current.slice(1));
+  };
+  const removeExistingImage = (imageIndex) => {
+    setEdit((current) => ({ ...current, images: current.images.filter((_, index) => index !== imageIndex) }));
+    setImageFiles((current) => current.filter((item) => item.replaceImageIndex !== imageIndex).map((item) => item.replaceImageIndex > imageIndex ? { ...item, replaceImageIndex: item.replaceImageIndex - 1 } : item));
+  };
+  const editPendingImage = (imageIndex) => {
+    const item = imageFiles[imageIndex];
+    if (item) setCropQueue([{ source: item.file, replacePendingIndex: imageIndex }]);
   };
   const readImportFile = async (file) => {
     setImportError("");
@@ -540,15 +562,39 @@ function Products() {
                     const files = Array.from(event.target.files || []);
                     event.target.value = "";
                     if (files.some((file) => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) { setFormError("Ảnh phải là định dạng hình ảnh và không vượt quá 5 MB."); return; }
-                    if ((edit.images || []).length + imageFiles.length + cropQueue.length + files.length > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
+                    const queuedNewImages = cropQueue.filter((item) => item.replaceImageIndex == null).length;
+                    const pendingNewImages = imageFiles.filter((item) => item.replaceImageIndex == null).length;
+                    if ((edit.images || []).length + pendingNewImages + queuedNewImages + files.length > 20) { setFormError("Chỉ được chọn tối đa 20 ảnh."); return; }
                     setFormError("");
-                    setCropQueue(files);
+                    setCropQueue(files.map((file) => ({ source: file, replaceImageIndex: null })));
                   }} />
                 </label>
-                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Ảnh được cắt vuông 4:4 và tải lên khi lưu sản phẩm.</span>
+                <span className="tiny muted">Tối đa 20 ảnh, mỗi ảnh 5 MB. Chọn ảnh mới để cắt vuông, hoặc chỉnh / thay ảnh hiện có. Ảnh chỉ tải lên khi lưu sản phẩm.</span>
                 <div className="row" style={{ flexWrap: "wrap" }}>
-                  {(edit.images || []).map((image, index) => <div key={`${image.imageUrl}-${index}`}><img src={image.imageUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><button type="button" className="btn ghost sm" onClick={() => setEdit({ ...edit, images: edit.images.filter((_, i) => i !== index) })}>Xóa</button></div>)}
-                  {imagePreviews.map((url, index) => <div className="product-image-preview" key={url}><img src={url} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} /><span className="tiny" title={imageFiles[index]?.name}>{imageFiles[index]?.name}</span><button type="button" className="btn ghost sm" disabled={saving} onClick={() => setImageFiles(files => files.filter((_, i) => i !== index))}>Xóa</button></div>)}
+                  {(edit.images || []).map((image, index) => {
+                    const replacementIndex = imageFiles.findIndex((item) => item.replaceImageIndex === index);
+                    const previewUrl = replacementIndex < 0 ? image.imageUrl : imagePreviews[replacementIndex];
+                    return <div className="product-image-preview" key={`${image.imageUrl}-${index}`}>
+                      <img src={previewUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                      {replacementIndex >= 0 && <span className="tiny muted">Đã chỉnh, chờ lưu</span>}
+                      <button type="button" className="btn ghost sm" disabled={saving} onClick={() => replacementIndex >= 0 ? editPendingImage(replacementIndex) : setCropQueue([{ source: image.imageUrl, replaceImageIndex: index }])}>Cắt / xoay</button>
+                      <label className="btn ghost sm">Thay ảnh
+                        <input type="file" accept="image/*" disabled={saving} style={{ display: "none" }} onChange={(event) => {
+                          const file = event.target.files?.[0]; event.target.value = "";
+                          if (!file) return;
+                          if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) { setFormError("Ảnh phải là định dạng hình ảnh và không vượt quá 5 MB."); return; }
+                          setFormError(""); setCropQueue([{ source: file, replaceImageIndex: index }]);
+                        }} />
+                      </label>
+                      <button type="button" className="btn ghost sm" disabled={saving} onClick={() => removeExistingImage(index)}>Xóa</button>
+                    </div>;
+                  })}
+                  {imageFiles.map((item, index) => item.replaceImageIndex == null && <div className="product-image-preview" key={imagePreviews[index]}>
+                    <img src={imagePreviews[index]} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                    <span className="tiny" title={item.file.name}>{item.file.name}</span>
+                    <button type="button" className="btn ghost sm" disabled={saving} onClick={() => editPendingImage(index)}>Cắt / xoay</button>
+                    <button type="button" className="btn ghost sm" disabled={saving} onClick={() => setImageFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Xóa</button>
+                  </div>)}
                 </div>
               </div>
             </Field>
@@ -556,10 +602,8 @@ function Products() {
         </Modal>
       )}
       {cropQueue.length > 0 && <ProductImageCropModal
-        key={`${cropQueue[0].name}-${cropQueue[0].lastModified}-${cropQueue[0].size}`}
-        file={cropQueue[0]}
-        queueIndex={imageFiles.length + 1}
-        queueTotal={imageFiles.length + cropQueue.length}
+        key={typeof cropQueue[0].source === "string" ? cropQueue[0].source : `${cropQueue[0].source.name}-${cropQueue[0].source.lastModified}-${cropQueue[0].source.size}`}
+        source={cropQueue[0].source}
         onCancel={() => setCropQueue([])}
         onSave={acceptCroppedImage}
       />}
