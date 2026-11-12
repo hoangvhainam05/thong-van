@@ -1509,6 +1509,12 @@
 .product-crop-stage canvas { display: block; width: 100%; height: 100%; }
 .product-crop-tools { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
 .product-crop-tools .btn { display: inline-flex; align-items: center; gap: 8px; }
+.product-crop-modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.product-crop-modes .is-active { border-color: var(--road); background: #eaf2fb; color: var(--road); }
+.product-crop-stage.is-ready.is-cropping { cursor: crosshair; }
+.product-crop-stage.is-ready.is-moving { cursor: grab; }
+.product-crop-stage.is-ready.is-moving:active { cursor: grabbing; }
+.product-crop-selection { position: absolute; z-index: 1; border: 2px solid #fff; outline: 1px solid var(--road); background: rgba(36, 92, 166, 0.08); box-shadow: 0 0 0 9999px rgba(16, 24, 39, 0.18); pointer-events: none; }
 .product-crop-zoom { display: grid; gap: 8px; font-weight: 600; }
 .product-crop-zoom input { width: 100%; accent-color: var(--road); }
 

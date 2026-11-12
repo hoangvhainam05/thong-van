@@ -143,6 +143,8 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
   const [rotation, setRotation] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragMode, setDragMode] = useState("crop");
+  const [selection, setSelection] = useState({ x: 0, y: 0, width: CROP_SIZE, height: CROP_SIZE });
   const [error, setError] = useState("");
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
@@ -176,14 +178,33 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
     const { maxX, maxY } = cropGeometry(image, rotation, zoom);
     setOffset((current) => ({ x: Math.max(-maxX, Math.min(maxX, current.x + dx)), y: Math.max(-maxY, Math.min(maxY, current.y + dy)) }));
   };
+  const cropPoint = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(CROP_SIZE, (event.clientX - bounds.left) * CROP_SIZE / bounds.width)),
+      y: Math.max(0, Math.min(CROP_SIZE, (event.clientY - bounds.top) * CROP_SIZE / bounds.height)),
+    };
+  };
   const startDrag = (event) => {
     if (!image) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { x: event.clientX, y: event.clientY };
+    if (dragMode === "crop") {
+      const point = cropPoint(event);
+      dragRef.current = { mode: "crop", ...point, previousSelection: selection };
+      setSelection({ x: point.x, y: point.y, width: 0, height: 0 });
+    } else {
+      dragRef.current = { mode: "move", x: event.clientX, y: event.clientY };
+    }
   };
   const moveDrag = (event) => {
     if (!dragRef.current || !image) return;
+    if (dragRef.current.mode === "crop") {
+      const point = cropPoint(event);
+      const { x, y } = dragRef.current;
+      setSelection({ x: Math.min(x, point.x), y: Math.min(y, point.y), width: Math.abs(point.x - x), height: Math.abs(point.y - y) });
+      return;
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
     const ratio = CROP_SIZE / bounds.width;
     const dx = (event.clientX - dragRef.current.x) * ratio;
@@ -195,13 +216,28 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
       y: Math.max(-maxY, Math.min(maxY, current.y + dy)),
     }));
   };
+  const endDrag = () => {
+    const drag = dragRef.current;
+    if (drag?.mode === "crop") {
+      setSelection((current) => current.width < 12 || current.height < 12 ? drag.previousSelection : current);
+    }
+    dragRef.current = null;
+  };
   const saveCrop = () => {
     if (!image || !canvasRef.current) return;
     try {
+      const preview = document.createElement("canvas");
+      preview.width = 1024;
+      preview.height = 1024;
+      drawSquareCrop(preview, image, rotation, zoom, { x: offset.x * 2, y: offset.y * 2 });
+      const sx = Math.max(0, Math.min(1023, Math.round(selection.x * 2)));
+      const sy = Math.max(0, Math.min(1023, Math.round(selection.y * 2)));
+      const sw = Math.max(1, Math.min(1024 - sx, Math.round(selection.width * 2)));
+      const sh = Math.max(1, Math.min(1024 - sy, Math.round(selection.height * 2)));
       const output = document.createElement("canvas");
-      output.width = 1024;
-      output.height = 1024;
-      drawSquareCrop(output, image, rotation, zoom, { x: offset.x * 2, y: offset.y * 2 });
+      output.width = sw;
+      output.height = sh;
+      output.getContext("2d").drawImage(preview, sx, sy, sw, sh, 0, 0, sw, sh);
       output.toBlob((blob) => {
         if (!blob) { setError("Không thể xử lý ảnh này. Hãy thử chọn ảnh khác."); return; }
         const sourceName = typeof source === "string" ? "anh-san-pham" : source.name.replace(/\.[^.]+$/, "");
@@ -219,13 +255,18 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
     <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Cắt ảnh & lưu</button>
   </>}>
     <div className="product-crop-editor">
-      <p className="small muted">Ảnh gốc được giữ nguyên nếu bạn chọn “Dùng ảnh gốc”. Hoặc kéo, thu phóng và xoay để cắt theo khung hiển thị sản phẩm (tỷ lệ 1:1).</p>
-      <div className={`product-crop-stage${image ? " is-ready" : ""}`} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
+      <p className="small muted">Ảnh gốc được giữ nguyên nếu bạn chọn “Dùng ảnh gốc”. Để cắt, chọn “Chọn vùng cắt” rồi kéo trên ảnh để vẽ khung theo ý muốn.</p>
+      {image && <div className="product-crop-modes">
+        <button type="button" className={`btn secondary${dragMode === "crop" ? " is-active" : ""}`} aria-pressed={dragMode === "crop"} onClick={() => setDragMode("crop")}>Chọn vùng cắt</button>
+        <button type="button" className={`btn secondary${dragMode === "move" ? " is-active" : ""}`} aria-pressed={dragMode === "move"} onClick={() => setDragMode("move")}>Di chuyển ảnh</button>
+      </div>}
+      <div className={`product-crop-stage${image ? ` is-ready is-${dragMode === "crop" ? "cropping" : "moving"}` : ""}`} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
         {image ? <canvas ref={canvasRef} width={CROP_SIZE} height={CROP_SIZE} tabIndex={0} aria-label="Vùng cắt ảnh. Kéo ảnh hoặc dùng phím mũi tên để chỉnh vị trí." onKeyDown={(event) => {
           const movements = { ArrowUp: [0, -20], ArrowDown: [0, 20], ArrowLeft: [-20, 0], ArrowRight: [20, 0] };
           const movement = movements[event.key];
           if (movement) { event.preventDefault(); nudgeCrop(...movement); }
         }} /> : <span>{error || "Đang mở ảnh…"}</span>}
+        {image && selection.width > 0 && selection.height > 0 && <div className="product-crop-selection" aria-hidden="true" style={{ left: `${selection.x / CROP_SIZE * 100}%`, top: `${selection.y / CROP_SIZE * 100}%`, width: `${selection.width / CROP_SIZE * 100}%`, height: `${selection.height / CROP_SIZE * 100}%` }} />}
       </div>
       {error && image && <div className="notice bad" role="alert">{error}</div>}
       {image && <>
