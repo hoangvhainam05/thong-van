@@ -1503,10 +1503,10 @@
 .product-image-edit-trigger:disabled { cursor: default; }
 .product-crop-editor { display: grid; gap: 14px; }
 .product-crop-editor > p { margin: 0; }
-.product-crop-stage { width: min(100%, 512px); aspect-ratio: 1; margin: 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #111827; color: white; }
+.product-crop-stage { position: relative; width: min(100%, 512px); aspect-ratio: 1; margin: 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: white; }
 .product-crop-stage.is-ready { cursor: grab; touch-action: none; user-select: none; }
 .product-crop-stage.is-ready:active { cursor: grabbing; }
-.product-crop-stage canvas { display: block; width: 100%; height: 100%; }
+.product-crop-stage canvas { position: relative; z-index: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
 .product-crop-tools { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
 .product-crop-tools .btn { display: inline-flex; align-items: center; gap: 8px; }
 .product-crop-modes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
@@ -1514,7 +1514,7 @@
 .product-crop-stage.is-ready.is-cropping { cursor: crosshair; }
 .product-crop-stage.is-ready.is-moving { cursor: grab; }
 .product-crop-stage.is-ready.is-moving:active { cursor: grabbing; }
-.product-crop-selection { position: absolute; z-index: 1; border: 2px solid #fff; outline: 1px solid var(--road); background: rgba(36, 92, 166, 0.08); box-shadow: 0 0 0 9999px rgba(16, 24, 39, 0.18); pointer-events: none; }
+.product-crop-selection { position: absolute; z-index: 1; box-sizing: border-box; border: 2px solid #fff; outline: 1px solid var(--road); background: rgba(36, 92, 166, 0.05); box-shadow: 0 0 0 9999px rgba(16, 24, 39, 0.36); pointer-events: none; }
 .product-crop-zoom { display: grid; gap: 8px; font-weight: 600; }
 .product-crop-zoom input { width: 100%; accent-color: var(--road); }
 

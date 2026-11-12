@@ -255,7 +255,7 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
     <button type="button" className="btn" disabled={!image} onClick={saveCrop}>Cắt ảnh & lưu</button>
   </>}>
     <div className="product-crop-editor">
-      <p className="small muted">Ảnh gốc được giữ nguyên nếu bạn chọn “Dùng ảnh gốc”. Để cắt, chọn “Chọn vùng cắt” rồi kéo trên ảnh để vẽ khung theo ý muốn.</p>
+      <p className="small muted">Kéo chuột trên ảnh để vẽ vùng chữ nhật cần giữ; phần tối bên ngoài sẽ bị cắt. Chọn “Di chuyển ảnh” để căn lại ảnh trước khi cắt.</p>
       {image && <div className="product-crop-modes">
         <button type="button" className={`btn secondary${dragMode === "crop" ? " is-active" : ""}`} aria-pressed={dragMode === "crop"} onClick={() => setDragMode("crop")}>Chọn vùng cắt</button>
         <button type="button" className={`btn secondary${dragMode === "move" ? " is-active" : ""}`} aria-pressed={dragMode === "move"} onClick={() => setDragMode("move")}>Di chuyển ảnh</button>
