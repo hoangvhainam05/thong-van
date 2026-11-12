@@ -1497,6 +1497,10 @@
 .product-image-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .product-image-preview { display: grid; gap: 4px; max-width: 110px; }
 .product-image-preview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-image-edit-trigger { display: block; width: max-content; max-width: 100%; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer; }
+.product-image-edit-trigger img { display: block; border-radius: 6px; }
+.product-image-edit-trigger:focus-visible { outline: 3px solid var(--primary, #245ca6); outline-offset: 3px; }
+.product-image-edit-trigger:disabled { cursor: default; }
 .product-crop-editor { display: grid; gap: 14px; }
 .product-crop-editor > p { margin: 0; }
 .product-crop-stage { width: min(100%, 512px); aspect-ratio: 1; margin: 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #111827; color: white; }

@@ -575,9 +575,10 @@ function Products() {
                     const replacementIndex = imageFiles.findIndex((item) => item.replaceImageIndex === index);
                     const previewUrl = replacementIndex < 0 ? image.imageUrl : imagePreviews[replacementIndex];
                     return <div className="product-image-preview" key={`${image.imageUrl}-${index}`}>
-                      <img src={previewUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                      <button type="button" className="product-image-edit-trigger" aria-label={`Chỉnh sửa ảnh ${index + 1}`} title="Nhấn để chỉnh sửa ảnh" disabled={saving} onClick={() => replacementIndex >= 0 ? editPendingImage(replacementIndex) : setCropQueue([{ source: image.imageUrl, replaceImageIndex: index }])}>
+                        <img src={previewUrl} alt={`Ảnh ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                      </button>
                       {replacementIndex >= 0 && <span className="tiny muted">Đã chỉnh, chờ lưu</span>}
-                      <button type="button" className="btn ghost sm" disabled={saving} onClick={() => replacementIndex >= 0 ? editPendingImage(replacementIndex) : setCropQueue([{ source: image.imageUrl, replaceImageIndex: index }])}>Cắt / xoay</button>
                       <label className="btn ghost sm">Thay ảnh
                         <input type="file" accept="image/*" disabled={saving} style={{ display: "none" }} onChange={(event) => {
                           const file = event.target.files?.[0]; event.target.value = "";
@@ -590,9 +591,10 @@ function Products() {
                     </div>;
                   })}
                   {imageFiles.map((item, index) => item.replaceImageIndex == null && <div className="product-image-preview" key={imagePreviews[index]}>
-                    <img src={imagePreviews[index]} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                    <button type="button" className="product-image-edit-trigger" aria-label={`Chỉnh sửa ảnh mới ${index + 1}`} title="Nhấn để chỉnh sửa ảnh" disabled={saving} onClick={() => editPendingImage(index)}>
+                      <img src={imagePreviews[index]} alt={`Ảnh mới ${index + 1}`} style={{ width: 100, height: 80, objectFit: "cover" }} />
+                    </button>
                     <span className="tiny" title={item.file.name}>{item.file.name}</span>
-                    <button type="button" className="btn ghost sm" disabled={saving} onClick={() => editPendingImage(index)}>Cắt / xoay</button>
                     <button type="button" className="btn ghost sm" disabled={saving} onClick={() => setImageFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Xóa</button>
                   </div>)}
                 </div>
