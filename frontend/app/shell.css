@@ -1456,6 +1456,19 @@
 .dispatch-assignment-button:hover:not(:disabled) { border-color: #245b9f; background: #f4f8fe; }
 .dispatch-assignment-button:disabled { cursor: default; opacity: .7; }
 .dispatch-options { display: grid; gap: 9px; max-height: 340px; overflow-y: auto; }
+.dispatch-queue-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.dispatch-queue-filters button { display: inline-flex; align-items: center; gap: 5px; }
+.dispatch-queue-filters button span { font-size: 11px; opacity: .8; }
+.dispatch-order-list { max-height: min(62vh, 760px); min-height: 180px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--line-soft); }
+.dispatch-select-all { position: sticky; top: 0; z-index: 2; padding: 9px 0; background: var(--panel, #fff); }
+.dispatch-order-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--line-soft); }
+.dispatch-order-row.selected { background: #f7faff; }
+.dispatch-order-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.dispatch-order-copy { min-width: 0; }
+.dispatch-order-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.dispatch-order-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dispatch-order-products { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.dispatch-order-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .dispatch-shift-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; border: 0; }
 .dispatch-shift-picker legend { grid-column: 1 / -1; padding: 0 0 2px; }
 .dispatch-shift-picker .dispatch-option { min-height: 58px; }

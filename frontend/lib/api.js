@@ -31,12 +31,21 @@ export async function api(path, { method = "GET", body, token } = {}) {
   const headers = isForm ? {} : { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const url = resolveUrl(path);
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
-    cache: "no-store",
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
+      cache: "no-store",
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw new Error("Máy chủ phản hồi quá lâu. Vui lòng tải lại dữ liệu trước khi thử bố trí lại.");
+    }
+    throw err;
+  }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const detail = data?.detail;

@@ -145,6 +145,7 @@ function Dispatch() {
   const waiting = orders.filter((order) => ["PENDING", "CONFIRMED"].includes(order.status));
   const usedVehicles = new Set(routes.filter((route) => route.shift === shift).map((route) => route.vehicle_id));
   const eligibleReady = ready.filter((order) => canUseOrderInShift(order, shift));
+  const shiftOrders = eligibleReady;
   const mapRoutes = routes.map((route, index) => ({
     color: ROUTE_COLORS[index % ROUTE_COLORS.length], id: route.id, name: `${route.vehicle} · ${shiftLabel(route.shift)} · ${route.code}`, status: route.status, depot: route.depot,
     stops: route.stops.map((stop) => ({ lat: stop.lat, lng: stop.lng, seq: stop.sequence, label: stop.address })),
@@ -160,6 +161,13 @@ function Dispatch() {
     perform(() => api("/api/routes/" + route.id + "/draft", {
       method: "PATCH", token, body: { order_ids: ids },
     }));
+  }
+
+  function selectShift(value) {
+    if (value === shift) return;
+    setShift(value);
+    setResult(null);
+    setSelectedOrderIds([]);
   }
 
   return (
@@ -255,23 +263,31 @@ function Dispatch() {
           <section className="panel panel-pad stack-sm">
             <h3>Hàng đợi {dateLabel(date)}</h3>
             <div className="small">{eligibleReady.length} đơn phù hợp {shiftLabel(shift).toLowerCase()} · {missing.filter((order) => canUseOrderInShift(order, shift)).length} thiếu vị trí · {waiting.length} đang xác nhận</div>
-            {eligibleReady.length > 0 && <label className="check" style={{ marginTop: 10 }}>
+            <div className="dispatch-queue-filters" role="group" aria-label="Lọc hàng đợi theo ca">
+              <button type="button" className={`btn sm ${shift === "MORNING" ? "" : "secondary"}`} aria-pressed={shift === "MORNING"} disabled={busy} onClick={() => selectShift("MORNING")}>Ca sáng <span>(sáng + cả ngày)</span></button>
+              <button type="button" className={`btn sm ${shift === "AFTERNOON" ? "" : "secondary"}`} aria-pressed={shift === "AFTERNOON"} disabled={busy} onClick={() => selectShift("AFTERNOON")}>Ca chiều <span>(chiều + cả ngày)</span></button>
+            </div>
+            {eligibleReady.length > 0 && <label className="check dispatch-select-all" style={{ marginTop: 10 }}>
               <input type="checkbox" checked={selectedOrderIds.length === eligibleReady.length} onChange={(event) => setSelectedOrderIds(event.target.checked ? eligibleReady.map((order) => order.id) : [])} />
               Chọn tất cả đơn phù hợp ca
             </label>}
             {ready.length === 0 && <Empty title="Chưa có đơn sẵn sàng" />}
-            {ready.map((order) => <div key={order.id} className="row between small" style={{ borderBottom: "1px solid var(--line-soft)", padding: "8px 0", alignItems: "flex-start" }}>
-              <div className="row" style={{ alignItems: "flex-start", gap: 10 }}>
-                <input type="checkbox" aria-label={`Chọn đơn ${order.code} để bố trí điểm giao`} checked={selectedOrderIds.includes(order.id)} disabled={!canUseOrderInShift(order, shift)} onChange={(event) => setSelectedOrderIds((current) => event.target.checked ? [...current, order.id] : current.filter((id) => id !== order.id))} />
-                <div><Link href={"/admin/orders/" + order.id} className="strong">{order.code}</Link> {order.is_urgent && <span className="badge move">Gấp</span>} <span className="badge">{deliveryShift(order.time_window_start, order.time_window_end)}</span><div className="tiny muted">{order.address} · {String(order.time_window_start).slice(0, 5)}–{String(order.time_window_end).slice(0, 5)}</div>
-                  <div className="tiny" style={{ marginTop: 3 }}>{(order.items || []).map((item) => `${item.product_name || item.name} × ${item.quantity}`).join(", ") || "Chưa có thông tin sản phẩm"} · {Number(order.volume_m3 || 0).toFixed(3)} m³</div>
+            {ready.length > 0 && shiftOrders.length === 0 && <Empty title={`Không có đơn phù hợp ${shiftLabel(shift).toLowerCase()}`} />}
+            {shiftOrders.length > 0 && <div className="dispatch-order-list" aria-label={`Danh sách đơn phù hợp ${shiftLabel(shift).toLowerCase()}`}>
+            {shiftOrders.map((order) => <div key={order.id} className={`dispatch-order-row small ${selectedOrderIds.includes(order.id) ? "selected" : ""}`}>
+              <div className="dispatch-order-main">
+                <input type="checkbox" aria-label={`Chọn đơn ${order.code} để bố trí điểm giao`} checked={selectedOrderIds.includes(order.id)} onChange={(event) => setSelectedOrderIds((current) => event.target.checked ? [...current, order.id] : current.filter((id) => id !== order.id))} />
+                <div className="dispatch-order-copy"><div className="dispatch-order-title"><Link href={"/admin/orders/" + order.id} className="strong">{order.code}</Link> {order.is_urgent && <span className="badge move">Gấp</span>} <span className="badge">{deliveryShift(order.time_window_start, order.time_window_end)}</span> <span className="tiny muted">{String(order.time_window_start).slice(0, 5)}–{String(order.time_window_end).slice(0, 5)}</span></div>
+                  <div className="tiny muted dispatch-order-address" title={order.address}>{order.address}</div>
+                  <div className="tiny dispatch-order-products">{(order.items || []).map((item) => `${item.product_name || item.name} × ${item.quantity}`).join(", ") || "Chưa có thông tin sản phẩm"} · {Number(order.volume_m3 || 0).toFixed(3)} m³</div>
                 </div>
               </div>
-              <div className="row">
+              <div className="dispatch-order-actions">
                 {order.lat == null && <span className="badge move">Thiếu vị trí</span>}
                 {can("route.dispatch") && <button className="btn ghost sm" disabled={busy} onClick={() => perform(() => api("/api/orders/" + order.id + "/priority", { method: "PATCH", token, body: { is_urgent: !order.is_urgent } }))}>{order.is_urgent ? "Bỏ gấp" : "Đánh dấu gấp"}</button>}
               </div>
             </div>)}
+            </div>}
             {waiting.length > 0 && <p className="tiny muted">Đơn đang xác nhận cần được chuyển sang “Sẵn sàng” tại <Link href="/admin/orders">Quản lý đơn</Link>.</p>}
             {missing.length > 0 && <p className="tiny muted">Đơn thiếu vị trí cần được cập nhật toạ độ trong chi tiết đơn trước khi xếp tuyến.</p>}
           </section>
@@ -282,7 +298,7 @@ function Dispatch() {
             <fieldset className="dispatch-shift-picker" aria-label="Chọn ca bố trí">
               <legend className="small">Ca cần bố trí</legend>
               {[["MORNING", "Ca sáng", "08:00–12:00"], ["AFTERNOON", "Ca chiều", "12:00–18:00"]].map(([value, label, hours]) => <label className={`dispatch-option ${shift === value ? "selected" : ""}`} key={value}>
-                <input type="radio" name="dispatch-shift" value={value} checked={shift === value} disabled={busy} onChange={() => { setShift(value); setResult(null); setSelectedOrderIds([]); }} />
+                <input type="radio" name="dispatch-shift" value={value} checked={shift === value} disabled={busy} onChange={() => selectShift(value)} />
                 <span><b>{label}</b><small>{hours}</small></span>
               </label>)}
             </fieldset>
