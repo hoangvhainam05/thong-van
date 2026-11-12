@@ -82,6 +82,8 @@ function Dispatch() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cancelRoute, setCancelRoute] = useState(null);
+  const [cancelAllRoutes, setCancelAllRoutes] = useState(false);
+  const [approveAllRoutes, setApproveAllRoutes] = useState(false);
   const [assignment, setAssignment] = useState(null);
   const [error, setError] = useState("");
   const [view3D, setView3D] = useState(false);
@@ -146,6 +148,8 @@ function Dispatch() {
   const usedVehicles = new Set(routes.filter((route) => route.shift === shift).map((route) => route.vehicle_id));
   const eligibleReady = ready.filter((order) => canUseOrderInShift(order, shift));
   const shiftOrders = eligibleReady;
+  const draftRoutes = routes.filter((route) => route.status === "DRAFT");
+  const allDraftRoutesHaveDrivers = draftRoutes.length > 0 && draftRoutes.every((route) => route.driver_id);
   const mapRoutes = routes.map((route, index) => ({
     color: ROUTE_COLORS[index % ROUTE_COLORS.length], id: route.id, name: `${route.vehicle} · ${shiftLabel(route.shift)} · ${route.code}`, status: route.status, depot: route.depot,
     stops: route.stops.map((stop) => ({ lat: stop.lat, lng: stop.lng, seq: stop.sequence, label: stop.address })),
@@ -230,6 +234,47 @@ function Dispatch() {
         })}>{busy ? "Đang hủy…" : "Xác nhận hủy tuyến"}</button>
       </>}>
         <p>Bạn muốn hủy tuyến <b>{cancelRoute.code}</b> của xe <b>{cancelRoute.vehicle}</b>? Các đơn sẽ trở lại hàng đợi để bố trí lại.</p>
+        {error && <div className="notice bad" style={{ marginTop: 12 }}>{error}</div>}
+      </Modal>}
+
+      {cancelAllRoutes && <Modal title="Hủy tất cả tuyến nháp" onClose={() => { if (!busy) setCancelAllRoutes(false); }} footer={<>
+        <button className="btn secondary" disabled={busy} onClick={() => setCancelAllRoutes(false)}>Quay lại</button>
+        <button className="btn danger" disabled={busy || draftRoutes.length === 0} onClick={() => perform(async () => {
+          let completed = 0;
+          try {
+            for (const route of draftRoutes) {
+              await api(`/api/routes/${route.id}/cancel`, { method: "POST", token });
+              completed += 1;
+            }
+            setResult(null);
+            setCancelAllRoutes(false);
+          } catch (err) {
+            await refresh();
+            throw new Error(`Đã hủy ${completed} / ${draftRoutes.length} tuyến trước khi xảy ra lỗi: ${err.message}`);
+          }
+        })}>{busy ? "Đang hủy…" : `Xác nhận hủy ${draftRoutes.length} tuyến`}</button>
+      </>}>
+        <p>Bạn muốn hủy toàn bộ <b>{draftRoutes.length} tuyến nháp</b> của ngày {dateLabel(date)}? Các đơn trong những tuyến này sẽ trở lại hàng đợi. Tuyến đã duyệt hoặc đang giao không bị ảnh hưởng.</p>
+        {error && <div className="notice bad" style={{ marginTop: 12 }}>{error}</div>}
+      </Modal>}
+
+      {approveAllRoutes && <Modal title="Duyệt tất cả tuyến nháp" onClose={() => { if (!busy) setApproveAllRoutes(false); }} footer={<>
+        <button className="btn secondary" disabled={busy} onClick={() => setApproveAllRoutes(false)}>Quay lại</button>
+        <button className="btn" disabled={busy || !allDraftRoutesHaveDrivers} onClick={() => perform(async () => {
+          let completed = 0;
+          try {
+            for (const route of draftRoutes) {
+              await api(`/api/routes/${route.id}/lock`, { method: "POST", token });
+              completed += 1;
+            }
+            setApproveAllRoutes(false);
+          } catch (err) {
+            await refresh();
+            throw new Error(`Đã duyệt ${completed} / ${draftRoutes.length} tuyến trước khi xảy ra lỗi: ${err.message}`);
+          }
+        })}>{busy ? "Đang duyệt…" : `Xác nhận duyệt ${draftRoutes.length} tuyến`}</button>
+      </>}>
+        <p>Bạn muốn duyệt và chốt toàn bộ <b>{draftRoutes.length} tuyến nháp</b> của ngày {dateLabel(date)}? Tất cả tuyến phải được gán tài xế trước khi chốt.</p>
         {error && <div className="notice bad" style={{ marginTop: 12 }}>{error}</div>}
       </Modal>}
 
@@ -354,6 +399,13 @@ function Dispatch() {
         )}
         <div className="stack" style={{ marginTop: 16 }}>
           {routes.length === 0 && <div className="panel"><Empty title="Chưa có tuyến cho ngày này">Chọn xe và chạy tối ưu khi có đơn sẵn sàng.</Empty></div>}
+          {draftRoutes.length > 0 && <div className="dispatch-bulk-actions row between">
+            <span className="small muted">{draftRoutes.length} tuyến nháp · thao tác chỉ áp dụng cho tuyến nháp ngày {dateLabel(date)}</span>
+            <div className="row">
+              {can("route.optimize") && <button className="btn danger sm" disabled={busy} onClick={() => { setError(""); setCancelAllRoutes(true); }}>Hủy tất cả</button>}
+              {can("route.approve") && <button className="btn sm" disabled={busy || !allDraftRoutesHaveDrivers} title={!allDraftRoutesHaveDrivers ? "Gán tài xế cho tất cả tuyến nháp trước khi duyệt" : undefined} onClick={() => { setError(""); setApproveAllRoutes(true); }}>Duyệt tất cả ({draftRoutes.length})</button>}
+            </div>
+          </div>}
           {routes.map((route) => <section className="panel" key={route.id}>
             <div className="panel-head row between"><div className="row"><b>{route.code}</b><span className="badge">{shiftLabel(route.shift)}</span><RouteBadge status={route.status} /><span className="small muted">{route.total_km} km {route.distance_source === "estimate" ? "(ước tính)" : "(ORS)"} · {num(route.total_minutes / 60, 1)} giờ · {num(route.total_volume_m3, 3)} m³ / {num(route.vehicle_capacity_m3, 3)} m³ · {num(route.total_weight_kg, 1)} / {num(route.vehicle_capacity_kg, 0)} kg</span></div><div className="row"><Link className="btn ghost sm" href={"/admin/routes/" + route.id}>Chi tiết</Link>{can("route.optimize") && route.status === "DRAFT" && <button className="btn secondary sm" disabled={busy} onClick={() => { setError(""); setCancelRoute(route); }}>Hủy tuyến</button>}{can("route.approve") && route.status === "DRAFT" && <button className="btn sm" disabled={busy || !route.driver_id} onClick={() => perform(() => api("/api/routes/" + route.id + "/lock", { method: "POST", token }))}>Duyệt và chốt</button>}</div></div>
             <div className="panel-body stack-sm">

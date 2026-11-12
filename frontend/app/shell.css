@@ -1469,6 +1469,7 @@
 .dispatch-order-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dispatch-order-products { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
 .dispatch-order-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.dispatch-bulk-actions { flex-wrap: wrap; gap: 12px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
 .dispatch-shift-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; border: 0; }
 .dispatch-shift-picker legend { grid-column: 1 / -1; padding: 0 0 2px; }
 .dispatch-shift-picker .dispatch-option { min-height: 58px; }
