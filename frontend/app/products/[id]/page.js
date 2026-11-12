@@ -31,7 +31,7 @@ export default function ProductDetail() {
         <Link href="/products">Sản phẩm</Link> / <Link href={`/products?cat=${p.category}`}>{cat?.name || p.category}</Link>
       </nav>
       <div className="product-detail-layout">
-        <div className="stack-sm"><div className="panel" style={{ aspectRatio: "1 / 1", display: "grid", placeItems: "center", color: "var(--road)", background: "linear-gradient(180deg,#f3f6fa,#e6ecf3)" }}>
+        <div className="stack-sm"><div className="panel" style={{ aspectRatio: "1 / 1", display: "grid", placeItems: "center", color: "var(--road)", background: "#fff" }}>
           {images.length ? <img src={images[selectedImage]?.imageUrl || images[0].imageUrl} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <Art category={p.category} className="detail-art" label={p.name} />}
         </div>
         {images.length > 1 && <div className="row" style={{ flexWrap: "wrap" }}>{images.map((image, index) => <button type="button" key={`${image.imageUrl}-${index}`} onClick={() => setSelectedImage(index)} aria-label={`Xem ảnh ${index + 1}`} aria-pressed={index === selectedImage} style={{ border: index === selectedImage ? "2px solid var(--road)" : "1px solid #ddd", padding: 2, background: "white" }}><img src={image.imageUrl} alt="" style={{ width: 64, height: 64, objectFit: "cover" }} /></button>)}</div>}</div>
