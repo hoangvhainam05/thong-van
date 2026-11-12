@@ -57,7 +57,7 @@
   "crons": [
     {
       "path": "/api/orders/cron/expire-payos",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
