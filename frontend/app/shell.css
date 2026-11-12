@@ -1500,3 +1500,11 @@
 
 .modal-foot:has(.product-form-error) { flex-wrap: wrap; }
 .product-form-error { flex: 1 1 100%; margin-right: auto; }
+.product-form-footer { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; }
+.product-excel-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-right: auto; }
+.product-form-actions { flex-wrap: nowrap; }
+@media (max-width: 600px) {
+  .product-form-footer { flex-wrap: wrap; }
+  .product-excel-actions { width: 100%; }
+  .product-form-actions { margin-left: auto; }
+}

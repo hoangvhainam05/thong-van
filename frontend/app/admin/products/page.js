@@ -274,11 +274,6 @@ function Products() {
         <input className="input" style={{ width: 220 }} placeholder="Tìm tên hoặc mã" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Tìm sản phẩm" />
         <CategorySelect categories={categories} value={cat} onChange={setCat} />
         <button className="btn secondary" disabled={!connected} onClick={() => setManagingCategories(true)}>Quản lý danh mục</button>
-        <button className="btn secondary" onClick={() => downloadProductTemplate(categories)}>Tải file Excel mẫu</button>
-        <label className={`btn secondary${!connected ? " disabled" : ""}`} aria-disabled={!connected}>
-          Nhập từ Excel
-          <input type="file" accept=".xlsx" disabled={!connected || importing} style={{ display: "none" }} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) readImportFile(file); }} />
-        </label>
         <button className="btn" disabled={!connected || !categories.length} onClick={() => { setImageFiles([]); setFormError(""); setEdit({ ...EMPTY, category: categories[0]?.id || "" }); }}>Thêm sản phẩm</button>
       </PageHead>
       {(connectionError || categoryError) && <div className="notice bad" style={{ marginBottom: 14 }}>{connectionError || categoryError}</div>}
@@ -371,7 +366,22 @@ function Products() {
       )}
       {edit && (
         <Modal wide title={edit.id ? "Sửa sản phẩm" : "Thêm sản phẩm"} onClose={() => { if (!saving) setEdit(null); }}
-          footer={<>{formError && <div className="notice bad product-form-error" role="alert">{formError}</div>}<button className="btn secondary" disabled={saving} onClick={() => { setEdit(null); setImageFiles([]); }}>Huỷ</button><button className="btn" disabled={saving} onClick={save}>{saving ? "Đang tải ảnh và lưu…" : "Lưu sản phẩm"}</button></>}>
+          footer={<>
+            {formError && <div className="notice bad product-form-error" role="alert">{formError}</div>}
+            <div className="product-form-footer">
+              {!edit.id && <div className="product-excel-actions">
+                <button type="button" className="btn secondary" disabled={saving} onClick={() => downloadProductTemplate(categories)}>Tải file Excel mẫu</button>
+                <label className={`btn secondary${!connected || importing ? " disabled" : ""}`} aria-disabled={!connected || importing}>
+                  Nhập từ Excel
+                  <input type="file" accept=".xlsx" disabled={!connected || importing} style={{ display: "none" }} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) readImportFile(file); }} />
+                </label>
+              </div>}
+              <div className="row product-form-actions">
+                <button className="btn secondary" disabled={saving} onClick={() => { setEdit(null); setImageFiles([]); }}>Huỷ</button>
+                <button className="btn" disabled={saving} onClick={save}>{saving ? "Đang tải ảnh và lưu…" : "Lưu sản phẩm"}</button>
+              </div>
+            </div>
+          </>}>
           <div className="form-grid">
             <Field label="Tên sản phẩm" full><input className="input" value={edit.name} onChange={set("name")} /></Field>
             <Field label="Hãng"><input className="input" value={edit.brand} onChange={set("brand")} /></Field>
