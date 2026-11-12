@@ -83,6 +83,10 @@ export class RoutesService {
       ...initialSpecs.map((stop): LatLng => [stop.lat, stop.lng])];
     const matrix = await this.roadMatrix.getMatrix(points);
     if (points.length > 1 && matrix.source !== 'ors') throw new ConflictException('Không lấy được quãng đường bộ từ OpenRouteService. Kiểm tra kết nối và cấu hình API rồi thử lại.');
+    // Read settings before opening a transaction. Vercel uses a one-connection
+    // pool, so querying the global DataSource from inside this transaction deadlocks.
+    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
+    const options = await this.solverOptions(shift, setting);
     return this.dataSource.transaction(async (manager) => {
     // Khóa kho để các lần tối ưu/sửa/chốt tuyến cùng ngày không ghi đè nhau.
     const warehouse = await manager.getRepository(Warehouse).createQueryBuilder('warehouse')
@@ -194,15 +198,8 @@ export class RoutesService {
     if (JSON.stringify(stops) !== JSON.stringify(initialSpecs)) {
       throw new ConflictException('Đơn giao hàng đã thay đổi; vui lòng tối ưu lại');
     }
-    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
-    const options = await this.solverOptions(shift);
     const result = optimize(depot, stops, vehicleSpecs, {
       ...options,
-      dayEnd: shift === DeliveryShift.MORNING
-        ? Math.min(timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')), 12 * 60)
-        : timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00')),
-      weightKm: setting ? Number(setting.weightKm) : this.config.get<number>('optimization.weightKm', 1),
-      weightTime: setting ? Number(setting.weightTime) : this.config.get<number>('optimization.weightTime', 0.5),
       shift,
       matrix,
     });
@@ -351,6 +348,7 @@ export class RoutesService {
   }
 
   async editDraft(id: number, body: DraftRouteUpdateDto) {
+    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
     return this.dataSource.transaction(async (manager) => {
       const warehouse = await manager.getRepository(Warehouse).createQueryBuilder('warehouse')
         .orderBy('warehouse.id', 'ASC').setLock('pessimistic_write').getOne();
@@ -382,7 +380,7 @@ export class RoutesService {
       const routeWarehouse = route.warehouseId === warehouse.id ? warehouse : await manager.getRepository(Warehouse).findOne({ where: { id: route.warehouseId } });
       if (!routeWarehouse) throw new ConflictException('Không tìm thấy kho của tuyến');
       const depot = { lat: Number(routeWarehouse.lat), lng: Number(routeWarehouse.lng) };
-      const options = await this.solverOptions(route.shift);
+      const options = await this.solverOptions(route.shift, setting);
       const stored = route.routingMatrix;
       const currentPoints: LatLng[] = [[depot.lat, depot.lng], ...specs.map((spec): LatLng => [spec.lat, spec.lng])];
       let routeMatrix;
@@ -561,8 +559,10 @@ export class RoutesService {
     return shift === DeliveryShift.MORNING ? start < 12 * 60 : end > 12 * 60;
   }
 
-  private async solverOptions(shift: DeliveryShift = DeliveryShift.MORNING) {
-    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
+  private async solverOptions(shift: DeliveryShift = DeliveryShift.MORNING, settingOverride?: SystemSetting | null) {
+    const setting = settingOverride === undefined
+      ? await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null)
+      : settingOverride;
     const dayStart = timeToMinutes(setting?.deliveryDayStart || this.config.get<string>('optimization.dayStart', '08:00'));
     const dayEnd = timeToMinutes(setting?.deliveryDayEnd || this.config.get<string>('optimization.dayEnd', '18:00'));
     return {
@@ -570,6 +570,8 @@ export class RoutesService {
       dayEnd: shift === DeliveryShift.MORNING ? Math.min(dayEnd, 12 * 60) : dayEnd,
       roadFactor: setting ? Number(setting.roadFactor) : this.config.get<number>('optimization.roadFactor', 1.35),
       speedKmh: setting ? Number(setting.avgSpeedKmh) : this.config.get<number>('optimization.avgSpeedKmh', 30),
+      weightKm: setting ? Number(setting.weightKm) : this.config.get<number>('optimization.weightKm', 1),
+      weightTime: setting ? Number(setting.weightTime) : this.config.get<number>('optimization.weightTime', 0.5),
       maxRouteMinutes: 480,
     };
   }
