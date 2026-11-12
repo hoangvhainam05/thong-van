@@ -114,6 +114,13 @@ function cropGeometry(image, rotation, zoom, size = CROP_SIZE) {
   };
 }
 
+function minCropZoom(image, rotation, size = CROP_SIZE) {
+  const quarterTurn = Math.abs(rotation % 180) === 90;
+  const width = quarterTurn ? image.naturalHeight : image.naturalWidth;
+  const height = quarterTurn ? image.naturalWidth : image.naturalHeight;
+  return Math.min(size / width, size / height) / Math.max(size / width, size / height);
+}
+
 function drawSquareCrop(canvas, image, rotation, zoom, offset) {
   const size = canvas.width;
   const { scale, maxX, maxY } = cropGeometry(image, rotation, zoom, size);
@@ -139,6 +146,7 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
   const [error, setError] = useState("");
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
+  const zoomMin = image ? minCropZoom(image, rotation) : 1;
 
   useEffect(() => {
     const remoteSource = typeof source === "string";
@@ -221,7 +229,7 @@ function ProductImageCropModal({ source, onCancel, onSave }) {
           <button type="button" className="btn secondary" aria-label="Xoay phải 90 độ" onClick={() => rotate(90)}><RotateCw size={18} /> Xoay phải</button>
         </div>
         <label className="product-crop-zoom">Phóng to / thu nhỏ
-          <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+          <input type="range" min={zoomMin} max="3" step="0.01" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
         </label>
         <div className="tiny muted">{typeof source === "string" ? "Ảnh hiện tại" : source.name} · {image.naturalWidth} × {image.naturalHeight} px</div>
       </>}
