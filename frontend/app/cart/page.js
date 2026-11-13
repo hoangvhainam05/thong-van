@@ -7,6 +7,8 @@ import { useStore } from "@/lib/store";
 import { vnd } from "@/lib/format";
 import Art from "@/components/Art";
 import { Empty, Loading } from "@/components/ui";
+import { playTap } from "@/lib/audio-juice";
+import { ArrowRight, Trash2, Truck, ShieldCheck, Wrench } from "lucide-react";
 
 function CartProductImage({ product }) {
   const [failed, setFailed] = useState(false);
@@ -87,41 +89,80 @@ export default function CartPage() {
               <div className="grow stack-sm">
                 <Link href={`/products/${l.p.id}`} className="strong">{l.p.name}</Link>
                 <span className="small muted">{l.p.install ? `Lắp đặt ~${l.p.install} phút/sản phẩm` : "Không cần lắp đặt"}</span>
-                <div className="row">
+                <div className="row" style={{ gap: 10, alignItems: "center" }}>
                   <div className="seg">
-                    <button onClick={() => actions.setCartQty(l.productId, l.qty - 1)} aria-label="Giảm">−</button>
-                    <button style={{ minWidth: 40, cursor: "default" }}>{l.qty}</button>
-                    <button onClick={() => actions.setCartQty(l.productId, Math.min(l.qty + 1, l.p.stock))} aria-label="Tăng">+</button>
+                    <button
+                      onClick={() => {
+                        playTap(700, 0.03);
+                        actions.setCartQty(l.productId, l.qty - 1);
+                      }}
+                      aria-label="Giảm"
+                    >
+                      −
+                    </button>
+                    <button style={{ minWidth: 40, cursor: "default", fontWeight: 700 }}>{l.qty}</button>
+                    <button
+                      onClick={() => {
+                        playTap(750, 0.03);
+                        actions.setCartQty(l.productId, Math.min(l.qty + 1, l.p.stock));
+                      }}
+                      aria-label="Tăng"
+                    >
+                      +
+                    </button>
                   </div>
-                  <button className="btn ghost sm" onClick={() => actions.setCartQty(l.productId, 0)}>Xoá</button>
+                  <button
+                    className="btn ghost sm row"
+                    style={{ gap: 4, color: "var(--stop)" }}
+                    onClick={() => {
+                      playTap(600, 0.03);
+                      actions.setCartQty(l.productId, 0);
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    <span>Xoá</span>
+                  </button>
                 </div>
               </div>
-              <div className="price nowrap">{vnd(l.p.price * l.qty)}</div>
+              <div className="price nowrap" style={{ fontSize: 18 }}>{vnd(l.p.price * l.qty)}</div>
             </div>
           ))}
         </div>
-        <aside className="panel panel-pad stack">
-          <h3>Tóm tắt</h3>
+        <aside className="panel panel-pad stack" style={{ gap: 18, height: "fit-content" }}>
+          <h3 style={{ fontSize: 18 }}>Tóm tắt đơn hàng</h3>
           <div className="stack-sm small">
-            <div className="row between"><span className="muted">Sản phẩm đã chọn</span><span>{selectedLines.length}</span></div>
-            <div className="row between"><span className="muted">Tạm tính</span><span>{vnd(subtotal)}</span></div>
-            {install > 0 && <div className="row between"><span className="muted">Thời gian lắp đặt dự kiến</span><span>{install} phút</span></div>}
+            <div className="row between"><span className="muted">Sản phẩm đã chọn</span><b>{selectedLines.length}</b></div>
+            <div className="row between"><span className="muted">Tạm tính hàng</span><b>{vnd(subtotal)}</b></div>
+            {install > 0 && (
+              <div className="row between">
+                <span className="muted row" style={{ gap: 4, alignItems: "center" }}>
+                  <Wrench size={14} color="var(--signal)" /> Thời gian lắp đặt ước tính
+                </span>
+                <b>~{install} phút</b>
+              </div>
+            )}
           </div>
           <div className="divider" />
-          <div className="row between"><b>Tạm tính</b><span className="price" style={{ fontSize: 22 }}>{vnd(subtotal)}</span></div>
+          <div className="row between">
+            <b>Tổng tạm tính</b>
+            <span className="price" style={{ fontSize: 24, color: "var(--road-deep)" }}>{vnd(subtotal)}</span>
+          </div>
           {staffBlocked ? (
             <div className="notice warn">Tài khoản nhân viên không đặt hàng được. Đăng nhập bằng tài khoản khách hàng để thử luồng mua hàng.</div>
           ) : (
             <button
-              className="btn lg block"
+              className="btn lg block btn-glow row"
+              style={{ gap: 8, justifyContent: "center" }}
               disabled={!selectedLines.length}
               onClick={() => {
+                playTap(850, 0.04);
                 const params = new URLSearchParams({ items: JSON.stringify(selectedLines.map((line) => line.productId)) });
                 const checkoutPath = `/checkout?${params.toString()}`;
                 router.push(user ? checkoutPath : `/login?next=${encodeURIComponent(checkoutPath)}`);
               }}
             >
-              {user ? "Tiếp tục đặt hàng" : "Đăng nhập để đặt hàng"}
+              <span>{user ? "Tiếp tục đặt hàng" : "Đăng nhập để đặt hàng"}</span>
+              <ArrowRight size={17} />
             </button>
           )}
           {!selectedLines.length && <p className="small muted">Chọn ít nhất một sản phẩm để tiếp tục.</p>}

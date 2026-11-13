@@ -10,6 +10,8 @@ import { RequirePerm } from "@/components/Guard";
 import LocationPicker from "@/components/LocationPicker";
 import { Empty, Field, Loading, Modal } from "@/components/ui";
 import { QRCodeSVG } from "qrcode.react";
+import confetti from "canvas-confetti";
+import { playSuccess, playTap } from "@/lib/audio-juice";
 
 const WINDOWS = [
   { id: "am", label: "Buổi sáng", start: "08:00", end: "12:00" },
@@ -275,6 +277,10 @@ function Checkout() {
     setSubmitting(false);
     if (order) {
       requestIdRef.current = null;
+      playSuccess();
+      try {
+        confetti({ particleCount: 75, spread: 70, origin: { y: 0.6 } });
+      } catch {}
       if (paymentChoice === "PAYOS") {
         try {
           const result = await api(`/api/orders/${order.serverId}/payos`, { method: "POST", token: loadToken() });
@@ -568,8 +574,8 @@ function Checkout() {
           </div>
           <div className="row between"><b>Tổng cộng</b><span className="price" style={{ fontSize: 22 }}>{vnd(subtotal + (shippingQuote?.shippingBreakdown?.totalFee || 0))}</span></div>
           {error && <div className="notice bad">{error}</div>}
-          <button className="btn lg block" disabled={submitting || !paymentChoice || quoteLoading || !shippingQuote?.quoteAvailable || (deliveryType === "EXPRESS" && !shippingQuote?.expressEligibility?.eligible)} onClick={submit}>
-            {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng" : "Thanh toán"}
+          <button className="btn lg block btn-glow" disabled={submitting || !paymentChoice || quoteLoading || !shippingQuote?.quoteAvailable || (deliveryType === "EXPRESS" && !shippingQuote?.expressEligibility?.eligible)} onClick={submit}>
+            {submitting ? "Đang tạo đơn…" : paymentChoice === "COD" ? "Đặt hàng ngay" : "Thanh toán ngay"}
           </button>
         </aside>
       </div>

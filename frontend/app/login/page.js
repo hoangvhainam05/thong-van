@@ -44,25 +44,65 @@ function LoginForm() {
   return (
     <div className="auth-wrap">
       <aside className="auth-side">
-        <Link href="/" className="logo"><img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" /></Link>
-        <div className="stack">
-          <h2>Một tài khoản, đúng việc của bạn</h2>
-          <p>Khách hàng theo dõi đơn và thứ tự giao. Nhân viên bán hàng xử lý đơn. Quản lý xếp tuyến và chốt lịch. Tài xế nhận tuyến và cập nhật từng điểm giao.</p>
+        <Link href="/" className="logo" onClick={() => playTap(800, 0.03)}>
+          <img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" />
+        </Link>
+        <div className="stack" style={{ gap: 20 }}>
+          <div className="hud-badge hero-pill" style={{ width: "fit-content" }}>
+            <span className="live-dot" />
+            <span>HỆ THỐNG VẬN HÀNH THÔNG MINH</span>
+          </div>
+          <h2>Một tài khoản, đúng vị trí và quyền hạn của bạn</h2>
+          <p>
+            Khách hàng theo dõi vị trí xe và thời gian giao hàng trực tiếp. Nhân viên bán hàng xử lý đơn. Quản lý điều phối và tối ưu hóa tuyến đường. Tài xế nhận tuyến và cập nhật nghiệm thu.
+          </p>
         </div>
-        <p className="small">Đăng nhập bằng tài khoản đã được cấp hoặc tạo tài khoản khách hàng.</p>
+        <p className="small" style={{ color: "#9bb7dc" }}>
+          Đăng nhập bằng tài khoản đã được cấp hoặc tạo tài khoản khách hàng mới.
+        </p>
       </aside>
       <main className="auth-main">
-        <div className="auth-box stack">
+        <div className="auth-box panel panel-pad stack animate-pop-in" style={{ gap: 20, boxShadow: "0 16px 40px -10px rgba(15, 23, 42, 0.12)" }}>
           <div>
             <h1>Đăng nhập</h1>
-            <p className="muted" style={{ marginTop: 4 }}>Chưa có tài khoản? <Link href="/register" style={{ color: "var(--road)", fontWeight: 600 }}>Đăng ký</Link></p>
+            <p className="muted" style={{ marginTop: 6 }}>
+              Chưa có tài khoản?{" "}
+              <Link href="/register" style={{ color: "var(--road)", fontWeight: 600 }}>
+                Đăng ký tài khoản mới
+              </Link>
+            </p>
           </div>
-          <form className="stack" onSubmit={(e) => { e.preventDefault(); go(id, pw); }}>
-            <Field label="Email hoặc số điện thoại"><input className="input" value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" required /></Field>
-            <Field label="Mật khẩu"><input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" required /></Field>
-            <Link href="/forgot-password" className="small">Quên mật khẩu?</Link>
-            {error && <div className="notice bad">{error}</div>}
-            <button className="btn lg block">Đăng nhập</button>
+          <form className="stack" style={{ gap: 16 }} onSubmit={(e) => { e.preventDefault(); playTap(800, 0.03); go(id, pw); }}>
+            <Field label="Email hoặc số điện thoại">
+              <input
+                className="input"
+                value={id}
+                onChange={(e) => setId(e.target.value)}
+                autoComplete="username"
+                placeholder="VD: user@thongvan.vn hoặc 09xx xxx xxx"
+                required
+              />
+            </Field>
+            <Field label="Mật khẩu">
+              <input
+                className="input"
+                type="password"
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                autoComplete="current-password"
+                placeholder="Nhập mật khẩu…"
+                required
+              />
+            </Field>
+            <div className="row between" style={{ alignItems: "center" }}>
+              <Link href="/forgot-password" className="small" style={{ color: "var(--road)", fontWeight: 500 }}>
+                Quên mật khẩu?
+              </Link>
+            </div>
+            {error && <div className="notice bad animate-pop-in">{error}</div>}
+            <button className="btn lg block btn-glow" style={{ marginTop: 4 }}>
+              Đăng nhập
+            </button>
           </form>
         </div>
       </main>

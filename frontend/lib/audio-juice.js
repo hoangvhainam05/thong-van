@@ -19,7 +19,13 @@ function getAudioContext() {
 }
 
 export function isSoundEnabled() {
-  return false;
+  if (typeof window === "undefined") return false;
+  try {
+    const stored = localStorage.getItem("thongvan_sound_enabled");
+    return stored === null ? true : stored === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function setSoundEnabled(enabled) {

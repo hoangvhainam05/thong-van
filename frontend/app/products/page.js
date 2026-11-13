@@ -6,6 +6,8 @@ import { useStore } from "@/lib/store";
 import { useCategories } from "@/lib/categories";
 import ProductCard from "@/components/ProductCard";
 import { Empty, Loading } from "@/components/ui";
+import { playTap } from "@/lib/audio-juice";
+import { SlidersHorizontal, RotateCcw, Tag } from "lucide-react";
 
 const PRICE = [
   ["all", "Mọi mức giá"],
@@ -45,56 +47,121 @@ function Catalog() {
     return [...l].sort(sorters[sort]);
   }, [ready, state, cat, q, brands, price, sort]);
 
-  if (!ready || catalogStatus === "loading") return <Loading />;
-  if (catalogStatus === "error") return <div className="panel"><Empty title="Không tải được sản phẩm">Kiểm tra kết nối máy chủ và tải lại trang.</Empty></div>;
+  if (!ready || catalogStatus === "loading") return <Loading message="Đang tải danh mục sản phẩm…" />;
+  if (catalogStatus === "error")
+    return (
+      <div className="panel">
+        <Empty title="Không tải được sản phẩm">Kiểm tra kết nối máy chủ và tải lại trang.</Empty>
+      </div>
+    );
+
   const allBrands = [...new Set(state.products.filter((p) => !cat || p.category === cat).map((p) => p.brand))].sort();
   const title = q ? `Kết quả cho “${q}”` : categories.find((c) => c.id === cat)?.name || "Tất cả sản phẩm";
 
   return (
     <div className="shop-layout">
-      <aside className="panel panel-pad filter-box stack">
+      {/* Filter Sidebar */}
+      <aside className="panel panel-pad filter-box stack" style={{ gap: 18 }}>
+        <div className="row between" style={{ alignItems: "center" }}>
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <SlidersHorizontal size={17} color="var(--road)" />
+            <h3 style={{ fontSize: 16 }}>Bộ lọc</h3>
+          </div>
+          {(brands.length > 0 || price !== "all" || q) && (
+            <button
+              className="btn ghost sm row"
+              style={{ gap: 4, padding: "4px 8px" }}
+              onClick={() => {
+                playTap(600, 0.03);
+                setBrands([]);
+                setPrice("all");
+                if (q) router.push(cat ? `/products?cat=${cat}` : "/products");
+              }}
+              title="Đặt lại bộ lọc"
+            >
+              <RotateCcw size={13} />
+              <span className="small">Xoá lọc</span>
+            </button>
+          )}
+        </div>
+
         <div className="stack-sm">
-          <h3>Hãng</h3>
+          <div className="small strong muted">Thương hiệu</div>
           {allBrands.map((b) => (
             <label key={b} className="check">
-              <input type="checkbox" checked={brands.includes(b)} onChange={(e) => setBrands((x) => (e.target.checked ? [...x, b] : x.filter((y) => y !== b)))} />
-              {b}
+              <input
+                type="checkbox"
+                checked={brands.includes(b)}
+                onChange={(e) => {
+                  playTap(700, 0.03);
+                  setBrands((x) => (e.target.checked ? [...x, b] : x.filter((y) => y !== b)));
+                }}
+              />
+              <span>{b}</span>
             </label>
           ))}
         </div>
+
         <div className="divider" />
+
         <div className="stack-sm">
-          <h3>Mức giá</h3>
+          <div className="small strong muted">Mức giá</div>
           {PRICE.map(([v, l]) => (
             <label key={v} className="check">
-              <input type="radio" name="price" checked={price === v} onChange={() => setPrice(v)} />
-              {l}
+              <input
+                type="radio"
+                name="price"
+                checked={price === v}
+                onChange={() => {
+                  playTap(700, 0.03);
+                  setPrice(v);
+                }}
+              />
+              <span>{l}</span>
             </label>
           ))}
         </div>
-        {(brands.length > 0 || price !== "all" || q) && (
-          <button className="btn secondary sm" onClick={() => { setBrands([]); setPrice("all"); if (q) router.push(cat ? `/products?cat=${cat}` : "/products"); }}>
-            Bỏ lọc
-          </button>
-        )}
       </aside>
+
+      {/* Product List Section */}
       <section>
-        <div className="row between" style={{ marginBottom: 14 }}>
+        <div className="row between" style={{ marginBottom: 16, alignItems: "baseline" }}>
           <div>
-            <h1 style={{ fontSize: 24 }}>{title}</h1>
-            <p className="small muted">{list.length} sản phẩm</p>
+            <h1 style={{ fontSize: 26 }}>{title}</h1>
+            <p className="small muted">{list.length} sản phẩm sẵn sàng giao và lắp đặt</p>
           </div>
-          <select className="input" style={{ width: "auto" }} value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp">
-            <option value="popular">Bán chạy</option>
-            <option value="sale">Giảm nhiều</option>
-            <option value="asc">Giá thấp đến cao</option>
-            <option value="desc">Giá cao đến thấp</option>
-          </select>
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <span className="small muted hide-sm">Sắp xếp:</span>
+            <select
+              className="input"
+              style={{ width: "auto", minWidth: 150 }}
+              value={sort}
+              onChange={(e) => {
+                playTap(700, 0.03);
+                setSort(e.target.value);
+              }}
+              aria-label="Sắp xếp sản phẩm"
+            >
+              <option value="popular">Bán chạy nhất</option>
+              <option value="sale">Giảm giá nhiều nhất</option>
+              <option value="asc">Giá thấp đến cao</option>
+              <option value="desc">Giá cao đến thấp</option>
+            </select>
+          </div>
         </div>
+
         {list.length ? (
-          <div className="product-grid">{list.map((p) => <ProductCard key={p.id} p={p} />)}</div>
+          <div className="product-grid">
+            {list.map((p) => (
+              <ProductCard key={p.id} p={p} />
+            ))}
+          </div>
         ) : (
-          <div className="panel"><Empty title="Không có sản phẩm phù hợp">Thử bỏ bớt bộ lọc hoặc tìm bằng từ khoá khác.</Empty></div>
+          <div className="panel">
+            <Empty title="Không có sản phẩm phù hợp">
+              Thử bỏ bớt bộ lọc hoặc tìm kiếm bằng từ khoá khác.
+            </Empty>
+          </div>
         )}
       </section>
     </div>
@@ -102,5 +169,9 @@ function Catalog() {
 }
 
 export default function ProductsPage() {
-  return <Suspense fallback={<Loading />}><Catalog /></Suspense>;
+  return (
+    <Suspense fallback={<Loading message="Đang tải danh mục sản phẩm…" />}>
+      <Catalog />
+    </Suspense>
+  );
 }
