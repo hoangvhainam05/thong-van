@@ -97,7 +97,7 @@ export default function ShopShell({ children }) {
     <>
       <header className="shop-top">
         <div className="shop-top-inner">
-          <Link href="/" className="logo"><img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" /></Link>
+          <Link href="/" className="logo shop-logo-icon" aria-label="Thông Vân"><img className="shop-logo-symbol" src="/brand-symbol.png" alt="" /></Link>
           <form className="shop-search" role="search" onSubmit={(e) => { e.preventDefault(); router.push(`/products?q=${encodeURIComponent(q)}`); }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tủ lạnh, máy giặt, điều hoà…" aria-label="Tìm sản phẩm" />
           </form>

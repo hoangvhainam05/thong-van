@@ -53,6 +53,20 @@
   object-fit: contain;
 }
 
+.shop-logo-icon {
+  width: 58px;
+  height: 48px;
+  justify-content: center;
+  padding: 3px 5px;
+}
+
+.shop-logo-symbol {
+  display: block;
+  width: 48px;
+  height: 40px;
+  object-fit: contain;
+}
+
 .logo-mark {
   width: 36px;
   height: 36px;
@@ -233,8 +247,8 @@
   .shop-nav .label { display: none; }
   .shop-foot-inner { grid-template-columns: 1fr; gap: 24px; }
   .shop-top-inner { padding: 0 16px; height: 60px; }
-  .shop-top .logo { padding: 3px 6px; }
-  .shop-top .logo-image { height: 32px; max-width: 132px; }
+  .shop-top .shop-logo-icon { width: 52px; height: 42px; padding: 2px 4px; }
+  .shop-top .shop-logo-symbol { width: 44px; height: 36px; }
   .shop-cats-inner { padding: 0 16px; }
   .shop-main { padding: 20px 16px 64px; }
 }
