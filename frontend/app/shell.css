@@ -33,12 +33,24 @@
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   font-weight: 800;
   font-size: 20px;
   letter-spacing: -0.03em;
   white-space: nowrap;
   color: #ffffff;
+  padding: 4px 8px;
+  background: #ffffff;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.logo-image {
+  display: block;
+  width: auto;
+  height: 40px;
+  max-width: min(220px, 38vw);
+  object-fit: contain;
 }
 
 .logo-mark {
@@ -221,6 +233,8 @@
   .shop-nav .label { display: none; }
   .shop-foot-inner { grid-template-columns: 1fr; gap: 24px; }
   .shop-top-inner { padding: 0 16px; height: 60px; }
+  .shop-top .logo { padding: 3px 6px; }
+  .shop-top .logo-image { height: 32px; max-width: 132px; }
   .shop-cats-inner { padding: 0 16px; }
   .shop-main { padding: 20px 16px 64px; }
 }
@@ -793,8 +807,20 @@
 }
 
 .sidebar .logo {
-  color: #ffffff;
-  padding: 4px 10px 20px;
+  padding: 4px 8px;
+  margin: 0 2px 16px;
+}
+
+.sidebar .logo-image {
+  height: 38px;
+  max-width: 100%;
+}
+
+.logo-symbol {
+  object-fit: contain;
+  background: #ffffff;
+  padding: 2px;
+  box-shadow: none;
 }
 
 .sidebar .group {

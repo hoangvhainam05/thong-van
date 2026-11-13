@@ -21,7 +21,7 @@ function Frame({ children }) {
   return (
     <div className="driver">
       <header className="driver-top">
-        <span className="logo-mark">TV</span>
+        <img className="logo-mark logo-symbol" src="/brand-symbol.png" alt="Thông Vân" />
         <div className="grow">
           <div className="strong">{user.name}</div>
           <div className="tiny" style={{ color: "#a9bfdc" }}>Nhân viên giao hàng</div>

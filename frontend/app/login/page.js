@@ -44,7 +44,7 @@ function LoginForm() {
   return (
     <div className="auth-wrap">
       <aside className="auth-side">
-        <Link href="/" className="logo"><span className="logo-mark">TV</span>Thông Vân</Link>
+        <Link href="/" className="logo"><img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" /></Link>
         <div className="stack">
           <h2>Một tài khoản, đúng việc của bạn</h2>
           <p>Khách hàng theo dõi đơn và thứ tự giao. Nhân viên bán hàng xử lý đơn. Quản lý xếp tuyến và chốt lịch. Tài xế nhận tuyến và cập nhật từng điểm giao.</p>

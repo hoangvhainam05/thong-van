@@ -45,7 +45,7 @@ function Frame({ children }) {
   return (
     <div className="admin">
       <aside className={`sidebar ${open ? "open" : ""}`} onClick={() => setOpen(false)}>
-        <Link href="/admin" className="logo"><span className="logo-mark">TV</span>Thông Vân</Link>
+        <Link href="/admin" className="logo"><img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" /></Link>
         {NAV.map((g) => {
           const items = g.items.filter((it) => can(it.perm));
           if (!items.length) return null;

@@ -97,7 +97,7 @@ export default function ShopShell({ children }) {
     <>
       <header className="shop-top">
         <div className="shop-top-inner">
-          <Link href="/" className="logo"><span className="logo-mark">TV</span>Thông Vân</Link>
+          <Link href="/" className="logo"><img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" /></Link>
           <form className="shop-search" role="search" onSubmit={(e) => { e.preventDefault(); router.push(`/products?q=${encodeURIComponent(q)}`); }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tủ lạnh, máy giặt, điều hoà…" aria-label="Tìm sản phẩm" />
           </form>
@@ -113,7 +113,7 @@ export default function ShopShell({ children }) {
       <footer className="shop-foot">
         <div className="shop-foot-inner">
           <div>
-            <div className="logo" style={{ color: "var(--ink)", marginBottom: 8 }}><span className="logo-mark">TV</span>Điện máy Thông Vân</div>
+            <div className="logo" style={{ color: "var(--ink)", marginBottom: 8 }}><img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" /></div>
             <p>Giao và lắp đặt tận nhà. Theo dõi chính xác còn bao nhiêu điểm giao trước bạn.</p>
           </div>
           <div>

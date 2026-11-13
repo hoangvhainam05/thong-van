@@ -7,6 +7,7 @@ import { StoreProvider } from "@/lib/store";
 export const metadata = {
   title: "Thông Vân — Điện máy giao tận nhà",
   description: "Đặt hàng điện máy, theo dõi lịch giao và biết còn bao nhiêu điểm giao trước bạn.",
+  icons: { icon: "/brand-symbol.png" },
 };
 
 export default function RootLayout({ children }) {

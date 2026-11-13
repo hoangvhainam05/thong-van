@@ -40,7 +40,7 @@ export default function RegisterPage() {
   return (
     <div className="auth-wrap">
       <aside className="auth-side">
-        <Link href="/" className="logo"><span className="logo-mark">TV</span>Thông Vân</Link>
+        <Link href="/" className="logo"><img className="logo-image" src="/brand-logo.png" alt="Thông Vân — Điện tử thông minh, cuộc sống tiện nghi" /></Link>
         <div className="stack">
           <h2>Tạo tài khoản khách hàng</h2>
           <p>Lưu địa chỉ giao hàng, xem lại đơn đã mua và nhận thông báo khi xe sắp tới.</p>
