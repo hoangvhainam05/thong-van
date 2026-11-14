@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { homeFor } from "@/lib/rbac";
 import { Field, Loading } from "@/components/ui";
+import { playTap } from "@/lib/audio-juice";
 
 function isAllowedNext(next, role, perms = []) {
   if (!next || typeof next !== "string" || !next.startsWith("/") || next === "/" || next === "/login") return false;
