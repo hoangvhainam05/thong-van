@@ -72,6 +72,10 @@ export class OrdersService {
         }
       }
     }
+    // Vercel runs this service with a one-connection MySQL pool. Read settings
+    // before opening the transaction so the transaction cannot hold the only
+    // connection while waiting for a query issued through the global DataSource.
+    const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
     let id: number;
     try {
       id = await this.dataSource.transaction(async (manager) => {
@@ -115,7 +119,6 @@ export class OrdersService {
         subtotal += Number(product.price) * quantity;
       }
 
-      const setting = await this.dataSource.getRepository(SystemSetting).findOne({ where: { id: 1 } }).catch(() => null);
       const defaultFee = setting ? Number(setting.shippingFee) : this.config.get<number>('shipping.fee', 150_000);
       const shippingFee = quote?.shippingBreakdown?.totalFee ?? defaultFee;
       const shippingDiscount = quote?.shippingBreakdown ? 0 : null;
